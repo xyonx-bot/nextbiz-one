@@ -6,8 +6,8 @@
 
 set -euo pipefail
 
-MAIN_REPO="\${DEPLOY_MAIN_REPO:-$HOME/workspaces/kira/repos/nextbiz-one}"
-STAGE_DIR="\${DEPLOY_STAGE_DIR:-$HOME/deploy-stage/nextbiz-one}"
+MAIN_REPO="${DEPLOY_MAIN_REPO:-$HOME/workspaces/kira/repos/nextbiz-one}"
+STAGE_DIR="${DEPLOY_STAGE_DIR:-$HOME/deploy-stage/nextbiz-one}"
 DB_CONTAINER="nextbiz_one_db"
 APP_CONTAINER="nextbiz_one_app"
 NGINX_CONTAINER="joyverse_nginx"
@@ -49,11 +49,11 @@ docker exec "$NGINX_CONTAINER" nginx -s reload
 log "health gate…"
 code=$(docker exec "$NGINX_CONTAINER" wget -q -O /dev/null -S \
   "http://${APP_CONTAINER}:3000/api/health" 2>&1 | head -1 | grep -oE '[0-9]{3}' || true)
-[ "$code" = "200" ] || { echo "[deploy] FAIL: direct health -> \${code:-no-response}"; exit 1; }
+[ "$code" = "200" ] || { echo "[deploy] FAIL: direct health -> ${code:-no-response}"; exit 1; }
 log "  direct health -> 200"
 
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "\${PUBLIC_HOST}/api/health" || echo 000)
+code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "${PUBLIC_HOST}/api/health" || echo 000)
 [ "$code" = "200" ] || { echo "[deploy] FAIL: public health -> $code (DNS/SSL cut yet? Tony)"; exit 1; }
 log "  public health -> 200"
 
-log "✅ deploy healthy at ${NEW_SHA:0:8} — \${PUBLIC_HOST}"
+log "✅ deploy healthy at ${NEW_SHA:0:8} — ${PUBLIC_HOST}"
