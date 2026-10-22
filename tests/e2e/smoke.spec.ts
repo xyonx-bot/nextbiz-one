@@ -38,7 +38,8 @@ test.describe("NBO S0", () => {
   });
 
   test("webhook GET: echoes hub.challenge on valid verify token", async ({ request }) => {
-    const res = await request.get("/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=nbo-e2e-verify&hub.challenge=CHALLENGE-42");
+    const VT = process.env.WHATSAPP_VERIFY_TOKEN ?? "nbo-e2e-verify";
+    const res = await request.get(`/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=${VT}&hub.challenge=CHALLENGE-42`);
     expect(res.status()).toBe(200);
     expect(await res.text()).toBe("CHALLENGE-42");
     const bad = await request.get("/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=X");
