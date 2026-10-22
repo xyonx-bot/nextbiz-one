@@ -266,6 +266,12 @@ body:not(.rail-expanded) .ri:hover .tip { opacity: 1; transform: translateY(-50%
 .av-52 { width: 52px; height: 52px; font-size: 16px; }
 
 
+
+/* auth canvas — centered card on cream with soft fruity glows (auth wireframe body.auth) */
+.authbg { display: grid; place-items: center; min-height: 100vh; background:
+  radial-gradient(600px 400px at 20% 10%, rgba(145,200,43,.06), transparent 60%),
+  radial-gradient(500px 400px at 85% 90%, rgba(255,117,24,.05), transparent 60%),
+  var(--bg); }
 /* ═══ AUTH (centered 420px card, flat inputs) ═══ */
 .authwrap { width: 100%; max-width: 420px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .auth-brand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 2px; }
