@@ -1,0 +1,130 @@
+name: ci-cd
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: lint + typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      nothing: {}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npm run lint
+
+  unit:
+    name: unit (vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+
+  e2e:
+    name: e2e (playwright + postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nextbiz
+          POSTGRES_PASSWORD: nextbiz
+          POSTGRES_DB: nextbiz_one
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nextbiz -d nextbiz_one"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://nextbiz:nextbiz@127.0.0.1:5432/nextbiz_one
+      OPERATOR_EMAIL: e2e-operator@nextbiz.one
+      OPERATOR_PASS: e2e-operator-pass-2026
+      WHATSAPP_VERIFY_TOKEN: nbo-e2e-verify
+      WHATSAPP_APP_SECRET: nbo-e2e-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Apply DB migrations
+        run: |
+          for f in db/migrations/*.sql; do
+            echo "  applying $f"
+            docker exec -i ${{ job.services.postgres.id }} \
+              psql -U nextbiz -d nextbiz_one -v ON_ERROR_STOP=1 -f - < "$f"
+          done
+      - run: npm run build
+      - name: Start app
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          [ -d public ] && cp -r public .next/standalone/public
+          PORT=3200 HOSTNAME=127.0.0.1 node .next/standalone/server.js &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:3200/api/health && break
+            sleep 1
+          done
+          curl -sf -o /dev/null http://127.0.0.1:3200/api/health || { echo "app did not start"; exit 1; }
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+
+  deploy:
+    name: deploy → VM (gated on all green)
+    needs: [quality, unit, e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deploy secrets (Tony)
+        id: secrets_check
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_SSH_HOST" ] || [ -z "$DEPLOY_SSH_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "SKIP: DEPLOY_SSH_* secrets not set yet (Tony) — deploy step will skip, tests-only run."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: SSH deploy + health gate
+        if: steps.secrets_check.outputs.skip != 'true'
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -D -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/deploy_key \
+            "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST" 'bash -s' < scripts/deploy.sh
+      - name: Post-deploy public verification
+        if: steps.secrets_check.outputs.skip != 'true'
+        run: |
+          sleep 5
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://one.nextbizstudio.com/api/health")
+          echo "GET /api/health -> $code"
+          [ "$code" = "200" ] || { echo "DEPLOY HEALTH FAIL"; exit 1; }

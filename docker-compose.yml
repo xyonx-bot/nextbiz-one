@@ -1,0 +1,43 @@
+# NextBiz One — prod shape (technical-plan §1): app + Postgres on the
+# docker network, NO 0.0.0.0 host ports (nginx proxies to the container).
+# .env lives next to this file (untracked — secrets never in repo).
+services:
+  one-db:
+    image: postgres:16-alpine
+    container_name: nextbiz_one_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nextbiz
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set in .env}
+      POSTGRES_DB: nextbiz_one
+    volumes:
+      - one_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextbiz -d nextbiz_one"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [joyverse_main_network]
+
+  one-app:
+    build: .
+    container_name: nextbiz_one_app
+    restart: unless-stopped
+    depends_on:
+      one-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://nextbiz:${DB_PASSWORD}@one-db:5432/nextbiz_one
+      OPERATOR_EMAIL: ${OPERATOR_EMAIL}
+      OPERATOR_PASS: ${OPERATOR_PASS}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
+      NODE_ENV: production
+    networks: [joyverse_main_network]
+
+volumes:
+  one_pgdata:
+
+networks:
+  joyverse_main_network:
+    external: true
