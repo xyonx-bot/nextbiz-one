@@ -62,6 +62,17 @@ export async function login(email: string, password: string): Promise<SessionUse
   }
 
   const u = rows[0];
+  // operator: env creds remain the source of truth — a matching env login
+  // re-hashes the stored row, so rotating OPERATOR_PASS in .env + restart
+  // just works (S0 bootstrap; S3 brings real account management)
+  const opEmail2 = (process.env.OPERATOR_EMAIL ?? "").trim().toLowerCase();
+  const opPass2 = process.env.OPERATOR_PASS ?? "";
+  if (u.is_operator && opEmail2 === norm && opPass2 && eq(password, opPass2)) {
+    await getPool().query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [
+      await hash(opPass2, 10),
+      u.id,
+    ]);
+  }
   const ok = await compare(password, u.password_hash);
   if (!ok) return null;
   if (!u.is_approved) return null; // access gate: unapproved users cannot pass (S3 handles approvals)
