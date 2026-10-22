@@ -52,8 +52,11 @@ code=$(docker exec "$NGINX_CONTAINER" wget -q -O /dev/null -S \
 [ "$code" = "200" ] || { echo "[deploy] FAIL: direct health -> ${code:-no-response}"; exit 1; }
 log "  direct health -> 200"
 
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "${PUBLIC_HOST}/api/health" || echo 000)
-[ "$code" = "200" ] || { echo "[deploy] FAIL: public health -> $code (DNS/SSL cut yet? Tony)"; exit 1; }
-log "  public health -> 200"
+body=$(curl -s --max-time 30 "${PUBLIC_HOST}/api/health" || echo "no-response")
+echo "$body" | grep -q '"ok":true' || { echo "[deploy] FAIL: public health body wrong: ${body:0:120}"; exit 1; }
+# a 200 from the WRONG backend (nginx default server) once passed this gate —
+# assert the NBO response shape, not just the status code
+echo "$body" | grep -q 'auth_required' && { echo "[deploy] FAIL: wrong backend answered (nginx default server)"; exit 1; }
+log "  public health -> NBO ok"
 
 log "✅ deploy healthy at ${NEW_SHA:0:8} — ${PUBLIC_HOST}"
