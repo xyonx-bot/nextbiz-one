@@ -27,3 +27,16 @@
 | S2-7 | Merge to main → deploy → live verify | pending (after suite green) |
 
 External pending: display-name "NextBiz Studio" review (Manager); template approvals (Meta review); inbound "Hi" test on 9088727191 (Joydip, from another phone).
+
+## S3 DISPATCHED (r-nbo-s3, Nina 13:12Z) — SEQUENCED AFTER S2 MERGE
+P1.1 signup · P1.2 request-access · P1.3 operator admin panel · P1.4 onboarding.
+Design: mira prototypes auth/ + onboarding/ + operator-admin/ (Oct 19 wireframes).
+
+## S2 FINISH PLAN (execute first — fresh session)
+- broadcasts UI: wireframe zones staged at /tmp/nbo-bz.txt (blist/bdetail/bcomposer markup);
+  broadcasts CSS ALREADY ported into app/globals.css (10.4KB + 4 media blocks, committed).
+  Build: app/broadcasts/page.tsx + BroadcastsClient.tsx (list pills+search, detail report w/
+  rstats+rtable+error decode, 4-step composer w/ phone preview) + /api/broadcasts/[id]/recipients
+  (+?format=csv) + Shell chip 'Broadcasts'.
+- e2e suite S2 (worker tick, opt-in gate, approved-template gate) → merge main → deploy → verify.
+- Note: two-direction test on new number DONE (reply delivered 11:35Z) — Nina's log stale.
