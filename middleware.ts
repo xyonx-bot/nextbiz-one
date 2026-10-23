@@ -21,5 +21,7 @@ export function middleware(req: NextRequest) {
 export const config = {
   // middleware guards PAGES only — every /api/* route self-gates
   // (login checks creds; webhook's gate is the HMAC signature)
-  matcher: ["/((?!_next|api/|login$|favicon.ico).*)"],
+  // signup + request-access are public intake pages (S3); onboarding stays
+  // gated — a session only exists after approval.
+  matcher: ["/((?!_next|api/|login$|signup$|request-access$|favicon.ico).*)"],
 };
