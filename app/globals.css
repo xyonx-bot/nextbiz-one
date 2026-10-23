@@ -757,3 +757,124 @@ body.nav-open .scrim { opacity: 1; pointer-events: auto; }
 }
 
 
+
+/* ═══ TEMPLATES — ported 1:1 from templates/wireframe.html ═══ */
+/* ══════════ TEMPLATES (content zone) ══════════ */
+.tzone { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px 1fr 316px; gap: 14px; padding: 0 0 12px; }
+
+/* ── col 1: template list ── */
+.tlist { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); display: flex; flex-direction: column; overflow: hidden; }
+.tlist-head { padding: 12px 12px 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; flex-shrink: 0; }
+.tpills { display: flex; gap: 6px; flex-wrap: wrap; }
+.tsearch { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); padding: 7px 10px; box-shadow: var(--clay-in); }
+.tsearch img { width: 13px; height: 13px; }
+.tsearch span { font-size: 11px; color: var(--ink-3); }
+.trows { overflow-y: auto; padding: 6px; flex: 1; }
+.trow { display: flex; flex-direction: column; gap: 4px; padding: 10px 9px; border-radius: var(--r-sm); cursor: pointer; }
+.trow:hover { background: var(--surface-sunken); }
+.trow.on { background: var(--chat-tint); }
+.trow .r1 { display: flex; align-items: center; gap: 7px; }
+.trow .r1 b { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trow .r1 .st { margin-left: auto; font-size: 8.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-pill); flex-shrink: 0; }
+.trow .r1 .st.ok { background: var(--ok-tint); color: var(--chat-deep); }
+.trow .r1 .st.pend { background: var(--banana); color: #1A1D23; }
+.trow .r1 .st.rej { background: var(--danger-tint); color: var(--danger); }
+.trow .r1 .st.draft { background: var(--bg); color: var(--ink-2); border: 1px solid var(--line); }
+.trow .r2 { display: flex; gap: 5px; align-items: center; }
+.trow .r2 .cat { font-size: 9px; font-weight: 700; color: var(--ink-2); background: var(--bg); border: 1px solid var(--line); padding: 1px 7px; border-radius: var(--r-pill); }
+.trow .r2 .lang { font-size: 9px; font-weight: 700; color: var(--ink-3); }
+
+/* ── col 2: editor ── */
+.tedit { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); display: flex; flex-direction: column; overflow: hidden; }
+.te-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.te-head b { font-size: 13px; font-weight: 700; }
+.te-head .st { margin-left: 2px; }
+.te-head .acts { margin-left: auto; display: flex; gap: 7px; }
+.te-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.te-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.te-row.single { grid-template-columns: 1fr; }
+.te-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.te-field .lb { font-size: 10px; font-weight: 700; color: var(--ink-2); }
+.te-field .lb em { font-style: normal; color: var(--ink-3); font-weight: 500; }
+.te-in { background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r-md); padding: 9px 12px; font-size: 12px; box-shadow: var(--clay-in); min-height: 38px; display: flex; align-items: center; }
+.te-in.b { align-items: flex-start; min-height: 110px; }
+.te-in .v { background: var(--grape-tint); color: var(--grape-deep); border: 1px solid #E3D4FB; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: var(--r-pill); margin: 0 2px; }
+.te-in .bt { width: 100%; border: none; background: none; outline: none; resize: none; font: inherit; color: var(--ink); }
+.te-hint { font-size: 9.5px; color: var(--ink-3); line-height: 1.45; }
+.te-hint b { color: var(--ink-2); }
+.te-btnrow { display: flex; gap: 6px; flex-wrap: wrap; }
+.te-btnrow .chip { cursor: pointer; }
+/* rejection note */
+.te-reject { background: var(--danger-tint); border: 1px solid #F0C9C2; border-radius: var(--r-md); padding: 10px 12px; display: flex; gap: 9px; align-items: flex-start; }
+.te-reject img { width: 14px; height: 14px; color: var(--danger); margin-top: 1px; }
+.te-reject .t b { display: block; font-size: 10.5px; font-weight: 800; color: var(--danger); }
+.te-reject .t span { font-size: 10.5px; color: var(--ink-2); line-height: 1.5; }
+
+/* ── col 3: phone preview (signature component) ── */
+.tphone { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); display: flex; flex-direction: column; overflow: hidden; }
+.tp-head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.tp-head b { font-size: 13px; font-weight: 700; }
+.tp-head span { margin-left: auto; font-size: 9px; color: var(--ink-3); font-weight: 600; }
+.tp-body { flex: 1; overflow-y: auto; padding: 16px; background: var(--bg); display: flex; flex-direction: column; }
+/* phone frame — minimal iPhone mockup (ref style): black chassis, bathtub
+   notch, status bar, home indicator; soft diffuse shadow beneath so it floats
+   (matches our clay/floating card language). Screen = our cream canvas. */
+.phone { width: 100%; max-width: 248px; margin: 0 auto 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 38px; padding: 10px; position: relative; box-shadow: var(--clay-1), 0 18px 36px -12px rgba(26,29,35,.16); }
+.phone .screen { background: var(--bg); border-radius: 30px; overflow: hidden; display: flex; flex-direction: column; aspect-ratio: 9 / 19.5; min-height: 420px; box-shadow: var(--clay-in); }
+/* status bar — flanks the notch like the ref */
+.phone .iosbar { background: var(--chat-deep); color: #fff; display: flex; justify-content: space-between; align-items: center; padding: 8px 22px 6px; font-size: 9.5px; font-weight: 700; height: 30px; position: relative; z-index: 1; }
+.phone .iosbar .ic { display: flex; gap: 4px; align-items: center; }
+.phone .iosbar .ic img { width: 10px; height: 10px; filter: brightness(0) invert(1); }
+/* bathtub notch overlapping status bar */
+.phone .notch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 84px; height: 22px; background: var(--ink); border-radius: 0 0 14px 14px; z-index: 2; }
+/* WA chat header in our tokens */
+.phone .wabar { background: var(--chat-deep); color: #fff; padding: 7px 10px 9px; display: flex; align-items: center; gap: 8px; }
+.phone .wabar .back { width: 11px; height: 11px; filter: brightness(0) invert(1); opacity: .85; }
+.phone .wabar .pa { width: 26px; height: 26px; border-radius: 50%; background: var(--chat-tint); color: var(--chat-deep); display: grid; place-items: center; font-size: 9px; font-weight: 800; flex-shrink: 0; }
+.phone .wabar .pn { flex: 1; min-width: 0; line-height: 1.15; }
+.phone .wabar .pn b { display: block; font-size: 10px; font-weight: 700; }
+.phone .wabar .pn small { display: block; font-size: 7.5px; font-weight: 600; opacity: .85; }
+.phone .wabar .ic { display: flex; gap: 9px; align-items: center; }
+.phone .wabar .ic img { width: 11px; height: 11px; filter: brightness(0) invert(1); opacity: .85; }
+/* chat area — cream with subtle dots */
+.phone .pchat { flex: 1; padding: 10px 8px 8px; display: flex; flex-direction: column; gap: 7px; background: var(--bg); background-image: radial-gradient(rgba(26,29,35,.03) 1px, transparent 1.2px); background-size: 13px 13px; overflow: hidden; }
+.phone .pdate { text-align: center; margin-bottom: 2px; }
+.phone .pdate span { background: var(--surface); border: 1px solid var(--line); color: var(--ink-3); font-size: 7.5px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+.phone .pmsg { background: var(--surface); border: 1px solid var(--line); border-radius: 10px 10px 10px 3px; padding: 7px 9px 6px; font-size: 10px; line-height: 1.5; color: var(--ink); box-shadow: var(--shadow-1); max-width: 94%; align-self: flex-start; }
+.phone .pmsg .ph { font-weight: 700; margin-bottom: 2px; }
+.phone .pmsg .pv { font-weight: 700; color: var(--chat-deep); }
+.phone .pmsg .pmeta { display: inline-flex; align-items: center; gap: 2px; float: right; margin: 8px -1px -1px 8px; font-size: 7.5px; color: var(--ink-3); font-weight: 600; line-height: 1; }
+/* template CTA — attached tint bar */
+.phone .pbtn { background: var(--chat-tint); border: 1px solid #DCEFBB; border-top: none; color: var(--chat-deep); text-align: center; font-size: 9.5px; font-weight: 700; border-radius: 0 0 10px 10px; padding: 6px; cursor: pointer; align-self: flex-start; width: 88%; margin: -5px 0 0 6px; }
+/* home indicator */
+.phone .homebar { height: 14px; display: grid; place-items: end center; background: var(--bg); }
+.phone .homebar::after { content: ""; width: 76px; height: 4px; border-radius: 3px; background: var(--line-strong); margin-bottom: 5px; }
+.tp-lab { margin: 14px auto 0; font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); text-align: center; }
+/* sample values strip */
+.tp-samples { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.tp-samples .s { display: flex; align-items: center; gap: 8px; }
+.tp-samples .s .k { font-size: 9.5px; font-weight: 700; color: var(--ink-2); width: 78px; flex-shrink: 0; }
+.tp-samples .s .v { flex: 1; background: var(--bg); border: 1px dashed var(--line-strong); border-radius: 7px; padding: 5px 9px; font-size: 10px; color: var(--ink-2); }
+
+/* templates responsive */
+
+@media (max-width: 639px) {
+  .tzone { grid-template-columns: 1fr; padding: 0 0 10px; gap: 10px; }
+  .tedit { display: none; }
+  body.show-editor .tedit { display: flex; }
+  body:not(.show-editor) .tlist { display: none; }
+  body:not(.show-editor) .tphone { display: none; }
+  body.show-editor .tphone { display: none; }
+  .te-head .back { display: grid; }
+  .te-row { grid-template-columns: 1fr; }
+  .te-reject { margin: 0 16px; }
+}
+.te-head .back { display: none; width: 30px; height: 30px; border-radius: var(--r-sm); background: var(--bg); border: 1px solid var(--line); place-items: center; }
+.te-head .back img { width: 14px; height: 14px; }
+
+/* ══════════ RESPONSIVE — 3-TIER LOCKED PLAN ══════════
+   Desktop ≥1180 (rail+panel · 3-col) · Tablet 820-1179 (rail-only, panel = flyout
+   w/ scrim · 2-col inbox) · Mobile <820 (drawer nav, compact header, FAB,
+   master→detail) */
+
+/* ── TABLET 640–1179 (two-col inbox throughout) ── */
