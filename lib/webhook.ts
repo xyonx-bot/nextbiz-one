@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { getPool } from "./db";
+import { maybeAutoReply } from "./automation";
 
 /** X-Hub-Signature-256 = "sha256=" + hex HMAC of the raw body. */
 export function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
@@ -72,6 +73,10 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
           ?? (meta as { name?: string } | undefined)?.name ?? null;
         const contactId = await upsertContact(wsId, m.from, name);
         const convId = await upsertConversation(wsId, contactId, m.timestamp);
+        // S4 automation (contains-match engine) — best-effort, never blocks inbound
+        if (m.text?.body) {
+          void maybeAutoReply(wsId, contactId, convId, m.from, String(m.text.body)).catch(() => {});
+        }
         // Marketing opt-in capture: explicit keyword = auditable permission.
         // (Inbound "Hi" only opens the 24h window — it is NOT an opt-in.)
         const text = String(m.text?.body ?? "").trim();
