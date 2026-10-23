@@ -70,11 +70,18 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
             <h1>Access requests</h1>
             <div className="sub">Review who's asking in — approve opens a workspace; reject tells them why.</div>
           </div>
+          <div className="acts">
+            <a className="btn btn-soft" href="/api/operator/audit?format=csv" style={{ textDecoration: "none" }}>
+              <img src={`${IC}download-simple-bold.svg`} alt="" />Export</a>
+          </div>
         </div>
 
         <section className="op-card" aria-label="Pending requests">
           <h2><img src={`${IC}user-switch-bold.svg`} alt="" />Pending requests <span className="chip" style={{ fontSize: "8.5px", padding: "1px 7px" }}>{reqs.length} waiting</span></h2>
           <div className="desc">Newest first · approve/reject notifies the requester by email.</div>
+          <div className="rq-row dth">
+            <span>Requester</span><span>Business</span><span>Intended use</span><span>Received</span><span style={{ textAlign: "right" }}>Actions</span>
+          </div>
           {reqs.length === 0 && <div className="desc" style={{ padding: "14px 0" }}>Queue is empty — nothing waiting on review.</div>}
           {reqs.map((r) => (
             <div key={r.id} className="rq-row">
@@ -107,6 +114,9 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
         <section className="op-card" aria-label="Workspace status">
           <h2><img src={`${IC}users-bold.svg`} alt="" />Workspaces <span className="chip" style={{ fontSize: "8.5px", padding: "1px 7px" }}>{wss.length} total</span></h2>
           <div className="desc">Revoke blocks login + messaging; restore re-enables with same number and history.</div>
+          <div className="us-row dth">
+            <span>Workspace</span><span>Number</span><span>Contacts</span><span>Status</span><span style={{ textAlign: "right" }}>Actions</span>
+          </div>
           {wss.map((w) => (
             <div key={w.id} className="us-row">
               <span className="us-ppl"><span className="av">{w.name.slice(0, 2).toUpperCase()}</span><span className="t"><b>{w.name}</b><span>created {new Date(w.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></span></span>
