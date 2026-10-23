@@ -20,7 +20,10 @@ export async function GET(req: Request) {
               WHERE c2.contact_id = ct.id LIMIT 1) AS last_at,
             (SELECT c2.id FROM conversations c2
               WHERE c2.contact_id = ct.id LIMIT 1) AS conv_id
-       FROM contacts ct ORDER BY COALESCE(last_at, ct.created_at) DESC LIMIT 500`,
+       FROM contacts ct
+       ORDER BY COALESCE((SELECT c2.last_inbound_at FROM conversations c2
+                            WHERE c2.contact_id = ct.id LIMIT 1), ct.created_at) DESC
+       LIMIT 500`,
   );
   const out = rows.filter(
     (r) => !q || String(r.name ?? "").toLowerCase().includes(q) || String(r.wa_id).includes(q),
