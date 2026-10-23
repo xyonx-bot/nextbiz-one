@@ -75,6 +75,14 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
             [contactId],
           );
         }
+        // Opt-out is MANDATORY to honor (WhatsApp policy). STOP immediately
+        // flips the flag — the next broadcast snapshot will exclude them.
+        if (/^(stop|unsubscribe|cancel)$/i.test(text)) {
+          await p.query(
+            `UPDATE contacts SET opt_in = false WHERE id = $1`,
+            [contactId],
+          );
+        }
         const bodyText = m.type === "text" ? (m.text?.body ?? null) : `[${m.type ?? "non-text"}]`;
         const r = await p.query(
           `INSERT INTO messages
