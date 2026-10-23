@@ -19,7 +19,7 @@ export default async function HomePage() {
     .slice(0, 2)
     .toUpperCase();
   return (
-    <Shell leafActive userInitials={initials} userName={user?.displayName ?? "Operator"}>
+    <Shell active="dashboard" userInitials={initials} userName={user?.displayName ?? "Operator"}>
       <main className="pagezone" style={{ flex: 1, minHeight: 0, display: "grid", placeItems: "center", padding: "12px" }}>
         <div className="authcard" style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
           <h1>NextBiz One</h1>

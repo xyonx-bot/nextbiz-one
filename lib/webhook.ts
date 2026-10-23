@@ -43,12 +43,27 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
     for (const change of changes) {
       const value = (change as { value?: Record<string, unknown> }).value;
       if (!value) continue;
+          const statuses = value.statuses as { id?: string; status?: string }[] | undefined;
+          // Meta delivery/read receipts — update the sent message rows
+          if (Array.isArray(statuses)) {
+            for (const st of statuses) {
+              if (st.id && st.status && ["sent", "delivered", "read", "failed"].includes(st.status)) {
+                await p.query(
+                  `UPDATE messages SET status = $1 WHERE wa_message_id = $2 AND direction = 'out'`,
+                  [st.status, st.id],
+                );
+              }
+            }
+          }
       const msgs = value.messages as WaMessage[] | undefined;
       const contacts = value.contacts as { wa_id?: string; name?: string }[] | undefined;
       if (!Array.isArray(msgs)) continue;
       for (const m of msgs) {
         if (!m.from || !m.id) continue;
-        const name = contacts?.find((c) => c.wa_id === m.from)?.name ?? null;
+        // Meta nests the profile name: contacts[].profile.name
+        const meta = contacts?.find((c) => c.wa_id === m.from);
+        const name = (meta as { profile?: { name?: string } } | undefined)?.profile?.name
+          ?? (meta as { name?: string } | undefined)?.name ?? null;
         const contactId = await upsertContact(wsId, m.from, name);
         const convId = await upsertConversation(wsId, contactId, m.timestamp);
         const bodyText = m.type === "text" ? (m.text?.body ?? null) : `[${m.type ?? "non-text"}]`;
