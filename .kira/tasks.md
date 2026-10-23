@@ -40,3 +40,14 @@ Design: mira prototypes auth/ + onboarding/ + operator-admin/ (Oct 19 wireframes
   (+?format=csv) + Shell chip 'Broadcasts'.
 - e2e suite S2 (worker tick, opt-in gate, approved-template gate) → merge main → deploy → verify.
 - Note: two-direction test on new number DONE (reply delivered 11:35Z) — Nina's log stale.
+
+## S4 (r-nbo-s4) — Automation + Settings + hardening
+| # | Task | Status |
+|---|---|---|
+| S4-1 | Migration 006: automation tables + pauses + workspaces.about | done |
+| S4-2 | lib/automation engine (contains-match, away/hours IST, welcome once, pause contract) + webhook hook | done (b8b9107) |
+| S4-3 | Automation APIs: state/settings/rules CRUD+test/faq | done |
+| S4-4 | Settings APIs: profile/sessions/export CSV/danger-zone | done (208e03a, tsc clean) |
+| S4-5 | Automation UI — 1:1 port (welcome 3-band card, keyword table+inspector, hours, FAQ) | next |
+| S4-6 | Settings UI — 1:1 port (profile, connections, modules, security, data+danger zone) | pending |
+| S4-7 | E2e (automation fire + pause + away window) + merge + deploy | pending |
