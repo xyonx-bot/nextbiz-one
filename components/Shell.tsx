@@ -17,7 +17,7 @@ export function Shell({
   unread = 0,
   children,
 }: {
-  active?: "dashboard" | "inbox" | "contacts";
+  active?: "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts";
   userInitials: string;
   userName: string;
   unread?: number;
@@ -45,7 +45,7 @@ export function Shell({
             <div className="wordmark">NextBiz One<small>Workspace</small></div>
           </div>
           <div className={`ri mod-ws leaf${active === "dashboard" ? " on" : ""}`}><a href="/" style={{ display: "contents" }}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/squares-four.svg" alt="" /><span className="lbl">Dashboard</span></a><span className="tip">Dashboard</span></div>
-          <div className={`ri mod-chat parent${active === "inbox" || active === "contacts" ? " on" : ""}`}><a href="/inbox" style={{ display: "contents" }}><span className="mdoti" style={{ background: "var(--chat)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/chat-circle-dots.svg" alt="" /><span className="lbl">NextBiz Chat</span>{unread > 0 && <span className="cnt">{unread}</span>}</a><span className="tip">NextBiz Chat</span></div>
+          <div className={`ri mod-chat parent${active === "inbox" || active === "contacts" || active === "templates" || active === "broadcasts" ? " on" : ""}`}><a href="/inbox" style={{ display: "contents" }}><span className="mdoti" style={{ background: "var(--chat)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/chat-circle-dots.svg" alt="" /><span className="lbl">NextBiz Chat</span>{unread > 0 && <span className="cnt">{unread}</span>}</a><span className="tip">NextBiz Chat</span></div>
           <div className="ri mod-ads parent"><span className="mdoti" style={{ background: "var(--ads)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">NextBiz Ads</span><span className="tip">NextBiz Ads</span></div>
           <div className="ri mod-social parent"><span className="mdoti" style={{ background: "var(--social)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/images.svg" alt="" /><span className="lbl">NextBiz Social</span><span className="tip">NextBiz Social</span></div>
           <div className="sp" />
@@ -73,6 +73,8 @@ export function Shell({
                 <div className="sub-chips">
                   <a href="/inbox" style={{ display: "contents" }}><div className={`schip${active === "inbox" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/tray.svg" alt="" /><span className="lbl">Inbox</span>{unread > 0 && <span className="cnt">{unread}</span>}</div></a>
                   <a href="/contacts" style={{ display: "contents" }}><div className={`schip${active === "contacts" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/users.svg" alt="" /><span className="lbl">Contacts</span></div></a>
+                      <a href="/templates" style={{ display: "contents" }}><div className={`schip${active === "templates" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/notebook.svg" alt="" /><span className="lbl">Templates</span></div></a>
+                      <a href="/broadcasts" style={{ display: "contents" }}><div className={`schip${active === "broadcasts" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">Broadcasts</span></div></a>
                   <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">Broadcasts</span></div>
                   <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/notebook.svg" alt="" /><span className="lbl">Templates</span></div>
                   <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/lightning.svg" alt="" /><span className="lbl">Automation</span></div>

@@ -48,6 +48,12 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
           if (Array.isArray(statuses)) {
             for (const st of statuses) {
               if (st.id && st.status && ["sent", "delivered", "read", "failed"].includes(st.status)) {
+                // S2 delivery report: sync the same status onto the broadcast
+                // recipient row (sent -> delivered/read/failed w/ error decode).
+                await p.query(
+                  `UPDATE broadcast_recipients SET status = $1 WHERE wa_message_id = $2`,
+                  [st.status, st.id],
+                );
                 await p.query(
                   `UPDATE messages SET status = $1 WHERE wa_message_id = $2 AND direction = 'out'`,
                   [st.status, st.id],
@@ -66,6 +72,23 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
           ?? (meta as { name?: string } | undefined)?.name ?? null;
         const contactId = await upsertContact(wsId, m.from, name);
         const convId = await upsertConversation(wsId, contactId, m.timestamp);
+        // Marketing opt-in capture: explicit keyword = auditable permission.
+        // (Inbound "Hi" only opens the 24h window — it is NOT an opt-in.)
+        const text = String(m.text?.body ?? "").trim();
+        if (/^(start|optin|opt-in|promo|subcribe|subscribe)$/i.test(text)) {
+          await p.query(
+            `UPDATE contacts SET opt_in = true WHERE id = $1`,
+            [contactId],
+          );
+        }
+        // Opt-out is MANDATORY to honor (WhatsApp policy). STOP immediately
+        // flips the flag — the next broadcast snapshot will exclude them.
+        if (/^(stop|unsubscribe|cancel)$/i.test(text)) {
+          await p.query(
+            `UPDATE contacts SET opt_in = false WHERE id = $1`,
+            [contactId],
+          );
+        }
         const bodyText = m.type === "text" ? (m.text?.body ?? null) : `[${m.type ?? "non-text"}]`;
         const r = await p.query(
           `INSERT INTO messages
