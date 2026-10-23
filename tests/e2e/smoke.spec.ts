@@ -109,3 +109,27 @@ test("S1 inbox: list + thread + composer (P1.6)", async ({ page }) => {
   await page.click(".chip:has-text('Unread')");
   await page.waitForTimeout(400);
 });
+
+test("S1 dashboard + contacts (P1.5 + P1.7)", async ({ page }) => {
+  await page.goto("/login");
+  await page.fill("#email", process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one");
+  await page.fill("#password", process.env.OPERATOR_PASS ?? "operator-test-pass");
+  await Promise.all([page.click("button[type=submit]"), page.waitForURL((u) => !u.pathname.startsWith("/login"))]);
+
+  // dashboard: leaf page (panel hidden), live stat cards, connection + recents
+  await page.waitForSelector("[data-testid=dashboard]");
+  expect(await page.locator("[data-testid=nav-panel]").count()).toBe(0);
+  expect(await page.locator(".stat .v").count()).toBe(3);
+  await expect(page.locator(".stat .v").first()).not.toHaveText("");
+
+  // contacts: module page (panel visible), list renders, detail opens
+  await page.goto("/contacts");
+  await page.waitForSelector("[data-testid=krow]");
+  expect(await page.locator("[data-testid=nav-panel]").count()).toBe(1);
+  await page.click("[data-testid=krow]");
+  await page.waitForSelector(".kdetail .phead");
+  await expect(page.locator(".kdetail .nm")).toContainText(/.+/);
+  await page.fill("[data-testid=contacts-search]", "zzzz-no-match");
+  await page.waitForTimeout(300);
+  expect(await page.locator("[data-testid=krow]")).toHaveCount(0);
+});
