@@ -15,7 +15,7 @@ type Bc = {
 };
 type Tpl = { id: string; name: string; status: string; body: string };
 type Rcpt = {
-  first_name: string | null; last_name: string | null; wa_id: string;
+  name: string | null; wa_id: string;
   status: string; sent_at: string | null; error: string | null;
 };
 type Roll = Record<string, number>;
@@ -210,7 +210,7 @@ export function BroadcastsClient() {
                   {rcpt.length === 0 && <div className="rr"><span>—</span><span>—</span><span>—</span><span>—</span></div>}
                   {rcpt.map((r, i) => (
                     <div className="rr" key={i}>
-                      <span><b>{`${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || "Contact"}</b> <span className="num">{r.wa_id}</span></span>
+                      <span><b>{r.name || "Contact"}</b> <span className="num">{r.wa_id}</span></span>
                       <span className="st-wrap"><span className={`st ${r.status === "delivered" || r.status === "read" ? "ok" : r.status === "failed" ? "fail" : ""}`}>{r.status.charAt(0).toUpperCase() + r.status.slice(1)}</span></span>
                       <span className="num">{r.sent_at ? new Date(r.sent_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"}</span>
                       <span className="st-wrap">{r.error && <span className="err">{r.error}</span>}</span>

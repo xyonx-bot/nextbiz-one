@@ -21,13 +21,13 @@ async function runBroadcastSend(payload: { broadcastId: string }) {
 
   // remaining queued recipients (opt-in snapshotted at create time)
   const rcpt = await p.query(
-    `SELECT r.id, r.contact_id, c.wa_id, c.first_name
+    `SELECT r.id, r.contact_id, c.wa_id, c.name
        FROM broadcast_recipients r JOIN contacts c ON c.id = r.contact_id
       WHERE r.broadcast_id = $1 AND r.status = 'queued' LIMIT 250`,
     [bc.id],
   );
   for (const r of rcpt.rows) {
-    const body = bc.tpl_body.replace(/\{\{1\}\}/g, r.first_name || "there");
+    const body = bc.tpl_body.replace(/\{\{1\}\}/g, r.name || "there");
     try {
       const res = await sendText(r.wa_id, body);
       if (res.ok) {

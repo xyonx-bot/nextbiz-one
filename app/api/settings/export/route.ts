@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
 
 const QUERIES: Record<string, string> = {
-  contacts: `SELECT c.wa_id, c.first_name, c.last_name, c.opt_in, c.created_at FROM contacts c ORDER BY c.created_at DESC`,
+  contacts: `SELECT c.wa_id, c.name, c.opt_in, c.created_at FROM contacts c ORDER BY c.created_at DESC`,
   conversations: `SELECT ct.wa_id, m.direction, m.body, m.status, m.created_at
                    FROM messages m JOIN conversations v ON v.id = m.conversation_id
                    JOIN contacts ct ON ct.id = v.contact_id ORDER BY m.created_at DESC LIMIT 20000`,

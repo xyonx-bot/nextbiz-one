@@ -20,7 +20,7 @@ export async function GET(req: Request, ctx: Ctx) {
   const p = getPool();
   const { rows } = await p.query(
     `SELECT r.status, r.sent_at, r.error_raw, r.wa_message_id,
-            c.first_name, c.last_name, c.wa_id
+            c.name, c.wa_id
        FROM broadcast_recipients r JOIN contacts c ON c.id = r.contact_id
       WHERE r.broadcast_id = $1 ORDER BY r.sent_at DESC NULLS LAST LIMIT 1000`,
     [id],
@@ -37,7 +37,7 @@ export async function GET(req: Request, ctx: Ctx) {
   if (new URL(req.url).searchParams.get("format") === "csv") {
     const csv = ["Contact,Number,Status,Sent at,Error"]
       .concat(rows.map((r) =>
-        [`${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(), r.wa_id, r.status,
+        [r.name ?? "", r.wa_id, r.status,
          r.sent_at ? new Date(r.sent_at).toISOString() : "", dec(r.error_raw) ?? ""]
           .map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","),
       )).join("\n");
