@@ -66,6 +66,15 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
           ?? (meta as { name?: string } | undefined)?.name ?? null;
         const contactId = await upsertContact(wsId, m.from, name);
         const convId = await upsertConversation(wsId, contactId, m.timestamp);
+        // Marketing opt-in capture: explicit keyword = auditable permission.
+        // (Inbound "Hi" only opens the 24h window — it is NOT an opt-in.)
+        const text = String(m.text?.body ?? "").trim();
+        if (/^(start|optin|opt-in|promo|subcribe|subscribe)$/i.test(text)) {
+          await p.query(
+            `UPDATE contacts SET opt_in = true WHERE id = $1`,
+            [contactId],
+          );
+        }
         const bodyText = m.type === "text" ? (m.text?.body ?? null) : `[${m.type ?? "non-text"}]`;
         const r = await p.query(
           `INSERT INTO messages
