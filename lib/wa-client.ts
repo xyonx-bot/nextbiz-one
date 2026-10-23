@@ -33,16 +33,24 @@ export async function sendText(toWaId: string, body: string): Promise<SendResult
 /** Template submit + status poll (S2/P1.8) — thin, version-pinned. */
 export async function submitTemplate(t: {
   name: string; language: string; category: string; bodyText: string;
+  samples?: string[];   // one sample per {{n}} — Meta requires sample text
 }): Promise<{ ok: true; id: string; status: string } | { ok: false; error: string; metaCode?: number }> {
   const token = process.env.META_ACCESS_TOKEN;
   const waba = process.env.WABA_ID;
   if (!token || !waba) return { ok: false, error: "WhatsApp connection not configured" };
+  // variables without samples are REJECTED (UI: "Template variables without
+  // sample text") — and the example format is a FLAT array, NOT nested
+  const varCount = (t.bodyText.match(/{{\d+}}/g) ?? []).length;
+  const hasVars = varCount > 0;
+  const samples = t.samples ?? Array.from({ length: varCount }, (_, i) => `Sample ${i + 1}`);
+  const component: Record<string, unknown> = { type: "BODY", text: t.bodyText };
+  if (hasVars) component.example = { body_text: samples };
   const res = await fetch(`https://graph.facebook.com/v21.0/${waba}/message_templates`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       name: t.name, language: t.language, category: t.category,
-      components: [{ type: "BODY", text: t.bodyText }],
+      components: [component],
     }),
   });
   const data = (await res.json().catch(() => null)) as
