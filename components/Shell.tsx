@@ -11,13 +11,13 @@ import { useState } from "react";
  * S0 renders the frame; module surfaces land S1+.
  */
 export function Shell({
-  leafActive = true,
+  active = "dashboard",
   userInitials,
   userName,
   unread = 0,
   children,
 }: {
-  leafActive?: boolean;
+  active?: "dashboard" | "inbox" | "contacts";
   userInitials: string;
   userName: string;
   unread?: number;
@@ -25,6 +25,9 @@ export function Shell({
 }) {
   const [railExpanded, setRailExpanded] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+      // v4.3: Dashboard + Settings are LEAF pages (panel hidden); Chat module
+      // pages (Inbox, Contacts) show the panel with the tree chips
+      const leafActive = active === "dashboard";
 
   return (
     <>
@@ -41,8 +44,8 @@ export function Shell({
             </div>
             <div className="wordmark">NextBiz One<small>Workspace</small></div>
           </div>
-          <div className="ri on mod-ws leaf"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/squares-four.svg" alt="" /><span className="lbl">Dashboard</span><span className="tip">Dashboard</span></div>
-          <div className="ri mod-chat parent"><span className="mdoti" style={{ background: "var(--chat)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/chat-circle-dots.svg" alt="" /><span className="lbl">NextBiz Chat</span>{unread > 0 && <span className="cnt">{unread}</span>}<span className="tip">NextBiz Chat</span></div>
+          <div className={`ri mod-ws leaf${active === "dashboard" ? " on" : ""}`}><a href="/" style={{ display: "contents" }}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/squares-four.svg" alt="" /><span className="lbl">Dashboard</span></a><span className="tip">Dashboard</span></div>
+          <div className={`ri mod-chat parent${active === "inbox" || active === "contacts" ? " on" : ""}`}><a href="/inbox" style={{ display: "contents" }}><span className="mdoti" style={{ background: "var(--chat)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/chat-circle-dots.svg" alt="" /><span className="lbl">NextBiz Chat</span>{unread > 0 && <span className="cnt">{unread}</span>}</a><span className="tip">NextBiz Chat</span></div>
           <div className="ri mod-ads parent"><span className="mdoti" style={{ background: "var(--ads)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">NextBiz Ads</span><span className="tip">NextBiz Ads</span></div>
           <div className="ri mod-social parent"><span className="mdoti" style={{ background: "var(--social)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/images.svg" alt="" /><span className="lbl">NextBiz Social</span><span className="tip">NextBiz Social</span></div>
           <div className="sp" />
@@ -68,8 +71,8 @@ export function Shell({
               <div className="tree" data-tree="chat">
                 <div className="sec"><span className="mdot" style={{ background: "var(--chat)" }} />NextBiz Chat</div>
                 <div className="sub-chips">
-                  <div className="schip on"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/tray.svg" alt="" /><span className="lbl">Inbox</span>{unread > 0 && <span className="cnt">{unread}</span>}</div>
-                  <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/users.svg" alt="" /><span className="lbl">Contacts</span></div>
+                  <a href="/inbox" style={{ display: "contents" }}><div className={`schip${active === "inbox" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/tray.svg" alt="" /><span className="lbl">Inbox</span>{unread > 0 && <span className="cnt">{unread}</span>}</div></a>
+                  <a href="/contacts" style={{ display: "contents" }}><div className={`schip${active === "contacts" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/users.svg" alt="" /><span className="lbl">Contacts</span></div></a>
                   <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">Broadcasts</span></div>
                   <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/notebook.svg" alt="" /><span className="lbl">Templates</span></div>
                   <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/lightning.svg" alt="" /><span className="lbl">Automation</span></div>

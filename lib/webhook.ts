@@ -60,7 +60,10 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
       if (!Array.isArray(msgs)) continue;
       for (const m of msgs) {
         if (!m.from || !m.id) continue;
-        const name = contacts?.find((c) => c.wa_id === m.from)?.name ?? null;
+        // Meta nests the profile name: contacts[].profile.name
+        const meta = contacts?.find((c) => c.wa_id === m.from);
+        const name = (meta as { profile?: { name?: string } } | undefined)?.profile?.name
+          ?? (meta as { name?: string } | undefined)?.name ?? null;
         const contactId = await upsertContact(wsId, m.from, name);
         const convId = await upsertConversation(wsId, contactId, m.timestamp);
         const bodyText = m.type === "text" ? (m.text?.body ?? null) : `[${m.type ?? "non-text"}]`;
