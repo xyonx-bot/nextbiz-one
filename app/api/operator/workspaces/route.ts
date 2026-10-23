@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { requireOperator } from "../requests/route";
+import { requireOperator } from "@/lib/operator";
 
 /** GET — workspaces status list (metadata only: name, masked number,
  *  contact count, revoke state). Never message content. */

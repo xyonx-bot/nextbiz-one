@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { requireOperator } from "../../requests/route";
+import { requireOperator } from "@/lib/operator";
 
 type Ctx = { params: Promise<{ id: string }> };
 

@@ -1,14 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { getSessionUser, type SessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-
-/** Operator guard — every /api/operator/* route composes this. */
-export async function requireOperator(): Promise<SessionUser | null> {
-  const token = (await cookies()).get("nbo_session")?.value;
-  const u = await getSessionUser(token);
-  return u?.isOperator ? u : null;
-}
+import { requireOperator } from "@/lib/operator";
 
 /** GET — pending access requests (the review queue). */
 export async function GET() {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { requireOperator } from "../requests/route";
+import { requireOperator } from "@/lib/operator";
 
 /** GET — the append-only ledger, recent-first. No update/delete exists. */
 export async function GET() {
