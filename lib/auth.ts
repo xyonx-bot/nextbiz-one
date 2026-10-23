@@ -39,8 +39,10 @@ export async function login(email: string, password: string): Promise<SessionUse
   const p = getPool();
   const norm = email.trim().toLowerCase();
   const { rows } = await p.query(
-    `SELECT id, email, password_hash, display_name, is_operator, is_approved
-       FROM users WHERE email = $1`,
+    `SELECT u.id, u.email, u.password_hash, u.display_name, u.is_operator, u.is_approved,
+            COALESCE(w.revoked, false) AS ws_revoked
+       FROM users u LEFT JOIN workspaces w ON w.id = u.workspace_id
+      WHERE u.email = $1`,
     [norm],
   );
 
@@ -76,6 +78,7 @@ export async function login(email: string, password: string): Promise<SessionUse
   const ok = await compare(password, u.password_hash);
   if (!ok) return null;
   if (!u.is_approved) return null; // access gate: unapproved users cannot pass (S3 handles approvals)
+  if (u.ws_revoked) return null;   // revoked workspace = login blocked (S3 P1.3)
   return {
     id: u.id,
     email: u.email,

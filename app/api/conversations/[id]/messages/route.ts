@@ -42,6 +42,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     );
   }
 
+  // revoked workspace: messaging is blocked instantly (S3 P1.3)
+  const wsr = await p.query(
+    `SELECT COALESCE(w.revoked, false) AS rev FROM conversations c
+       JOIN workspaces w ON w.id = c.workspace_id WHERE c.id = $1`,
+    [id],
+  );
+  if (wsr.rows[0]?.rev) {
+    return NextResponse.json({ error: "Workspace messaging is paused — contact support." }, { status: 403 });
+  }
   const send = await sendText(c.wa_id, b.data.body);
   if (!send.ok) return NextResponse.json({ error: send.error, metaCode: send.metaCode }, { status: 502 });
 
