@@ -48,6 +48,12 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
           if (Array.isArray(statuses)) {
             for (const st of statuses) {
               if (st.id && st.status && ["sent", "delivered", "read", "failed"].includes(st.status)) {
+                // S2 delivery report: sync the same status onto the broadcast
+                // recipient row (sent -> delivered/read/failed w/ error decode).
+                await p.query(
+                  `UPDATE broadcast_recipients SET status = $1 WHERE wa_message_id = $2`,
+                  [st.status, st.id],
+                );
                 await p.query(
                   `UPDATE messages SET status = $1 WHERE wa_message_id = $2 AND direction = 'out'`,
                   [st.status, st.id],
