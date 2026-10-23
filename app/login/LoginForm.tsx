@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { StatusCard, type ReqStatus } from "../request-access/StatusCard";
 
 export function LoginForm() {
   const router = useRouter();
@@ -10,6 +11,7 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [gated, setGated] = useState<ReqStatus | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,9 +23,18 @@ export function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      const data = (await res.json().catch(() => null)) as
+        | { error?: string; gated?: boolean; status?: string; rejectReason?: string | null }
+        | null;
       if (!res.ok) {
-        setErr(data?.error ?? "Login failed — try again.");
+        if (data?.gated) {
+          setGated({
+            status: (data.status as "pending" | "rejected") ?? "pending",
+            businessName: email.split("@")[0],
+            received: new Date().toISOString(),
+            rejectReason: data.rejectReason ?? null,
+          });
+        } else setErr(data?.error ?? "Login failed — try again.");
       } else {
         const next = params.get("next") || "/";
         router.replace(next);
@@ -35,6 +46,8 @@ export function LoginForm() {
       setBusy(false);
     }
   }
+
+  if (gated) return <StatusCard st={gated} />;
 
   return (
     <div className="authwrap">
@@ -61,10 +74,10 @@ export function LoginForm() {
         </form>
         <div className="alinks">
           <span className="addlink">Forgot password?</span>
-          <span className="addlink">Request workspace access</span>
+          <a className="addlink" href="/request-access">Request workspace access</a>
         </div>
       </div>
-      <div className="afoot">New here? Create a workspace — free while in early access.</div>
+      <div className="afoot">New here? <a href="/signup" style={{ color: "var(--chat-deep)" }}>Create a workspace</a> — free while in early access.</div>
     </div>
   );
 }
