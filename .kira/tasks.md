@@ -13,3 +13,17 @@
 | S0-8 | Tests: unit (signature×4) + e2e smoke (health, gate, login+shell, webhook GET/POST valid/invalid) | done |
 | S0-9 | Real WABA webhook wired (Joydip's app secret + verify token via env; DNS one.nextbizstudio.com — Tony) | pending |
 | S0-10 | S0 acceptance: Joydip sends "hi" → row in messages | pending |
+
+## S2 (r-nbo-s2) — Templates + Broadcasts + scheduler
+| # | Task | Status |
+|---|---|---|
+| S2-1 | Migration 004: templates/broadcasts/recipients/jobs | done (e74ed88) |
+| S2-2 | Templates surface (list/editor/submit/status-sync) + wa-client template fns | done (6745cfb, feced56) |
+| S2-2b | LIVE PROOF: sample-format fix (flat array), 2 templates PENDING Meta review (nextbiz_static_test, nextbiz_var_test); 4 rejected rows retained (format history) | done |
+| S2-3 | Broadcasts 4-step composer (audience opt-in hard rule + estimate → approved template → preview → schedule + test send) | next |
+| S2-4 | Job scheduler: 30s worker tick + template status auto-poll | next |
+| S2-5 | Delivery report: per-recipient, Meta errors decoded (131026/131047/131049), CSV | pending |
+| S2-6 | E2e + completion report (screenshot-vs-wireframe per page) | pending |
+| S2-7 | Merge to main → deploy → live verify | pending (after suite green) |
+
+External pending: display-name "NextBiz Studio" review (Manager); template approvals (Meta review); inbound "Hi" test on 9088727191 (Joydip, from another phone).
