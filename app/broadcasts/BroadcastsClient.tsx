@@ -14,6 +14,7 @@ type Bc = {
   total: number; sent: number; failed: number;
 };
 type Tpl = { id: string; name: string; status: string; body: string };
+type Ct = { id: string; wa_id: string; name: string | null; opt_in: boolean };
 type Rcpt = {
   name: string | null; wa_id: string;
   status: string; sent_at: string | null; error: string | null;
@@ -32,6 +33,7 @@ const IC = {
   clock: "https://cdn.joyverse.fun/mira-assets/phosphor/bold/clock-bold.svg",
   dl: "https://cdn.joyverse.fun/mira-assets/phosphor/bold/download-simple-bold.svg",
   send: "https://cdn.joyverse.fun/mira-assets/phosphor/bold/paper-plane-tilt-bold.svg",
+  check: "https://cdn.joyverse.fun/mira-assets/phosphor/bold/check-bold.svg",
 };
 
 function fmtWhen(b: Bc): string {
@@ -62,7 +64,10 @@ export function BroadcastsClient() {
   const [roll, setRoll] = useState<Roll>({});
   const [open, setOpen] = useState(false);          // composer slide-over
   const [step, setStep] = useState(1);
-  const [optIn, setOptIn] = useState(0);
+  const [contacts, setContacts] = useState<Ct[]>([]);
+  const [audMode, setAudMode] = useState<"all" | "contacts">("all");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [cq, setCq] = useState("");                  // contact search in the picker
   const [tpls, setTpls] = useState<Tpl[]>([]);
   const [pickTpl, setPickTpl] = useState<Tpl | null>(null);
   const [name, setName] = useState("");
@@ -91,12 +96,19 @@ export function BroadcastsClient() {
     setRoll(r?.roll ?? {});
   }, []);
 
+  const startCompose = useCallback(() => {
+    setOpen(true); setStep(1);
+    setAudMode("all"); setPicked([]); setCq("");
+    setPickTpl(null); setName(""); setWhen(""); setNote("");
+  }, []);
+
   async function launch(schedule: boolean) {
     setBusy(true); setNote("");
     const res = await fetch("/api/broadcasts", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name, templateId: pickTpl?.id,
+        audience: { mode: audMode, ...(audMode === "contacts" ? { contactIds: picked } : {}) },
         scheduledAt: schedule && when ? new Date(when).toISOString() : null,
       }),
     });
@@ -104,19 +116,19 @@ export function BroadcastsClient() {
     setBusy(false);
     if (d?.ok) {
       setOpen(false); setStep(1); setPickTpl(null); setName(""); setWhen("");
+      setAudMode("all"); setPicked([]); setCq("");
       setNote(schedule ? "Scheduled ✓" : "Draft saved — schedule it when ready.");
       await load();
     } else setNote(d?.error ?? "Couldn't create the broadcast.");
   }
 
+  // fresh contact list each time the composer opens (step 1 needs names + opt-in state)
   useEffect(() => {
     if (!open) return;
-    if (step === 1 && optIn === 0) {
-      void fetch("/api/contacts").then((r) => r.json()).then((d) => {
-        setOptIn((d?.contacts ?? []).filter((c: { opt_in?: boolean }) => c.opt_in).length);
-      }).catch(() => {});
-    }
-  }, [open, step, optIn]);
+    void fetch("/api/contacts").then((r) => r.json()).then((d) => {
+      setContacts(d?.contacts ?? []);
+    }).catch(() => {});
+  }, [open]);
 
   // 1:1 with the wireframe CSS: .show-detail / .composer-open body states
   useEffect(() => {
@@ -135,7 +147,20 @@ export function BroadcastsClient() {
     draft: list.filter((b) => b.status === "draft").length,
   }), [list]);
   const shown = list.filter((b) => !q || b.name.toLowerCase().includes(q.toLowerCase()));
-  const canNext = (step === 1 && optIn > 0) || (step === 2 && pickTpl) || (step === 3 && name.trim());
+
+  // audience: opted-in contacts only (hard rule); picker works within that set
+  const optedIn = useMemo(() => contacts.filter((c) => c.opt_in), [contacts]);
+  const pickerRows = useMemo(() => {
+    const s = cq.trim().toLowerCase();
+    return optedIn.filter((c) => !s || (c.name ?? "").toLowerCase().includes(s) || c.wa_id.includes(s));
+  }, [optedIn, cq]);
+  const pickedSet = useMemo(() => new Set(picked), [picked]);
+  const audCount = audMode === "all" ? optedIn.length : picked.length;
+  const togglePick = useCallback((id: string) => {
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  }, []);
+  // step 3 (Preview) needs nothing extra — the name is entered in step 4
+  const canNext = (step === 1 && audCount > 0) || (step === 2 && !!pickTpl) || step === 3;
 
   return (
     <div className="bzone" data-testid="broadcasts">
@@ -152,7 +177,7 @@ export function BroadcastsClient() {
             <input placeholder="Search broadcasts…" value={q} onChange={(e) => setQ(e.target.value)}
                    style={{ border: 0, outline: "none", background: "transparent", flex: 1, fontSize: "11.5px", color: "var(--ink)" }} />
             <button className="btn btn-primary" style={{ minHeight: 26, padding: "0 9px", fontSize: "10px" }}
-                    onClick={() => { setOpen(true); setStep(1); }} data-testid="new-broadcast">
+                    onClick={startCompose} data-testid="new-broadcast">
               <img src={IC.send} alt="" style={{ width: 12, height: 12 }} />New broadcast</button>
           </div>
         </div>
@@ -237,18 +262,70 @@ export function BroadcastsClient() {
         </div>
         <div className="bc-body">
           {step === 1 && (
-            <div className="aud-est">
-              <span className="v">{optIn}</span>
-              <span className="k">recipients — opted-in only<br/>these contacts said yes to marketing</span>
-              <img src={IC.users} alt="" />
-            </div>
+            <>
+              <div className="aud-est" data-testid="aud-est">
+                <span className="v">{audCount}</span>
+                <span className="k">
+                  {audMode === "all"
+                    ? <>recipients — all opted-in contacts<br/>these contacts said yes to marketing</>
+                    : <>recipients — {picked.length} of {optedIn.length} opted-in contacts selected<br/>only these contacts will receive it</>}
+                </span>
+                <img src={IC.users} alt="" />
+              </div>
+              <div className="aud-modes" role="radiogroup" aria-label="Audience">
+                <button type="button" className={`aud-mode${audMode === "all" ? " on" : ""}`}
+                        onClick={() => setAudMode("all")} role="radio" aria-checked={audMode === "all"}
+                        data-testid="aud-mode-all">
+                  <span className="dot" />All opted-in ({optedIn.length})
+                </button>
+                <button type="button" className={`aud-mode${audMode === "contacts" ? " on" : ""}`}
+                        onClick={() => setAudMode("contacts")} role="radio" aria-checked={audMode === "contacts"}
+                        data-testid="aud-mode-pick">
+                  <span className="dot" />Select contacts
+                </button>
+              </div>
+              {audMode === "contacts" && (
+                <div className="aud-pick" data-testid="aud-pick">
+                  <div className="aud-tools">
+                    <input placeholder="Search contacts…" value={cq} onChange={(e) => setCq(e.target.value)}
+                           aria-label="Search contacts" data-testid="aud-search" />
+                    <button type="button" className="btn btn-soft" style={{ minHeight: 26, padding: "0 9px", fontSize: "10px" }}
+                            onClick={() => setPicked(pickerRows.map((c) => c.id))} data-testid="aud-select-all">Select all</button>
+                    <button type="button" className="btn btn-soft" style={{ minHeight: 26, padding: "0 9px", fontSize: "10px" }}
+                            onClick={() => setPicked([])} data-testid="aud-clear">Clear</button>
+                  </div>
+                  <div className="aud-list">
+                    {pickerRows.length === 0 && (
+                      <div style={{ padding: "14px 10px", color: "var(--ink-3)", fontSize: 11 }}>
+                        {optedIn.length === 0
+                          ? "No opted-in contacts yet — a contact opts in by replying START."
+                          : "No contacts match that search."}
+                      </div>
+                    )}
+                    {pickerRows.map((c) => {
+                      const on = pickedSet.has(c.id);
+                      return (
+                        <button type="button" key={c.id} className={`arow${on ? " on" : ""}`} onClick={() => togglePick(c.id)}
+                                aria-pressed={on} data-testid="aud-row">
+                          <span className="chk"><img src={IC.check} alt="" /></span>
+                          <span className="t"><b>{c.name ?? "Contact"}</b><span className="num">+{c.wa_id}</span></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="aud-count" data-testid="aud-count">{picked.length} selected</div>
+                </div>
+              )}
+            </>
           )}
           {step === 2 && (
             <div style={{ display: "grid", gap: 8 }}>
               {tpls.length === 0 && <div style={{ color: "var(--ink-3)", fontSize: 11.5 }}>No approved templates — get one approved in Templates first.</div>}
               {tpls.map((t) => (
-                <button key={t.id} onClick={() => setPickTpl(t)} className="trow" style={{ textAlign: "left", cursor: "pointer" }}
-                        data-testid="pick-tpl">
+                <button key={t.id} onClick={() => setPickTpl(t)}
+                        className={`trow${pickTpl?.id === t.id ? " on" : ""}`}
+                        style={{ textAlign: "left", cursor: "pointer", border: 0, background: "transparent" }}
+                        aria-pressed={pickTpl?.id === t.id} data-testid="pick-tpl">
                   <div className="r1"><b>{t.name}</b><span className="st ok">Approved</span></div>
                   <div className="r2" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{t.body.slice(0, 60)}…</div>
                 </button>
@@ -257,9 +334,13 @@ export function BroadcastsClient() {
           )}
           {step === 3 && pickTpl && (
             <>
-              <div className="aud-est">
-                <span className="v">{optIn}</span>
-                <span className="k">recipients — opted-in · sample preview below</span>
+              <div className="aud-est" data-testid="aud-est">
+                <span className="v">{audCount}</span>
+                <span className="k">
+                  {audMode === "all"
+                    ? <>recipients — all opted-in contacts<br/>sample preview below</>
+                    : <>recipients — {picked.length} selected contact{picked.length === 1 ? "" : "s"}<br/>sample preview below</>}
+                </span>
                 <img src={IC.users} alt="" />
               </div>
               <div style={{ display: "grid", placeItems: "center", background: "var(--bg)", border: "1px dashed var(--line-strong)", borderRadius: "var(--r-md)", padding: "18px 0" }}>
