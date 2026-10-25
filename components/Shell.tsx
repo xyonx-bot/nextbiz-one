@@ -77,10 +77,7 @@ export function Shell({
                       <a href="/templates" style={{ display: "contents" }}><div className={`schip${active === "templates" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/notebook.svg" alt="" /><span className="lbl">Templates</span></div></a>
                       <a href="/broadcasts" style={{ display: "contents" }}><div className={`schip${active === "broadcasts" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">Broadcasts</span></div></a>
                       <a href="/automation" style={{ display: "contents" }}><div className={`schip${active === "automation" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/lightning.svg" alt="" /><span className="lbl">Automation</span></div></a>
-                  <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">Broadcasts</span></div>
-                  <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/notebook.svg" alt="" /><span className="lbl">Templates</span></div>
-                  <div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/lightning.svg" alt="" /><span className="lbl">Automation</span></div>
-                </div>
+                  </div>
               </div>
             </div>
           </div>
