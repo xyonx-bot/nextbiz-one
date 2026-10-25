@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { StatusCard, type ReqStatus } from "../request-access/StatusCard";
+import { AuthBrand } from "../../components/AuthBrand";
 
 export function SignupForm() {
   const [businessName, setBusinessName] = useState("");
@@ -31,6 +32,7 @@ export function SignupForm() {
 
   return (
     <div className="authwrap">
+      <AuthBrand />
       <div className="authcard">
         <h1>Create your workspace</h1>
         <p className="lede">Early access — invite-free, approval in ~1 day</p>
@@ -59,6 +61,7 @@ export function SignupForm() {
         </form>
       </div>
       <div className="afoot">Already have an account? <a href="/login" style={{ color: "var(--chat-deep)" }}>Log in</a></div>
+      <div className="afoot">By continuing you agree to the <a>Terms</a> and <a>Privacy Policy</a>.</div>
     </div>
   );
 }

@@ -272,6 +272,9 @@ body:not(.rail-expanded) .ri:hover .tip { opacity: 1; transform: translateY(-50%
   radial-gradient(600px 400px at 20% 10%, rgba(145,200,43,.06), transparent 60%),
   radial-gradient(500px 400px at 85% 90%, rgba(255,117,24,.05), transparent 60%),
   var(--bg); }
+/* radius tokens v1.2 — scoped to the auth + operator surfaces (their wireframes
+   carry r-lg 18 / r-md 12 / r-sm 9; dashboard-era surfaces keep the 12/10/8 base) */
+.authbg, .op-shell { --r-lg: 18px; --r-md: 12px; --r-sm: 9px; }
 /* ═══ AUTH (centered 420px card, flat inputs) ═══ */
 .authwrap { width: 100%; max-width: 420px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .auth-brand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 2px; }
@@ -290,6 +293,10 @@ body:not(.rail-expanded) .ri:hover .tip { opacity: 1; transform: translateY(-50%
 .afield .ahint { font-size: 9px; color: var(--ink-3); }
 
 .abtn { width: 100%; justify-content: center; min-height: 38px; margin-top: 6px; }
+/* mira fix C: auth CTA = DARK ink text on lime (white-on-lime failed contrast);
+   hover keeps the sheet's deep-green fill with its white pairing */
+.authwrap .btn-chat { color: var(--ink); }
+.authwrap .btn-chat:hover { color: #fff; }
 .alinks { display: flex; justify-content: space-between; margin-top: 13px; font-size: 10.5px; }
 .alinks .addlink { cursor: pointer; padding: 5px 2px; display: inline-flex; align-items: center; min-height: 22px; }
 .afoot { text-align: center; font-size: 10.5px; color: var(--ink-2); margin-top: 2px; line-height: 1.6; }
@@ -1190,7 +1197,10 @@ body.composer-open .bcomposer { transform: none; }
 .av-36 { width: 36px; height: 36px; font-size: 11.5px; }
 .av-28 { width: 28px; height: 28px; font-size: 10.5px; }
 .av-52 { width: 52px; height: 52px; font-size: 16px; }
-.op-shell { display: grid; grid-template-columns: 218px 1fr; min-height: 100vh; }
+.op-shell { display: grid; grid-template-columns: 218px 1fr; min-height: 100vh; padding: 12px; gap: 12px; }
+/* mira fix B: op-main spacing per the updated operator wireframe — flex column,
+   14px card gaps, 12px canvas side padding (24px total right margin at 1280) */
+.op-main { padding: 12px 12px 26px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .op-brand { display: flex; align-items: center; gap: 9px; padding: 2px 6px 12px; }
 .op-brand img { width: 26px; height: 26px; }
 .op-brand .t b { display: block; font-size: 12.5px; font-weight: 800; letter-spacing: -.01em; }

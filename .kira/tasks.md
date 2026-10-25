@@ -51,3 +51,15 @@ Design: mira prototypes auth/ + onboarding/ + operator-admin/ (Oct 19 wireframes
 | S4-5 | Automation UI — 1:1 port (welcome 3-band card, keyword table+inspector, hours, FAQ) | next |
 | S4-6 | Settings UI — 1:1 port (profile, connections, modules, security, data+danger zone) | pending |
 | S4-7 | E2e (automation fire + pause + away window) + merge + deploy | pending |
+
+## S3 DESIGN-FIX (r-nbo-s3-design-fix, Oct 24) — mira live-verify fix list A-E
+| # | Task | Status |
+|---|---|---|
+| DF-A | Brand block (logo 30px + wordmark + tagline) above card on ALL auth pages + status states — new components/AuthBrand.tsx | done |
+| DF-B | /operator spacing: op-shell padding 12+gap 12; op-main flex column gap 14 padding 12/12/26; scoped r-lg 18 (op-card radius) | done |
+| DF-C | Login CTA dark ink text on lime (scoped .authwrap .btn-chat) + hover keeps deep-green+white; copy 'Log In' | done |
+| DF-D | Signup legal microcopy (Terms + Privacy Policy) below CTA | done |
+| DF-E | Request-access full subtitle + 'Email for updates' label | done |
+| DF-F | Found-bug: StatusCard classes never matched ported CSS (warn-card vs pending; stile vs st-ic) — restructured 1:1 to wireframe markup | done |
+| DF-T | e2e design-fix.spec.ts: brand order + CTA computed colors + copy + microcopy + lede/label + operator geometry (gap 14/radius 18/margin 24 @1280) | done (run pending) |
+| DF-V | typecheck + lint + unit + build + full e2e (side-DB) + merge + deploy + live-verify | in progress |

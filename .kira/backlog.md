@@ -1,0 +1,10 @@
+# NextBiz One — .kira backlog (found, reported; never silently fixed in-scope)
+
+## Reported to Mira/Nina with r-nbo-s3-design-fix (Oct 24)
+
+- **--banana undefined in both wireframes + app**: `.stcard.pending .st-ic { background: var(--banana) }` — the token is defined in neither the design-sheet nor the auth wireframe `:root`, so the pending icon tile renders transparent (border only). Ported 1:1 (never invent tokens); Mira to define banana or drop the reference.
+- **Radius token split (sheet lags wireframes)**: auth/onboarding/settings/operator wireframes carry v1.2 radii (r-lg 18 / r-md 12 / r-sm 9); design-sheet.html itself + dashboard/inbox/contacts/templates/broadcasts/automation wireframes still say 12/10/8. App base tokens stay 12/10/8; v1.2 scoped to `.authbg` + `.op-shell`. If Mira wants the sheet unified, she updates the sheet — then a one-line token sync covers the rest (onboarding + settings surfaces will read 18 next verify either way if she measures against their wireframes).
+- **Operator shell v4.3 (rail + panel) not ported**: the updated operator-admin wireframe (Oct 23 18:54, "Joydip's call Oct 23") carries the client-style dual-pane shell; live keeps the single 218px sidebar Mira verified as correct for THIS fix round. If the shell re-port is wanted, dispatch it as its own item (markup + op-panel CSS + rail CSS).
+- **`.op-nav` base rule missing from globals.css** — only the ≤1023px override exists, so the desktop sidebar renders as unstyled stacked items on cream (no bg/border). Mira called the sidebar correct as-is on her screenshot verify; flag for her next pass.
+- **`.aerr` unstyled**: login/signup/request error text has no CSS rule (renders default body text). Uncovered-state styling is Kira's per the skill, but it's out of this fix list — small follow-up.
+- **Dead `body.auth` rules in globals.css**: the port uses `.authbg` wrapper (grid centering + glows) but the mobile `body.auth { align-content: start }` rule never applies — on mobile the auth column stays vertically centered instead of top-aligned with the 64px pills lane. Needs `.authbg` variant when mobile auth gets a look.

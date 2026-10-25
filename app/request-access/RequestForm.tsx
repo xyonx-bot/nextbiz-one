@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { StatusCard, type ReqStatus } from "./StatusCard";
+import { AuthBrand } from "../../components/AuthBrand";
 
 export function RequestForm() {
   const params = useSearchParams();
@@ -31,9 +32,10 @@ export function RequestForm() {
 
   return (
     <div className="authwrap">
+      <AuthBrand />
       <div className="authcard">
         <h1>Request workspace access</h1>
-        <p className="lede">Review in ~1 day</p>
+        <p className="lede">Tell us about your business — we review in ~1 day</p>
         <form onSubmit={submit}>
           <div className="afield">
             <label htmlFor="bn">Business name</label>
@@ -47,7 +49,7 @@ export function RequestForm() {
                       style={{ resize: "vertical" }} />
           </div>
           <div className="afield">
-            <label htmlFor="em">Email</label>
+            <label htmlFor="em">Email for updates</label>
             <input id="em" className="ain" type="email" placeholder="you@business.com" value={email}
                    onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
           </div>

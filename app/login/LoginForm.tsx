@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { StatusCard, type ReqStatus } from "../request-access/StatusCard";
+import { AuthBrand } from "../../components/AuthBrand";
 
 export function LoginForm() {
   const router = useRouter();
@@ -51,6 +52,7 @@ export function LoginForm() {
 
   return (
     <div className="authwrap">
+      <AuthBrand />
       <div className="authcard">
         <h1>Welcome back</h1>
         <p className="lede">Log in to your workspace</p>
@@ -69,7 +71,7 @@ export function LoginForm() {
           {err && <p className="aerr">{err}</p>}
           <button className="btn btn-chat abtn" type="submit" disabled={busy}>
             <img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/sign-in-bold.svg" alt="" />
-            {busy ? "Logging in…" : "Log in"}
+            {busy ? "Logging in…" : "Log In"}
           </button>
         </form>
         <div className="alinks">
