@@ -4,7 +4,16 @@ import { expect, test } from "@playwright/test";
  * S4 e2e — automation config + engine contracts (match-simulate, never a real
  * send — real fire is validated on prod with the owner's number) + settings
  * surfaces. Gated-endpoints + CRUD + the pause contract (DB-verified).
+ *
+ * PROD GUARD: this spec MUST NOT run against production. If DATABASE_URL
+ * contains the prod host (one-db:5432 / one.nextbizstudio.com), the spec
+ * exits immediately — no DB mutations. CI uses a side-DB.
  */
+const PROD_DB_URL = process.env.DATABASE_URL ?? "";
+if (PROD_DB_URL.includes("one-db:5432") || PROD_DB_URL.includes("one.nextbizstudio.com")) {
+  console.error("[PROD GUARD] DATABASE_URL points to production. E2E suite aborted.");
+  process.exit(0);
+}
 async function login(page: import("@playwright/test").Page) {
   await page.goto("/login");
   await page.fill("#email", process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one");

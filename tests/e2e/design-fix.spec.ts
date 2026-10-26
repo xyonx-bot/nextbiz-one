@@ -1,4 +1,3 @@
-import { execSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
@@ -10,7 +9,16 @@ import { expect, test } from "@playwright/test";
  *  C: login CTA — DARK (ink) text on lime; button copy "Log In"
  *  D: signup legal microcopy (Terms + Privacy Policy) below the CTA
  *  E: request-access full subtitle + "Email for updates" label
+ *
+ * PROD GUARD: this spec MUST NOT run against production. If DATABASE_URL
+ * contains the prod host (one-db:5432 / one.nextbizstudio.com), the spec
+ * exits immediately — no DB mutations. CI uses a side-DB.
  */
+const PROD_DB_URL = process.env.DATABASE_URL ?? "";
+if (PROD_DB_URL.includes("one-db:5432") || PROD_DB_URL.includes("one.nextbizstudio.com")) {
+  console.error("[PROD GUARD] DATABASE_URL points to production. E2E suite aborted.");
+  process.exit(0);
+}
 const EMAIL = `e2e_dfix_${Date.now()}@nbo.test`;
 
 test.describe("S3 design-fix (r-nbo-s3-design-fix)", () => {
@@ -108,15 +116,17 @@ test.describe("S3 design-fix (r-nbo-s3-design-fix)", () => {
 });
 
 test.afterAll(async () => {
-  const sql = `
-    DELETE FROM access_requests WHERE email LIKE 'e2e_dfix_%@nbo.test';
-    DELETE FROM users WHERE email LIKE 'e2e_dfix_%@nbo.test';`;
+  // Safe cleanup using pg Pool (prod guard above exits early if prod)
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    execSync(
-      `docker exec nbo_ci_pg psql -U nextbiz -d nextbiz_one -c ${JSON.stringify(sql)} > /dev/null 2>&1`,
-      { timeout: 30_000 },
-    );
+    await pool.query(`
+      DELETE FROM access_requests WHERE email LIKE 'e2e_dfix_%@nbo.test';
+      DELETE FROM users WHERE email LIKE 'e2e_dfix_%@nbo.test';
+    `);
   } catch {
-    /* best-effort cleanup; side-DB is throwaway */
+    // best-effort cleanup; side-DB is throwaway
+  } finally {
+    await pool.end();
   }
 });

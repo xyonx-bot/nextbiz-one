@@ -6,7 +6,16 @@ import { expect, test } from "@playwright/test";
  * operator review (approve) -> login works + audit ledger has both entries.
  * Non-operators are locked out of operator APIs + the /operator page.
  * Artifacts are cleaned from the DB after the run (unique e2e email).
+ *
+ * PROD GUARD: this spec MUST NOT run against production. If DATABASE_URL
+ * contains the prod host (one-db:5432 / one.nextbizstudio.com), the spec
+ * exits immediately — no DB mutations, no docker exec. CI uses a side-DB.
  */
+const PROD_DB_URL = process.env.DATABASE_URL ?? "";
+if (PROD_DB_URL.includes("one-db:5432") || PROD_DB_URL.includes("one.nextbizstudio.com")) {
+  console.error("[PROD GUARD] DATABASE_URL points to production. E2E suite aborted.");
+  process.exit(0);
+}
 const E2E_EMAIL = `e2e_funnel_${Date.now()}@nbo.test`;
 const BIZ = `E2E Biz ${Date.now() % 100000}`;
 
@@ -78,16 +87,31 @@ test.describe("S3 account funnel", () => {
 });
 
 test.afterAll(async () => {
-  // remove every e2e artifact: user, request, workspace, ledger rows
-  const sql = `
-    DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE workspace_id IN (SELECT id FROM workspaces WHERE name LIKE 'E2E Biz%' OR name LIKE 'Lock Test%'));
-    DELETE FROM conversations WHERE workspace_id IN (SELECT id FROM workspaces WHERE name LIKE 'E2E Biz%' OR name LIKE 'Lock Test%');
-    DELETE FROM contacts WHERE workspace_id IN (SELECT id FROM workspaces WHERE name LIKE 'E2E Biz%' OR name LIKE 'Lock Test%');
-    DELETE FROM access_requests WHERE email LIKE 'e2e_%@nbo.test';
-    DELETE FROM users WHERE email LIKE 'e2e_%@nbo.test';
-    DELETE FROM workspaces WHERE name LIKE 'E2E Biz%' OR name LIKE 'Lock Test%';
-    DELETE FROM audit_log WHERE target LIKE 'E2E Biz%' OR target LIKE 'Lock Test%' OR actor_email LIKE 'e2e_%@nbo.test';`;
+  // Safe cleanup using pg Pool (no raw docker exec, no prod risk if guard bypassed)
+  // Only runs when DATABASE_URL is a side-DB (prod guard above exits early otherwise).
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
-    execSync(`docker exec nextbiz_one_db psql -U nextbiz -d nextbiz_one -c ${JSON.stringify(sql)} > /dev/null 2>&1`, { timeout: 30_000 });
-  } catch { /* best-effort cleanup */ }
+    await pool.query(`
+      DELETE FROM messages WHERE conversation_id IN (
+        SELECT id FROM conversations WHERE workspace_id IN (
+          SELECT id FROM workspaces WHERE name LIKE 'E2E Biz%' OR name LIKE 'Lock Test%'
+        )
+      );
+      DELETE FROM conversations WHERE workspace_id IN (
+        SELECT id FROM workspaces WHERE name LIKE 'E2E Biz%' OR name LIKE 'Lock Test%'
+      );
+      DELETE FROM contacts WHERE workspace_id IN (
+        SELECT id FROM workspaces WHERE name LIKE 'E2E Biz%' OR name LIKE 'Lock Test%'
+      );
+      DELETE FROM access_requests WHERE email LIKE 'e2e_%@nbo.test';
+      DELETE FROM users WHERE email LIKE 'e2e_%@nbo.test';
+      DELETE FROM workspaces WHERE name LIKE 'E2E Biz%' OR name LIKE 'Lock Test%';
+      DELETE FROM audit_log WHERE target LIKE 'E2E Biz%' OR target LIKE 'Lock Test%' OR actor_email LIKE 'e2e_%@nbo.test';
+    `);
+  } catch {
+    // best-effort
+  } finally {
+    await pool.end();
+  }
 });

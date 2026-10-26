@@ -6,7 +6,16 @@ import { expect, test } from "@playwright/test";
  * Webhook e2e runs against the local DB (seeded fresh), proving the
  * full inbound path: signature -> raw store -> contact -> conversation
  * -> message row.
+ *
+ * PROD GUARD: this spec MUST NOT run against production. If DATABASE_URL
+ * contains the prod host (one-db:5432 / one.nextbizstudio.com), the spec
+ * exits immediately — no DB mutations. CI uses a side-DB.
  */
+const PROD_DB_URL = process.env.DATABASE_URL ?? "";
+if (PROD_DB_URL.includes("one-db:5432") || PROD_DB_URL.includes("one.nextbizstudio.com")) {
+  console.error("[PROD GUARD] DATABASE_URL points to production. E2E suite aborted.");
+  process.exit(0);
+}
 test.describe("NBO S0", () => {
   test("health endpoint is public", async ({ request }) => {
     const res = await request.get("/api/health");
