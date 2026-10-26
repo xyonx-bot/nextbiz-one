@@ -13,7 +13,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const p = getPool();
   const conv = await p.query(
-    `SELECT c.id, c.last_inbound_at, ct.id AS contact_id, ct.wa_id, ct.name, ct.opt_in
+    `SELECT c.id, c.last_inbound_at, ct.id AS contact_id, ct.wa_id, ct.name, ct.opt_in,
+            ct.tags, ct.company, ct.location, ct.interested_in, ct.budget
        FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
       WHERE c.id = $1`,
     [id],
@@ -34,6 +35,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       id: c.id, contactId: c.contact_id, waId: c.wa_id, name: c.name,
       optIn: c.opt_in, lastInboundAt: c.last_inbound_at,
       windowOpen: hoursSince < 24,
+      tags: c.tags ?? [], company: c.company, location: c.location,
+      interestedIn: c.interested_in, budget: c.budget,
     },
     messages: msgs.rows,
   });
