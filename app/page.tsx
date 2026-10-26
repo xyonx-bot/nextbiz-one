@@ -112,9 +112,12 @@ export default async function HomePage() {
   const contactSeries = pick(contacts14.rows.map((r) => ({ d: r.d, n: r.n })));
   const delivSeries = pick(deliv14.rows.map((r) => ({ d: r.d, n: r.n })));
 
-  // ── chart: bar pairs per day, gridlines at 25/50/75% of max ──
+  // ── chart: bar pairs per day, gridlines at 25/50/75% of max (deduped) ──
   const maxAll = Math.max(...inSeries.map((v, i) => v + outSeries[i]), 1);
-  const gridVal = (pct: number) => (maxAll > 0 ? Math.round((maxAll * pct) / 5) * 5 : 0);
+  const gridStep = maxAll < 10 ? 1 : 5;
+  const gridVals = [0.25, 0.5, 0.75]
+    .map((f) => Math.round((maxAll * f) / gridStep) * gridStep)
+    .filter((v, i, a) => v > 0 && a.indexOf(v) === i);
 
   return (
     <Shell active="dashboard" userInitials={initials} userName={user?.displayName ?? "Operator"} unread={unread.rows[0].n}>
@@ -163,8 +166,8 @@ export default async function HomePage() {
                 <span><i style={{ background: "var(--chat-tint)", border: "1px solid #DCEFBB" }} />Outbound</span>
               </div>
               <div className="chart" data-testid="chart">
-                {maxAll > 0 && [0.25, 0.5, 0.75].map((f) => (
-                  <div key={f} className="gl" style={{ bottom: `${f * 100}%` }}><span>{gridVal(f)}</span></div>
+                {maxAll > 0 && gridVals.map((v) => (
+                  <div key={v} className="gl" style={{ bottom: `${(v / maxAll) * 100}%` }}><span>{v}</span></div>
                 ))}
                 {days.map((dk, i) => (
                   <div key={dk} className="wk" title={`${dayLabel(new Date(new Date().setDate(new Date().getDate() - (13 - i))))}: ${inSeries[i]} in · ${outSeries[i]} out`}>
