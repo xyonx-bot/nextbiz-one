@@ -140,7 +140,7 @@ body:not(.rail-expanded) .ri:hover .tip { opacity: 1; transform: translateY(-50%
 
 
 /* ── main / top tiers ── */
-.main { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow: hidden; padding: 12px 12px 0; gap: 14px; }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow: hidden; padding: 12px 12px 0 20px; gap: 14px; }
 .header-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); flex-shrink: 0; overflow: hidden; }
 .top1 { min-height: 48px; display: flex; align-items: center; gap: 12px; padding: 8px 14px; }
 .burger { display: none; width: 34px; height: 34px; flex-shrink: 0; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); place-items: center; }
@@ -206,7 +206,7 @@ body:not(.rail-expanded) .ri:hover .tip { opacity: 1; transform: translateY(-50%
 
 
 /* ── main / top tiers ── */
-.main { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow: hidden; padding: 12px 12px 0; gap: 14px; }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow: hidden; padding: 12px 12px 0 20px; gap: 14px; }
 .header-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); flex-shrink: 0; overflow: hidden; }
 .top1 { min-height: 48px; display: flex; align-items: center; gap: 12px; padding: 8px 14px; }
 .burger { display: none; width: 34px; height: 34px; flex-shrink: 0; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); place-items: center; }
