@@ -128,15 +128,15 @@ test("S1 dashboard + contacts (P1.5 + P1.7)", async ({ page }) => {
   // dashboard: leaf page (panel hidden), live stat cards, connection + recents
   await page.waitForSelector("[data-testid=dashboard]");
   expect(await page.locator("[data-testid=nav-panel]").count()).toBe(0);
-  expect(await page.locator(".stat .v").count()).toBe(3);
-  await expect(page.locator(".stat .v").first()).not.toHaveText("");
+  expect(await page.locator(".stat .v").count()).toBe(4);
+  expect(await page.locator(".stat .v").first()).not.toHaveText("");
 
   // contacts: module page (panel visible), list renders, detail opens
   await page.goto("/contacts");
   await page.waitForSelector("[data-testid=krow]");
   expect(await page.locator("[data-testid=nav-panel]").count()).toBe(1);
   await page.click("[data-testid=krow]");
-  await page.waitForSelector(".kdetail .phead");
+  await page.waitForSelector(".kdetail .kd-head");
   await expect(page.locator(".kdetail .nm")).toContainText(/.+/);
   await page.fill("[data-testid=contacts-search]", "zzzz-no-match");
   await page.waitForTimeout(300);

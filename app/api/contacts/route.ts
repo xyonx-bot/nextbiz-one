@@ -13,6 +13,7 @@ export async function GET(req: Request) {
   const q = (new URL(req.url).searchParams.get("q") ?? "").trim().toLowerCase();
   const { rows } = await getPool().query(
     `SELECT ct.id, ct.wa_id, ct.name, ct.opt_in, ct.created_at,
+            ct.tags, ct.company, ct.location, ct.interested_in, ct.budget,
             (SELECT m.body FROM messages m
                JOIN conversations c ON c.id = m.conversation_id
               WHERE c.contact_id = ct.id ORDER BY m.created_at DESC LIMIT 1) AS preview,

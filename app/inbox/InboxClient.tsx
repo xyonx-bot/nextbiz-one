@@ -6,16 +6,23 @@ import { useCallback, useEffect, useState } from "react";
  * Inbox 3-col surface — ported 1:1 from Mira's inbox/wireframe.html:
  * threads / thread / contact panel; WhatsApp-DNA bubbles in one sunken
  * stream well. 24h composer dual state: inside window = free text; outside
- * = blocked banner + template prompt (templates land in S2).
- * Real data via /api/conversations, thread, mark-read, send.
+ * = blocked banner + template prompt.
+ *
+ * Wireframe body-state toggles live on document.body (CSS is scoped to
+ * body.*): panel-open (contact sheet/flyout), show-thread (mobile
+ * master→detail). Cleaned up on unmount.
  */
 type Conv = {
   id: string; wa_id: string; name: string | null;
   preview: string | null; unread: number; last_inbound_at: string | null;
 };
-type Msg = { id: string; direction: "in" | "out"; body: string | null; status: string; created_at: string };
+type Msg = { id: string; direction: "in" | "out"; body: string | null; status: string; type?: string; created_at: string };
 type Thread = {
-  conversation: { id: string; waId: string; name: string | null; optIn: boolean; windowOpen: boolean };
+  conversation: {
+    id: string; waId: string; name: string | null; optIn: boolean; windowOpen: boolean;
+    tags: string[]; company: string | null; location: string | null;
+    interestedIn: string | null; budget: string | null;
+  };
   messages: Msg[];
 };
 
@@ -52,6 +59,14 @@ export function InboxClient() {
   const [sendErr, setSendErr] = useState("");
   const [sending, setSending] = useState(false);
 
+  // Wireframe body-state classes — cleaned up on unmount so a stale
+  // show-thread/panel-open never leaks into the next page.
+  useEffect(() => {
+    return () => {
+      document.body.classList.remove("panel-open", "show-thread");
+    };
+  }, []);
+
   const loadList = useCallback(async () => {
     const res = await fetch(`/api/conversations?unread=${filter === "unread" ? 1 : 0}`);
     const data = (await res.json().catch(() => null)) as { conversations?: Conv[] } | null;
@@ -65,6 +80,8 @@ export function InboxClient() {
 
   const open = useCallback(async (id: string) => {
     setSelected(id);
+    // Mobile master→detail (wireframe body.show-thread): list swaps for thread
+    if (window.innerWidth < 640) document.body.classList.add("show-thread");
     const res = await fetch(`/api/conversations/${id}`);
     const data = (await res.json().catch(() => null)) as Thread | null;
     if (data) {
@@ -97,7 +114,12 @@ export function InboxClient() {
     }
   }
 
+  function focusComposer() {
+    document.getElementById("composer-input")?.focus();
+  }
+
   const sel = thread?.conversation;
+  const mediaMsgs = (thread?.messages ?? []).filter((m) => (m.type ?? "text") !== "text");
 
   return (
     <div className="inbox">
@@ -146,9 +168,14 @@ export function InboxClient() {
         ) : (
           <>
             <div className="thead">
+              <button className="back" onClick={() => document.body.classList.remove("show-thread")} aria-label="Back" data-testid="thread-back">
+                <img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/arrow-left-bold.svg" alt="" />
+              </button>
               <div className="av av-36" style={{ background: hueFor(sel.waId) }}>{initialsOf(sel.name, sel.waId)}</div>
               <div className="tt"><b>{sel.name ?? sel.waId}</b><span>+{sel.waId} · {sel.windowOpen ? "Active now" : "Outside 24h window"}</span></div>
-              <button className="iconbtn" aria-label="Contact info"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/images-bold.svg" alt="" /></button>
+              <button className="iconbtn" aria-label="Contact info" data-testid="panel-toggle" onClick={() => document.body.classList.toggle("panel-open")}>
+                <img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/images-bold.svg" alt="" />
+              </button>
               <button className="iconbtn" aria-label="More"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/dots-three-bold.svg" alt="" /></button>
             </div>
             <div className="stream" data-testid="stream">
@@ -174,7 +201,7 @@ export function InboxClient() {
               <form className="composer" onSubmit={send}>
                 <button type="button" className="iconbtn" aria-label="Attach"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/paperclip-bold.svg" alt="" /></button>
                 <div className="fld">
-                  <input data-testid="composer-input" placeholder="Type a message…" value={draft} onChange={(e) => setDraft(e.target.value)} />
+                  <input id="composer-input" data-testid="composer-input" placeholder="Type a message…" value={draft} onChange={(e) => setDraft(e.target.value)} />
                   <img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/smiley-bold.svg" alt="" width="15" height="15" style={{ color: "var(--ink-3)", cursor: "pointer" }} />
                 </div>
                 <button type="submit" className="iconbtn send" aria-label="Send" disabled={sending} data-testid="send-btn">
@@ -203,11 +230,49 @@ export function InboxClient() {
                 <div className="ph">+{sel.waId}</div>
                 <div className="src">{sel.optIn ? "Marketing opt-in" : "No marketing opt-in"}</div>
               </div>
+              <div className="pacts">
+                <a className="btn btn-soft" href={`tel:+${sel.waId}`} style={{ display: "inline-flex" }}>
+                  <img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/phone-bold.svg" alt="" />Call
+                </a>
+                <button className="btn btn-soft" onClick={focusComposer}>
+                  <img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/star-bold.svg" alt="" />Follow-up
+                </button>
+              </div>
               <div className="psec">
                 <div className="st"><span className="mlab">Messaging</span></div>
                 <div className="kv">
                   <div><div className="k">24h window</div><div className="v">{sel.windowOpen ? <span className="chip chip-tag">Open</span> : <span className="chip chip-warn">Closed</span>}</div></div>
+                  <div><div className="k">Marketing opt-in</div><div className="v">{sel.optIn ? <span className="chip chip-tag">Yes</span> : <span className="chip chip-warn">No</span>}</div></div>
+                </div>
+              </div>
+              {sel.tags.length > 0 && (
+                <div className="psec">
+                  <div className="st"><span className="mlab">Tags</span></div>
+                  <div className="tags-row">
+                    {sel.tags.map((t) => <span key={t} className="chip chip-tag">{t}</span>)}
+                  </div>
+                </div>
+              )}
+              <div className="psec">
+                <div className="st"><span className="mlab">Details</span></div>
+                <div className="kv">
+                  <div><div className="k">Company</div><div className="v mut">{sel.company ?? "—"}</div></div>
+                  <div><div className="k">Location</div><div className="v mut">{sel.location ?? "—"}</div></div>
+                  <div><div className="k">Interested in</div><div className="v mut">{sel.interestedIn ?? "—"}</div></div>
+                  <div><div className="k">Budget</div><div className="v mut">{sel.budget ?? "—"}</div></div>
                   <div><div className="k">Eligible for broadcast</div><div className="v">{sel.optIn ? <span className="chip chip-tag">Yes</span> : <span className="chip chip-warn">No</span>}</div></div>
+                </div>
+              </div>
+              <div className="psec">
+                <div className="st"><span className="mlab">Recent media</span></div>
+                <div className="mediagrid">
+                  {mediaMsgs.length === 0 && (
+                    <div style={{ fontSize: "10.5px", color: "var(--ink-3)", padding: "2px 0" }}>No media shared yet.</div>
+                  )}
+                  {mediaMsgs.slice(0, 3).map((m) => (
+                    <div key={m.id} className="m">{m.type ?? "media"} · {timeAgo(m.created_at)}</div>
+                  ))}
+                  {mediaMsgs.length > 3 && <div className="m more">+{mediaMsgs.length - 3}</div>}
                 </div>
               </div>
             </>
@@ -215,6 +280,7 @@ export function InboxClient() {
             <div style={{ padding: "20px 14px", color: "var(--ink-3)", fontSize: "11px" }}>Select a conversation to see contact details.</div>
           )}
         </div>
+        <button className="btn btn-soft pfoot-close" style={{ margin: "0 14px 14px" }} onClick={() => document.body.classList.remove("panel-open")}>Close</button>
       </aside>
     </div>
   );
