@@ -1,12 +1,20 @@
 name: ci-cd
 
+# CI = TESTS ONLY (quality + unit + e2e). There is NO deploy step here:
+# the old deploy job silently skipped when DEPLOY_SSH_* secrets were
+# missing, so a green build could lie about being live (Oct 26 incident).
+# Deploys are VM-side now — docs/release-flow.md:
+#   beta — systemd timer auto-deploys origin/main every 5 min
+#   prod — scripts/deploy.sh --env prod --ref <v-tag> --approved-by "Joydip <date>"
+#          (refuses to run without Joydip's explicit GO)
+
 on:
   push:
     branches: [main]
   pull_request:
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -56,7 +64,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://nextbiz:nextbiz@127.0.0.1:5432/nextbiz_one
+      DATABASE_URL: postgres://nextbiz:***@127.0.0.1:5432/nextbiz_one
       OPERATOR_EMAIL: e2e-operator@nextbiz.one
       OPERATOR_PASS: e2e-operator-pass-2026
       WHATSAPP_VERIFY_TOKEN: nbo-e2e-verify
@@ -88,41 +96,3 @@ jobs:
           curl -sf -o /dev/null http://127.0.0.1:3200/api/health || { echo "app did not start"; exit 1; }
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
-
-  deploy:
-    name: deploy → VM (gated on all green)
-    needs: [quality, unit, e2e]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check deploy secrets (Tony)
-        id: secrets_check
-        env:
-          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
-          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          if [ -z "$DEPLOY_SSH_HOST" ] || [ -z "$DEPLOY_SSH_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
-            echo "SKIP: DEPLOY_SSH_* secrets not set yet (Tony) — deploy step will skip, tests-only run."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
-      - name: SSH deploy + health gate
-        if: steps.secrets_check.outputs.skip != 'true'
-        env:
-          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
-          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          install -D -m 600 /dev/null ~/.ssh/deploy_key
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/deploy_key \
-            "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST" 'bash -s' < scripts/deploy.sh
-      - name: Post-deploy public verification
-        if: steps.secrets_check.outputs.skip != 'true'
-        run: |
-          sleep 5
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://one.nextbizstudio.com/api/health")
-          echo "GET /api/health -> $code"
-          [ "$code" = "200" ] || { echo "DEPLOY HEALTH FAIL"; exit 1; }
