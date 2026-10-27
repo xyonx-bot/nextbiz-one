@@ -16,5 +16,7 @@ export async function GET() {
        FROM sessions WHERE user_id = $1 AND expires_at > now() ORDER BY created_at DESC`,
     [u.id, token],
   );
-  return NextResponse.json({ ok: true, sessions: rows });
+  // no-store: browsers heuristic-cached this GET, so a revoke (DELETE) was
+  // invisible until the cache aged out — the row "never went away"
+  return NextResponse.json({ ok: true, sessions: rows }, { headers: { "Cache-Control": "no-store" } });
 }

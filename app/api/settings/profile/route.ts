@@ -11,7 +11,7 @@ export async function GET() {
   const p = getPool();
   const ws = (await p.query(`SELECT w.name, w.about FROM workspaces w WHERE w.name='NextBiz One' LIMIT 1`)).rows[0];
   const conn = (await p.query(`SELECT display_name, status FROM waba_connections LIMIT 1`)).rows[0] ?? null;
-  return NextResponse.json({ ok: true, profile: { ...ws, connection: conn } });
+  return NextResponse.json({ ok: true, profile: { ...ws, connection: conn } }, { headers: { "Cache-Control": "no-store" } });
 }
 
 const Up = z.object({

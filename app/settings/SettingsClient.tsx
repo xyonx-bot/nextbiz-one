@@ -25,9 +25,11 @@ export function SettingsClient({ email }: { email: string }) {
   const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
+    // no-store on both: these GETs were heuristic-cached and re-served stale
+    // after mutations (revoke updated the DB, the list didn't move)
     const [p, s] = await Promise.all([
-      fetch("/api/settings/profile").then((x) => x.json()).catch(() => null),
-      fetch("/api/settings/sessions").then((x) => x.json()).catch(() => null),
+      fetch("/api/settings/profile", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
+      fetch("/api/settings/sessions", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
     ]);
     if (p?.ok) setProfile(p.profile);
     if (s?.ok) setSessions(s.sessions ?? []);
@@ -40,6 +42,14 @@ export function SettingsClient({ email }: { email: string }) {
     }).then((x) => x.json()).catch(() => null);
     setNote(d?.ok ? "Saved ✓" : (d?.error ?? "Save failed"));
     if (d?.ok) await load();
+  }
+
+  async function revokeSession(id: string) {
+    setNote("Revoking…");
+    const d = await fetch(`/api/settings/sessions/${id}`, { method: "DELETE" })
+      .then((x) => x.json()).catch(() => null);
+    setNote(d?.ok ? "Session revoked ✓" : (d?.error ?? "Revoke failed — try again"));
+    await load();
   }
 
   const conn = profile?.connection;
@@ -106,7 +116,7 @@ export function SettingsClient({ email }: { email: string }) {
                 <span className="fl">{s.current ? "This device" : "Other session"} <small>since {new Date(s.created_at).toLocaleDateString()}</small></span>
                 <span className="fval">{s.current ? "current" : "active"} · expires {new Date(s.expires_at).toLocaleDateString()}
                   {!s.current && <button className="btn btn-soft" style={{ minHeight: 22, padding: "0 8px", fontSize: 9, marginLeft: 8 }}
-                    onClick={() => void fetch(`/api/settings/sessions/${s.id}`, { method: "DELETE" }).then(() => load())}>Revoke</button>}</span>
+                    onClick={() => void revokeSession(s.id)}>Revoke</button>}</span>
               </div>
             ))}
           </section>

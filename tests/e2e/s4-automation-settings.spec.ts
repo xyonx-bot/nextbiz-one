@@ -111,6 +111,23 @@ test.describe("S4 automation + settings", () => {
     const after = (await (await page.request.get("/api/settings/sessions")).json()) as typeof list;
     expect(after.sessions.find((s) => s.id === other!.id)).toBeUndefined(); // orphan revoked
     expect(after.sessions.some((s) => s.current)).toBe(true); // current survives (token <> guard)
+
+    // UI path — Joydip's report: revoke gave no feedback and the row "never
+    // went away" (heuristic-cached GET re-served the stale list). Fresh
+    // orphan, drive the button, assert feedback + the row actually drops.
+    const orphan2 = `s4-orphan2-${Date.now()}`;
+    await pool.query(
+      `INSERT INTO sessions (token, user_id, expires_at) SELECT $1, id, now() + interval '1 hour' FROM users WHERE email = $2`,
+      [orphan2, email],
+    );
+    await page.goto("/settings");
+    await page.locator(".si", { hasText: "Security" }).click();
+    const rowsBefore = await page.locator(".frow", { hasText: "Other session" }).count();
+    expect(rowsBefore).toBeGreaterThan(0);
+    await page.locator(".frow", { hasText: "Other session" }).first()
+      .locator("button", { hasText: "Revoke" }).click();
+    await expect(page.locator("[data-testid=settings]")).toContainText("Session revoked", { timeout: 10000 });
+    await expect(page.locator(".frow", { hasText: "Other session" })).toHaveCount(rowsBefore - 1);
   });
 });
 
