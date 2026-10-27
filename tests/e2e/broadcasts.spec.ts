@@ -118,10 +118,10 @@ test.describe("S2 broadcasts", () => {
     await login(page);
     const t = Date.now();
     // seed: two opted-in (START) + one not opted-in (plain "hi")
-    await postInbound(request, `9198300999${(t % 90) + 10}`, "Sel Person A", "START", `wamid.s2fa-${t}`);
-    await postInbound(request, `9198300999${(t % 90) + 11}`, "Sel Person B", "START", `wamid.s2fb-${t}`);
+    await postInbound(request, `9198300999${t}10`, "Sel Person A", "START", `wamid.s2fa-${t}`);
+    await postInbound(request, `9198300999${t}11`, "Sel Person B", "START", `wamid.s2fb-${t}`);
     await seedApprovedTemplate(`e2e_approved_${t}`);
-    const idA = await contactId(`9198300999${(t % 90) + 10}`);
+    const idA = await contactId(`9198300999${t}10`);
     expect(idA).toBeTruthy();
 
     await page.goto("/broadcasts");
@@ -167,9 +167,12 @@ test.describe("S2 broadcasts", () => {
     await login(page);
     const t = Date.now();
     const tplId = await seedApprovedTemplate(`e2e_approved_${t}`);
-    // plain "hi" contact = NOT opted in
-    await postInbound(request, `9198300999${(t % 90) + 12}`, "No Opt Person", "hi", `wamid.s2g-${t}`);
-    const noOpt = await contactId(`9198300999${(t % 90) + 12}`);
+    // plain "hi" contact = NOT opted in.
+    // phones embed the full run-stamp: the old (t % 90)+N derivation collided
+    // across tests (an opted-in "Sel Person B" row answered as "No Opt Person"
+    // through the auto-create dedupe) and 201'd the hard-rule assertion.
+    await postInbound(request, `9198300999${t}12`, "No Opt Person", "hi", `wamid.s2g-${t}`);
+    const noOpt = await contactId(`9198300999${t}12`);
     const opted = await contactId("919830099902"); // seeded opted-in by the keyword test above
     expect(noOpt).toBeTruthy();
     expect(opted).toBeTruthy();
