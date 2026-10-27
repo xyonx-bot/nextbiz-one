@@ -9,7 +9,7 @@ environments, one approval gate.
 
 | | beta | prod |
 |---|---|---|
-| URL | beta.one.nextbizstudio.com | one.nextbizstudio.com |
+| URL | one-beta.nextbizstudio.com | one.nextbizstudio.com |
 | Deploys | origin/main, every 5 min (systemd timer) | tagged releases only |
 | Triggered by | automatic | Joydip's explicit GO |
 | DB | nextbiz_one_beta_db (own copy, seeded from prod dump) | nextbiz_one_db (live data) |
@@ -57,6 +57,10 @@ scripts/deploy.sh --env beta --seed ~/nbo-prod-backup-YYYYMMDD-HHMMSS.dump
 
 Wipes the beta DB, restores the dump, runs migrations, redeploys.
 Never touches the prod DB.
+
+Note: beta hostnames are always single-level (`one-beta.*`) — Cloudflare
+Universal SSL covers the zone + `*.nextbizstudio.com` only; two-level
+subdomains (`beta.one.*`) fail TLS publicly.
 
 ## Conventions
 

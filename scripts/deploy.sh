@@ -9,7 +9,9 @@
 #
 # Environments (docs/release-flow.md):
 #   beta  origin/main, auto-deployed every 5 min by the systemd timer.
-#         URL beta.one.nextbizstudio.com (public, X-Robots-Tag: noindex).
+#         URL one-beta.nextbizstudio.com (public, X-Robots-Tag: noindex).
+#         Single-level subdomain on purpose: CF Universal SSL covers the
+#         zone + *.nextbizstudio.com only — two-level (beta.one.*) fails TLS.
 #         Own DB (nextbiz_one_beta_db) — seed it from a prod dump with --seed.
 #         WhatsApp/Meta creds are stubbed in .env.beta: beta can never
 #         message real customers or hit live Meta APIs.
@@ -80,7 +82,7 @@ case "$ENV" in
     APP_SVC="one-beta-app"; DB_SVC="one-beta-db"
     APP_CONTAINER="nextbiz_one_beta_app"; DB_CONTAINER="nextbiz_one_beta_db"
     ENV_FILE="$MAIN_REPO/.env.beta"
-    PUBLIC_DOMAIN="beta.one.nextbizstudio.com"
+    PUBLIC_DOMAIN="one-beta.nextbizstudio.com"
     ;;
   prod)
     STAGE_DIR="${DEPLOY_STAGE_DIR:-$HOME/deploy-stage/nextbiz-one}"
