@@ -133,8 +133,11 @@ cd "$STAGE_DIR"
 log "building image…"
 docker compose -f "$COMPOSE_FILE" build "$APP_SVC"
 
-log "starting DB ($DB_SVC)…"
-docker compose -f "$COMPOSE_FILE" up -d "$DB_SVC"
+log "starting DB ($DB_SVC, waiting for healthcheck)…"
+# --wait is load-bearing: up -d alone returns before postgres accepts
+# connections, and a fresh beta volume's first exec then races the socket
+# (bit us on the first beta deploy — psql "No such file or directory")
+docker compose -f "$COMPOSE_FILE" up -d --wait "$DB_SVC"
 
 if [ "$ENV" = beta ] && [ -n "$SEED" ]; then
   [ -f "$SEED" ] || { echo "REFUSED: --seed dump not found: $SEED" >&2; exit 2; }
