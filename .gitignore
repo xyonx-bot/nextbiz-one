@@ -3,6 +3,7 @@ node_modules/
 out/
 dist/
 .env
+.env.beta
 .env.local
 .env.*.local
 playwright-report/

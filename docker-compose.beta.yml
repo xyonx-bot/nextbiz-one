@@ -1,0 +1,45 @@
+# NextBiz One — BETA shape. Mirrors docker-compose.yml with beta container
+# names + its own volume, so beta and prod run side by side on the same
+# docker network. deploy.sh --env beta copies .env.beta next to this file as
+# .env (untracked — secrets never in repo). No host ports: nginx proxies.
+services:
+  one-beta-db:
+    image: postgres:16-alpine
+    container_name: nextbiz_one_beta_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nextbiz
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set in .env}
+      POSTGRES_DB: nextbiz_one
+    volumes:
+      - one_beta_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextbiz -d nextbiz_one"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [joyverse_main_network]
+
+  one-beta-app:
+    build: .
+    container_name: nextbiz_one_beta_app
+    restart: unless-stopped
+    depends_on:
+      one-beta-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://nextbiz:${DB_PASSWORD}@one-beta-db:5432/nextbiz_one
+      OPERATOR_EMAIL: ${OPERATOR_EMAIL}
+      OPERATOR_PASS: ${OPERATOR_PASS}
+      # stubbed in .env.beta — beta never messages real customers
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
+      NODE_ENV: production
+    networks: [joyverse_main_network]
+
+volumes:
+  one_beta_pgdata:
+
+networks:
+  joyverse_main_network:
+    external: true
