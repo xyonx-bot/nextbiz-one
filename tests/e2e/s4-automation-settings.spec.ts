@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { Pool } from "pg";
 
 /**
  * S4 e2e — automation config + engine contracts (match-simulate, never a real
@@ -14,6 +15,8 @@ if (PROD_DB_URL.includes("one-db:5432") || PROD_DB_URL.includes("one.nextbizstud
   console.error("[PROD GUARD] DATABASE_URL points to production. E2E suite aborted.");
   process.exit(0);
 }
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 async function login(page: import("@playwright/test").Page) {
   await page.goto("/login");
   await page.fill("#email", process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one");
@@ -85,4 +88,32 @@ test.describe("S4 automation + settings", () => {
     await expect(page.locator(".danger-zone")).toBeVisible();
     await expect(page.locator("a[href*='dataset=contacts']")).toBeVisible();
   });
+
+  test("settings sessions: list + revoke by md5 id (was 500: SELECT id on a token-PK table)", async ({ page }) => {
+    await login(page);
+    // second, orphan session row = simulates another device
+    const email = process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one";
+    const orphan = `s4-orphan-${Date.now()}`;
+    await pool.query(
+      `INSERT INTO sessions (token, user_id, expires_at) SELECT $1, id, now() + interval '1 hour' FROM users WHERE email = $2`,
+      [orphan, email],
+    );
+    const list = (await (await page.request.get("/api/settings/sessions")).json()) as {
+      ok: boolean; sessions: { id: string; current: boolean }[];
+    };
+    expect(list.ok).toBe(true); // pre-fix: 500 on every authenticated call
+    expect(list.sessions.some((s) => s.current)).toBe(true);
+    const other = list.sessions.find((s) => !s.current);
+    expect(other?.id).toBeTruthy();
+    expect(other!.id).not.toBe(orphan); // id is md5(token), never the raw token
+
+    expect((await page.request.delete(`/api/settings/sessions/${other!.id}`)).status()).toBe(200);
+    const after = (await (await page.request.get("/api/settings/sessions")).json()) as typeof list;
+    expect(after.sessions.find((s) => s.id === other!.id)).toBeUndefined(); // orphan revoked
+    expect(after.sessions.some((s) => s.current)).toBe(true); // current survives (token <> guard)
+  });
+});
+
+test.afterAll(async () => {
+  await pool.end().catch(() => {});
 });

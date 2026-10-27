@@ -9,6 +9,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   const u = await getSessionUser(token);
   if (!u) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
-  await getPool().query(`DELETE FROM sessions WHERE id = $1 AND user_id = $2 AND token <> $3`, [id, u.id, token]);
+  // id is md5(token) — the table's PK is token, there is no id column
+  await getPool().query(`DELETE FROM sessions WHERE md5(token) = $1 AND user_id = $2 AND token <> $3`, [id, u.id, token]);
   return NextResponse.json({ ok: true });
 }
