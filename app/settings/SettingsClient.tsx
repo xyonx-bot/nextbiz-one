@@ -41,6 +41,12 @@ export function SettingsClient({ email }: { email: string }) {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("ig");
+    if (q === "connected") setNote("Instagram connected ✓");
+    if (q === "err-noappid") setNote("IG_APP_ID not configured on host — set env, then retry");
+  }, []);
+
   async function connectIg() {
     const t = igToken.trim();
     if (!t) { setNote("Paste an Instagram user access token first"); return; }
@@ -129,6 +135,9 @@ export function SettingsClient({ email }: { email: string }) {
               <span><b>Connect Instagram?</b> Paste an IG user access token — stored mock-badged until Meta app review approves the IG permissions. Webhook callback: <code>/api/webhooks/instagram</code></span>
               <input className="ig-inp" data-testid="ig-token" placeholder="IG user access token…" value={igToken} onChange={(e) => setIgToken(e.target.value)} />
               <button className="btn btn-ads btn-sm" data-testid="ig-connect" onClick={connectIg}>Connect</button>
+              <button className="btn btn-soft btn-sm" data-testid="ig-oauth" onClick={() => { window.location.href = "/api/auth/instagram/start"; }}>
+                <img src={`${IC}instagram-logo-bold.svg`} alt="" style={{ width: 12, height: 12 }} /> Login with Instagram
+              </button>
             </div>
           </section>
         )}
