@@ -50,9 +50,13 @@ test.describe("Ads UI (P2 mock port)", () => {
     await page.locator(".crow").first().click();
     await expect(page.getByTestId("review-banner")).toBeVisible();
     await expect(page.getByTestId("zerores")).toBeVisible();
-    // header quick-action: New Campaign split button opens menu
+    // header quick-action: New Campaign split button opens menu AND tiles navigate
     await page.getByTestId("qa-btn").click();
     await expect(page.getByTestId("qa-menu")).toBeVisible();
+    // menu must escape the header-card clip (overflow) — click must land on the tile's anchor
+    await page.locator(".qa-menu a[href='/ads/new'] .qa-tile").click();
+    await page.waitForURL("**/ads/new");
+    await expect(page.getByTestId("ads-wizard")).toBeVisible();
   });
 
   test("P2.2 /ads/new — 7-step wizard, validation, live preview, submit → IN_REVIEW", async ({ page }) => {
