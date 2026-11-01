@@ -4,22 +4,27 @@ import { getSessionUser } from "@/lib/auth";
 import { igOAuthDialogUrl } from "@/lib/instagram";
 import { randomBytes } from "node:crypto";
 
+/** Public base for redirects (behind nginx req.url can be the internal one). */
+function publicBase(req: Request): string {
+  return process.env.PUBLIC_URL ?? new URL(req.url).origin;
+}
+
 /**
  * Instagram Business Login start — 302 to Meta's OAuth dialog.
  * Requires a workspace session (prevents open-redirect abuse).
- * The redirect_uri is derived from the request origin, so beta and prod
- * both work; Meta dashboard must have the matching URL registered.
+ * redirect_uri is derived from PUBLIC_URL (beta/prod), so the Meta
+ * dashboard must have the matching URL registered.
  */
 export async function GET(req: Request) {
   const token = (await cookies()).get("nbo_session")?.value;
   const u = await getSessionUser(token);
-  if (!u) return NextResponse.redirect(new URL("/login", req.url));
-  const appId = process.env.IG_APP_ID;
+  const base = publicBase(req);
+  if (!u) return NextResponse.redirect(`${base}/login`);
+  const appId = process.env.IG_APP_ID || process.env.META_APP_ID;
   if (!appId) {
-    return NextResponse.redirect(new URL("/settings?ig=err-noappid", req.url));
+    return NextResponse.redirect(`${base}/settings?ig=err-noappid`);
   }
-  const origin = process.env.PUBLIC_URL ?? new URL(req.url).origin;
-  const redirectUri = `${origin}/api/auth/instagram/callback`;
+  const redirectUri = `${base}/api/auth/instagram/callback`;
   const state = randomBytes(16).toString("hex");
   const res = NextResponse.redirect(igOAuthDialogUrl(redirectUri, state, appId));
   res.cookies.set("ig_oauth_state", state, {
