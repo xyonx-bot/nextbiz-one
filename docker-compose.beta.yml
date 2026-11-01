@@ -34,6 +34,15 @@ services:
       # stubbed in .env.beta — beta never messages real customers
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      PHONE_NUMBER_ID: ${PHONE_NUMBER_ID:-}
+      WABA_ID: ${WABA_ID:-}
+      META_APP_ID: ${META_APP_ID:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      IG_LIVE: ${IG_LIVE:-false}
+      IG_APP_ID: ${IG_APP_ID:-}
+      IG_APP_SECRET: ${IG_APP_SECRET:-}
+      IG_WEBHOOK_VERIFY_TOKEN: ${IG_WEBHOOK_VERIFY_TOKEN:-}
       NODE_ENV: production
     networks: [joyverse_main_network]
 
