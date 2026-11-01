@@ -427,8 +427,11 @@ export function AdsClient({ initialStatus }: { initialStatus: string }) {
                   <img src={`${P}/${sel.status === "ACTIVE" ? "pause" : "play"}-bold.svg`} alt="" />
                   {sel.status === "ACTIVE" ? "Pause campaign" : sel.status === "PAUSED" ? "Resume campaign" : sel.status === "DRAFT" ? "Activate campaign" : sel.status === "CANCELLED" ? "Cancelled" : "In review"}
                 </button>
+                {/* head kebab lives inside .acts so that on mobile (<640) the
+                    actions + kebab always share one flex row — the kebab can
+                    never wrap alone (wireframe Rev Nov 1, QA'd at 360-480) */}
+                {kebab("detail", sel, "kebab", "cd-menu", true)}
               </div>
-              {kebab("detail", sel, "kebab", "cd-menu", true)}
             </div>
             <div className="cd-body">
               {note && (
