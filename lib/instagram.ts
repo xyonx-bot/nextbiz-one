@@ -229,3 +229,80 @@ export async function getIgAccount(wsId: string): Promise<IgAccountRow | null> {
 export async function ensureWorkspace(): Promise<string> {
   return ensureWs();
 }
+
+/* ---------- Instagram Business Login (OAuth) ---------- */
+
+export const IG_SCOPES = [
+  "instagram_business_basic",
+  "instagram_business_manage_messages",
+  "instagram_business_manage_comments",
+] as const;
+
+/** Dialog URL the Settings "Login with Instagram" button redirects to. */
+export function igOAuthDialogUrl(redirectUri: string, state: string, appId: string): string {
+  const q = new URLSearchParams({
+    client_id: appId,
+    redirect_uri: redirectUri,
+    scope: IG_SCOPES.join(","),
+    response_type: "code",
+    state,
+  });
+  return `https://www.facebook.com/v21.0/dialog/oauth?${q.toString()}`;
+}
+
+/**
+ * Exchange the OAuth `code` for an IG user token, then long-lived, then /me.
+ * Guarded: IG_LIVE != "true" never touches the network (mock mode).
+ */
+export async function exchangeIgCode(
+  code: string, redirectUri: string,
+): Promise<{ account: IgAccountRow; mock: boolean }> {
+  if (!igLive()) throw new Error("IG_LIVE is not true — mock mode, no Graph call");
+  const appId = process.env.IG_APP_ID;
+  const appSecret = process.env.IG_APP_SECRET;
+  if (!appId || !appSecret) throw new Error("IG_APP_ID / IG_APP_SECRET not configured on host");
+
+  const form = new URLSearchParams({
+    client_id: appId, client_secret: appSecret,
+    grant_type: "authorization_code", redirect_uri: redirectUri, code,
+  });
+  const tRes = await fetch("https://api.instagram.com/oauth/access_token", {
+    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form.toString(),
+  });
+  if (!tRes.ok) throw new Error(`IG code exchange failed: ${tRes.status}`);
+  const short = (await tRes.json()) as { access_token?: string; user_id?: string };
+  if (!short.access_token) throw new Error("IG code exchange returned no access_token");
+
+  const exRes = await fetch(
+    `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${encodeURIComponent(short.access_token)}`,
+  );
+  if (!exRes.ok) throw new Error(`IG long-lived exchange failed: ${exRes.status}`);
+  const long = (await exRes.json()) as { access_token?: string; expires_in?: number };
+  if (!long.access_token) throw new Error("IG long-lived exchange returned no access_token");
+
+  const meRes = await fetch(
+    `https://graph.instagram.com/v21.0/me?fields=id,username,name&access_token=${encodeURIComponent(long.access_token)}`,
+  );
+  if (!meRes.ok) throw new Error(`IG /me failed: ${meRes.status}`);
+  const me = (await meRes.json()) as { id?: string; username?: string; name?: string };
+  if (!me.id) throw new Error("IG /me returned no id");
+
+  const p = getPool();
+  const wsId = await ensureWs();
+  const expiresAt = long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString() : null;
+  const { rows } = await p.query(
+    `INSERT INTO ig_accounts (workspace_id, ig_user_id, username, display_name, access_token, scopes, expires_at, live)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+     ON CONFLICT (workspace_id, ig_user_id)
+     DO UPDATE SET username = EXCLUDED.username, display_name = EXCLUDED.display_name,
+       access_token = EXCLUDED.access_token, expires_at = EXCLUDED.expires_at,
+       live = true, updated_at = now()
+     RETURNING id, ig_user_id, username, display_name, scopes, expires_at, live, updated_at`,
+    [wsId, me.id, me.username ?? null, me.name ?? null, long.access_token, [...IG_SCOPES], expiresAt],
+  );
+  await p.query(
+    `INSERT INTO ig_audit (workspace_id, action, detail) VALUES ($1, 'oauth-callback', $2::jsonb)`,
+    [wsId, JSON.stringify({ ig_user_id: me.id, via: "instagram-business-login" })],
+  );
+  return { account: rows[0] as IgAccountRow, mock: false };
+}
