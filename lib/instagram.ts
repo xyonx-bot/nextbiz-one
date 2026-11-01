@@ -258,8 +258,8 @@ export async function exchangeIgCode(
   code: string, redirectUri: string,
 ): Promise<{ account: IgAccountRow; mock: boolean }> {
   if (!igLive()) throw new Error("IG_LIVE is not true — mock mode, no Graph call");
-  const appId = process.env.IG_APP_ID;
-  const appSecret = process.env.IG_APP_SECRET;
+  const appId = process.env.IG_APP_ID || process.env.META_APP_ID;
+  const appSecret = process.env.IG_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
   if (!appId || !appSecret) throw new Error("IG_APP_ID / IG_APP_SECRET not configured on host");
 
   const form = new URLSearchParams({

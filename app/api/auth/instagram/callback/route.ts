@@ -28,7 +28,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const token = (await cookies()).get("nbo_session")?.value;
   const u = await getSessionUser(token);
-  if (!u) return NextResponse.redirect(new URL("/login", req.url));
+  const base = process.env.PUBLIC_URL ?? url.origin;
+  if (!u) return NextResponse.redirect(`${base}/login`);
 
   const err = url.searchParams.get("error");
   if (err) return html(`<h1>Instagram connect failed</h1><p>Meta returned: ${err}</p><a class="b" href="/settings">Back to Settings</a>`, 200);
@@ -44,11 +45,10 @@ export async function GET(req: Request) {
   if (!igLive()) {
     return html(`<h1>Mock mode</h1><p>IG_LIVE is off — Meta app review pending. In live mode this callback exchanges the code for a long-lived IG token and connects the account.</p><a class="b" href="/settings">Back to Settings</a>`);
   }
-  const origin = process.env.PUBLIC_URL ?? url.origin;
-  const redirectUri = `${origin}/api/auth/instagram/callback`;
+  const redirectUri = `${base}/api/auth/instagram/callback`;
   try {
     const { account } = await exchangeIgCode(code, redirectUri);
-    const res = NextResponse.redirect(new URL("/settings?ig=connected", req.url));
+    const res = NextResponse.redirect(`${base}/settings?ig=connected`);
     res.cookies.delete("ig_oauth_state");
     console.log(`[ig] connected @${account.username ?? account.ig_user_id} via business login`);
     return res;
