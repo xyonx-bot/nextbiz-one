@@ -33,6 +33,7 @@ export function Shell({
   const [navOpen, setNavOpen] = useState(false);
   const [panelFlyout, setPanelFlyout] = useState(false);
   const [adsOpen, setAdsOpen] = useState(true);
+  const [socialOpen, setSocialOpen] = useState(false);
   const [adsCounts, setAdsCounts] = useState<{ all: number; drafts: number; review: number } | null>(null);
   // v4.3: Dashboard + Settings are LEAF pages (panel hidden); Chat module
   // pages (Inbox, Contacts, Templates, Broadcasts, Automation) show the panel.
@@ -69,6 +70,22 @@ export function Shell({
       setPanelFlyout((v) => !v);
       setNavOpen(false);
     }
+  }
+
+  // Social/Instagram module: no P3 route yet — open the panel with the
+  // social tree (connect CTA + P3-pending note) instead of a dead button.
+  function onSocialChip(e: React.MouseEvent) {
+    const w = window.innerWidth;
+    setSocialOpen(true);
+    if (w >= 640 && w < 1180) {
+      e.preventDefault();
+      setPanelFlyout(true);
+      setNavOpen(false);
+    } else if (w < 640) {
+      setNavOpen(true); // drawer + scrim (mobile)
+      setPanelFlyout(false);
+    }
+    // desktop ≥1180: panel is always visible; tree toggles via socialOpen
   }
 
   const closeNav = () => {
@@ -108,7 +125,11 @@ export function Shell({
             </a>
             <span className="tip">NextBiz Ads</span>
           </div>
-          <div className="ri mod-social parent"><span className="mdoti" style={{ background: "var(--social)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/images.svg" alt="" /><span className="lbl">NextBiz Social</span><span className="tip">NextBiz Social</span></div>
+          <div className={`ri mod-social parent${socialOpen ? " on" : ""}`} onClick={onSocialChip} data-testid="rail-social">
+            <span className="mdoti" style={{ background: "var(--social)" }} />
+            <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/images.svg" alt="" />
+            <span className="lbl">NextBiz Social</span><span className="tip">NextBiz Social (Instagram)</span>
+          </div>
           <div className="sp" />
           <div className={`ri mod-ws leaf${active === "settings" ? " on" : ""}`}><a href="/settings" style={{ display: "contents" }}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/gear.svg" alt="" /><span className="lbl">Settings</span></a><span className="tip">Settings</span></div>
           <div className="exp" onClick={() => setRailExpanded(!railExpanded)} title="Expand / collapse" data-testid="rail-expand">
@@ -129,7 +150,7 @@ export function Shell({
               <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/caret-down.svg" alt="" />
             </div>
             <div className="trees">
-              <div className={`tree${adsActive ? " hidden" : ""}`} data-tree="chat">
+              <div className={`tree${adsActive || socialOpen ? " hidden" : ""}`} data-tree="chat">
                 <div className="sec"><span className="mdot" style={{ background: "var(--chat)" }} />NextBiz Chat</div>
                 <div className="sub-chips">
                   <a href="/inbox" style={{ display: "contents" }}><div className={`schip${active === "inbox" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/tray.svg" alt="" /><span className="lbl">Inbox</span>{unread > 0 && <span className="cnt">{unread}</span>}</div></a>
@@ -139,7 +160,7 @@ export function Shell({
                   <a href="/automation" style={{ display: "contents" }}><div className={`schip${active === "automation" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/lightning.svg" alt="" /><span className="lbl">Automation</span></div></a>
                 </div>
               </div>
-              <div className={`tree${adsActive ? "" : " hidden"}`} data-tree="ads">
+              <div className={`tree${!adsActive || socialOpen ? " hidden" : ""}`} data-tree="ads">
                 <div className="sec"><span className="mdot" style={{ background: "var(--ads)" }} />NextBiz Ads</div>
                 <div className="sub-chips" style={{ paddingBottom: 2 }}>
                   <a href="/ads/performance" style={{ display: "contents" }}><div className={`schip${active === "ads-perf" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/chart-line-up.svg" alt="" /><span className="lbl">Performance</span></div></a>
@@ -152,6 +173,20 @@ export function Shell({
                   <a href="/ads?status=IN_REVIEW" style={{ display: "contents" }}><div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/warning-circle.svg" alt="" /><span className="lbl">Needs review</span>{adsCounts && <span className="cnt">{adsCounts.review}</span>}</div></a>
                 </div>
                 )}
+              </div>
+              <div className={`tree${socialOpen ? "" : " hidden"}`} data-tree="social" data-testid="social-tree">
+                <div className="sec"><span className="mdot" style={{ background: "var(--social)" }} />NextBiz Social</div>
+                <div className="sub-chips">
+                  <div className="schip" style={{ opacity: .55, cursor: "default" }} data-testid="ig-p3-pending">
+                    <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/instagram-logo.svg" alt="" />
+                    <span className="lbl">Instagram DMs · P3 UI pending</span>
+                  </div>
+                  <a href="/settings" style={{ display: "contents" }} onClick={closeNav}><div className="schip" data-testid="ig-connect-link">
+                    <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/plugs-connected.svg" alt="" />
+                    <span className="lbl">Connect Instagram</span>
+                  </div></a>
+                </div>
+                <div className="treenote">Webhook + business-login backend live on beta (mock-badged until app review). P3.1 inbox/automation UI is Mira's queued design package.</div>
               </div>
             </div>
           </div>
