@@ -59,6 +59,32 @@ test.describe("Ads UI (P2 mock port)", () => {
     await expect(page.getByTestId("ads-wizard")).toBeVisible();
   });
 
+  test("P2.1 kebab menu — cancel an in-review campaign → Cancelled pill + state", async ({ page }) => {
+    await login(page);
+    // create an in-review campaign via API
+    const t = Date.now();
+    const created = await page.request.post("/api/ads/campaigns", {
+      data: { name: `E2E Cancel ${t}`, objective: "OUTCOME_LEADS", daily_budget: 300, destination: "whatsapp", submit: true },
+    });
+    expect(created.status()).toBe(201);
+    const cid = ((await created.json()) as { campaign: { id: string } }).campaign.id;
+    await page.goto("/ads?status=IN_REVIEW");
+    await page.locator(`.crow[data-testid="crow-${cid}"]`).click();
+    await expect(page.getByTestId("review-banner")).toBeVisible();
+    // kebab → Cancel review → two-tap confirm
+    await page.getByTestId("kebab").click();
+    await expect(page.getByTestId("cd-menu")).toBeVisible();
+    await page.getByTestId("cancel-campaign").click(); // arm
+    await page.getByTestId("cancel-campaign").click(); // confirm
+    await expect(page.locator(".cd-head .st.cancelled")).toBeVisible();
+    // API truth
+    const one = await page.request.get(`/api/ads/campaigns/${cid}`);
+    expect(((await one.json()) as { campaign: { status: string } }).campaign.status).toBe("CANCELLED");
+    // cancelled pill exists with count
+    await page.getByTestId("pill-CANCELLED").click();
+    await expect(page.locator(`.crow[data-testid="crow-${cid}"]`)).toBeVisible();
+  });
+
   test("P2.2 /ads/new — 7-step wizard, validation, live preview, submit → IN_REVIEW", async ({ page }) => {
     await login(page);
     await page.goto("/ads/new");

@@ -30,9 +30,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     { headers: { "Cache-Control": "no-store" } });
 }
 
-const Patch = z.object({ status: z.enum(["active", "paused"]) });
+const Patch = z.object({ status: z.enum(["active", "paused", "cancelled"]) });
 
-/** PATCH — pause/resume (P2.1 mock action). Demo fixtures are read-only. */
+/** PATCH — pause/resume/cancel (P2.1 mock actions). Demo fixtures are read-only. */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   if (!(await auth())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await ctx.params;

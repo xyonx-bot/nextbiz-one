@@ -13,7 +13,7 @@ type Campaign = {
   id: string;
   name: string;
   objective: string;
-  status: "ACTIVE" | "PAUSED" | "IN_REVIEW" | "DRAFT";
+  status: "ACTIVE" | "PAUSED" | "IN_REVIEW" | "DRAFT" | "CANCELLED";
   daily_budget: number;
   start_time: string | null;
   stop_time: string | null;
@@ -35,12 +35,14 @@ const ST_CLASS: Record<Campaign["status"], string> = {
   PAUSED: "st paused",
   IN_REVIEW: "st review",
   DRAFT: "st draft",
+  CANCELLED: "st cancelled",
 };
 const ST_LABEL: Record<Campaign["status"], string> = {
   ACTIVE: "Active",
   PAUSED: "Paused",
   IN_REVIEW: "In review",
   DRAFT: "Draft",
+  CANCELLED: "Cancelled",
 };
 
 const P = "https://cdn.joyverse.fun/mira-assets/phosphor/bold";
@@ -55,6 +57,7 @@ const PILLS: { key: string; label: string }[] = [
   { key: "PAUSED", label: "Paused" },
   { key: "IN_REVIEW", label: "In review" },
   { key: "DRAFT", label: "Drafts" },
+  { key: "CANCELLED", label: "Cancelled" },
 ];
 
 export function AdsClient({ initialStatus }: { initialStatus: string }) {
@@ -64,6 +67,8 @@ export function AdsClient({ initialStatus }: { initialStatus: string }) {
   const [sel, setSel] = useState<Campaign | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/ads/campaigns", { cache: "no-store" });
@@ -78,6 +83,16 @@ export function AdsClient({ initialStatus }: { initialStatus: string }) {
   }, [load]);
 
   useEffect(() => () => document.body.classList.remove("show-detail"), []);
+
+  // kebab menu: close on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".cd-menu-wrap")) { setMenuOpen(false); setConfirmCancel(false); }
+    };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [menuOpen]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: all.length };
@@ -108,11 +123,10 @@ export function AdsClient({ initialStatus }: { initialStatus: string }) {
     }
   }
 
-  async function toggleStatus() {
-    if (!sel || sel.source === "demo") return;
+  async function patchStatus(next: string) {
+    if (!sel) return;
     setBusy(true);
     setNote("");
-    const next = sel.status === "ACTIVE" ? "paused" : "active";
     const r = await fetch(`/api/ads/campaigns/${sel.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -122,16 +136,28 @@ export function AdsClient({ initialStatus }: { initialStatus: string }) {
       const d = (await r.json()) as { campaign: Campaign };
       setSel(d.campaign);
       setAll((prev) => prev.map((x) => (x.id === d.campaign.id ? d.campaign : x)));
+      setMenuOpen(false);
+      setConfirmCancel(false);
     } else {
       setNote("Could not update status — try again.");
     }
     setBusy(false);
   }
 
+  async function toggleStatus() {
+    if (!sel || sel.source === "demo") return;
+    await patchStatus(sel.status === "ACTIVE" ? "paused" : "active");
+  }
+
+  async function cancelCampaign() {
+    if (!sel || sel.source === "demo") return;
+    await patchStatus("cancelled");
+  }
+
   const running = sel ? sel.insights.spend > 0 : false;
   const demo = sel?.source === "demo";
   const actionLabel =
-    sel?.status === "ACTIVE" ? "Pause campaign" : sel?.status === "PAUSED" ? "Resume campaign" : sel?.status === "DRAFT" ? "Activate campaign" : "In review";
+    sel?.status === "ACTIVE" ? "Pause campaign" : sel?.status === "PAUSED" ? "Resume campaign" : sel?.status === "DRAFT" ? "Activate campaign" : sel?.status === "CANCELLED" ? "Cancelled" : "In review";
 
   return (
     <div className="azone" data-testid="ads-campaigns">
@@ -214,13 +240,45 @@ export function AdsClient({ initialStatus }: { initialStatus: string }) {
                 </button>
                 <button
                   className="btn btn-ads btn-sm"
-                  disabled={demo || busy || sel.status === "IN_REVIEW"}
-                  title={demo ? "Demo campaigns are read-only (API returns 409)" : sel.status === "IN_REVIEW" ? "Under review with Meta" : undefined}
+                  disabled={demo || busy || sel.status === "IN_REVIEW" || sel.status === "CANCELLED"}
+                  title={demo ? "Demo campaigns are read-only (API returns 409)" : sel.status === "IN_REVIEW" ? "Under review with Meta" : sel.status === "CANCELLED" ? "Cancelled" : undefined}
                   onClick={toggleStatus}
                   data-testid="toggle-status"
                 >
                   <img src={`${P}/${sel.status === "ACTIVE" ? "pause" : "play"}-bold.svg`} alt="" />{actionLabel}
                 </button>
+                <div className="cd-menu-wrap">
+                  <button
+                    className="btn btn-soft btn-sm"
+                    aria-label="More actions"
+                    data-testid="kebab"
+                    onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); setConfirmCancel(false); }}
+                  >
+                    <img src={`${P}/dots-three-bold.svg`} alt="" />
+                  </button>
+                  {menuOpen && (
+                    <div className="cd-menu" data-testid="cd-menu" role="menu">
+                      <button className="mi" disabled={demo} title={demo ? "Demo campaigns are read-only" : undefined} onClick={() => setMenuOpen(false)}>
+                        <img src={`${P}/copy-bold.svg`} alt="" />Duplicate
+                      </button>
+                      <button className="mi" disabled={demo || busy || sel.status === "IN_REVIEW" || sel.status === "CANCELLED"} onClick={toggleStatus}>
+                        <img src={`${P}/${sel.status === "ACTIVE" ? "pause" : "play"}-bold.svg`} alt="" />{actionLabel}
+                      </button>
+                      {sel.status !== "CANCELLED" && (
+                        <button
+                          className={`mi danger${confirmCancel ? " armed" : ""}`}
+                          disabled={demo || busy}
+                          title={demo ? "Demo campaigns are read-only (API returns 409)" : undefined}
+                          data-testid="cancel-campaign"
+                          onClick={() => (confirmCancel ? cancelCampaign() : setConfirmCancel(true))}
+                        >
+                          <img src={`${P}/x-circle-bold.svg`} alt="" />
+                          {confirmCancel ? "Tap again to confirm" : sel.status === "IN_REVIEW" ? "Cancel review" : "Cancel campaign"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="cd-body">

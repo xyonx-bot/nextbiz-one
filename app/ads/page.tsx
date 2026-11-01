@@ -17,7 +17,7 @@ export default async function AdsPage({
   const initials = (user?.displayName ?? "NBO").split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase();
   const sp = await searchParams;
   const initialStatus =
-    sp.status === "DRAFT" || sp.status === "IN_REVIEW" || sp.status === "ACTIVE" || sp.status === "PAUSED"
+    sp.status === "DRAFT" || sp.status === "IN_REVIEW" || sp.status === "ACTIVE" || sp.status === "PAUSED" || sp.status === "CANCELLED"
       ? sp.status
       : "all";
   return (

@@ -32,7 +32,7 @@ export type AdsCampaign = {
   id: string;
   name: string;
   objective: AdsObjective;
-  status: "ACTIVE" | "PAUSED" | "IN_REVIEW" | "DRAFT";
+  status: "ACTIVE" | "PAUSED" | "IN_REVIEW" | "DRAFT" | "CANCELLED";
   daily_budget: number; // INR rupees
   start_time: string | null;
   stop_time: string | null;
@@ -190,7 +190,7 @@ export function draftToCampaign(row: {
 }): AdsCampaign {
   const zero = { spend: 0, impressions: 0, reach: 0, clicks: 0, results: 0, cost_per_result: 0 };
   const status = row.status === "in_review" ? "IN_REVIEW" : row.status === "paused" ? "PAUSED"
-    : row.status === "active" ? "ACTIVE" : "DRAFT";
+    : row.status === "active" ? "ACTIVE" : row.status === "cancelled" ? "CANCELLED" : "DRAFT";
   return {
     id: row.id,
     name: row.name,

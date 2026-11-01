@@ -1719,6 +1719,17 @@ body.composer-open .bcomposer { transform: none; }
 .azone .st.paused, .pzone .st.paused { background: var(--surface-sunken); color: var(--ink-2); border: 1px solid var(--line); }
 .azone .st.review, .pzone .st.review { background: #FFD21F; color: #1A1D23; }
 .azone .st.draft, .pzone .st.draft { background: var(--bg); color: var(--ink-2); border: 1px dashed var(--line-strong); }
+.azone .st.cancelled, .pzone .st.cancelled { background: var(--danger-tint, #FDE8E8); color: var(--danger); border: 1px solid var(--danger); }
+/* campaign detail kebab menu (3-dot) — list dropdown in the design-system language */
+.cd-menu-wrap { position: relative; flex-shrink: 0; }
+.cd-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 190px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: 0 4px 8px rgba(26,29,35,.06), 0 16px 36px rgba(26,29,35,.14); padding: 5px; display: flex; flex-direction: column; gap: 2px; z-index: 80; }
+.cd-menu .mi { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-radius: 7px; padding: 8px 10px; font-size: 11.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.cd-menu .mi img { width: 13px; height: 13px; color: var(--ink-3); }
+.cd-menu .mi:hover:not(:disabled) { background: var(--bg); }
+.cd-menu .mi:disabled { opacity: .45; cursor: not-allowed; }
+.cd-menu .mi.danger { color: var(--danger); }
+.cd-menu .mi.danger img { color: var(--danger); }
+.cd-menu .mi.danger.armed { background: var(--danger-tint, #FDE8E8); font-weight: 800; }
 
 /* ── P2.1 campaigns master-detail ── */
 .azone { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px 1fr; gap: 14px; padding: 0 0 12px; }
