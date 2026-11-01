@@ -28,8 +28,9 @@ export async function POST(req: Request) {
   try { body = JSON.parse(raw); } catch { return NextResponse.json({ ok: false }, { status: 400 }); }
 
   const header = req.headers.get("x-hub-signature-256");
+  const secret = process.env.IG_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
   const valid = verifyIgSignature(raw, header);
-  if (process.env.IG_APP_SECRET && !valid) {
+  if (secret && !valid) {
     await processIgInbound(body, false); // stored, flagged, not processed
     return NextResponse.json({ ok: false }, { status: 401 });
   }
