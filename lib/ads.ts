@@ -124,6 +124,9 @@ export type PerformancePoint = { date: string; spend: number; clicks: number; re
 export type PerformanceReport = {
   range: string;
   totals: { spend: number; impressions: number; reach: number; clicks: number; results: number; cost_per_result: number };
+  /** Previous equal-length window (synthesized, deterministic) — drives the
+   *  delta chips on the stat cards. Same totals shape as `totals`. */
+  prev_totals: { spend: number; impressions: number; reach: number; clicks: number; results: number; cost_per_result: number };
   series: PerformancePoint[];
   currency: "INR";
   demo: true;
@@ -161,6 +164,19 @@ export function performance(campaigns: AdsCampaign[], days: 7 | 30, workspaceId:
   return {
     range: `${days}d`,
     totals: { ...totals, cost_per_result: totals.results > 0 ? r2(totals.spend / totals.results) : 0 },
+    prev_totals: (() => {
+      // previous equal window, synthesized with the same seeded stream so it
+      // is deterministic per workspace+range and always plausible
+      const f = () => 0.68 + rnd() * 0.55;
+      const p = {
+        spend: r2(totals.spend * f()),
+        impressions: Math.round(totals.impressions * f()),
+        reach: Math.round(totals.reach * f()),
+        clicks: Math.round(totals.clicks * f()),
+        results: Math.max(1, Math.round(totals.results * f())),
+      };
+      return { ...p, cost_per_result: r2(p.spend / p.results) };
+    })(),
     series,
     currency: "INR",
     demo: true,

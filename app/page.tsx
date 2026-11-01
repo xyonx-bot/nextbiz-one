@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
+import { ensureDefaultWorkspace, getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { draftToCampaign, performance, seedCampaigns } from "@/lib/ads";
 import { Shell } from "@/components/Shell";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export default async function HomePage() {
   const initials = (user?.displayName ?? "NBO").split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase();
   const p = getPool();
 
-  const [today, active, newContacts, unread, deliveries, msgs14, msgTrend, conv14, contacts14, deliv14, recents, conn] =
+  const [today, active, newContacts, unread, deliveries, msgs14, msgTrend, conv14, contacts14, deliv14, recents, conn, wsId, adDrafts] =
     await Promise.all([
       p.query(`SELECT count(*)::int AS n FROM messages WHERE created_at > now() - interval '1 day'`),
       p.query(`SELECT count(*)::int AS n FROM conversations WHERE last_inbound_at > now() - interval '24 hours'`),
@@ -82,6 +83,9 @@ export default async function HomePage() {
                  JOIN contacts ct ON ct.id = c.contact_id
                 ORDER BY m.created_at DESC LIMIT 5`),
       p.query(`SELECT status, display_name FROM waba_connections LIMIT 1`),
+      ensureDefaultWorkspace(),
+      p.query(`SELECT id, name, objective, status, daily_budget, start_time, stop_time, destination
+               FROM ads_mock_campaigns ORDER BY created_at DESC`),
     ]);
 
   const connStatus = conn.rows[0]?.status ?? "disconnected";
@@ -111,6 +115,14 @@ export default async function HomePage() {
   const convSeries = pick(conv14.rows.map((r) => ({ d: r.d, n: r.n })));
   const contactSeries = pick(contacts14.rows.map((r) => ({ d: r.d, n: r.n })));
   const delivSeries = pick(deliv14.rows.map((r) => ({ d: r.d, n: r.n })));
+
+  // ── ads mount (P2.3 dashboard block, range=7d, demo data) ──
+  const adsRep = performance(
+    [...adDrafts.rows.map(draftToCampaign), ...seedCampaigns(wsId)],
+    7, wsId,
+  );
+  const adsMax = Math.max(...adsRep.series.map((s) => s.spend), 1);
+  const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
   // ── chart: bar pairs per day, gridlines at 25/50/75% of max (deduped) ──
   const maxAll = Math.max(...inSeries.map((v, i) => v + outSeries[i]), 1);
@@ -154,6 +166,28 @@ export default async function HomePage() {
             <div className="v">{deliveries.rows[0].n}</div>
             <div className="d"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/trend-up-bold.svg" alt="" />Delivered + read</div>
             {spark(delivSeries)}
+          </div>
+        </div>
+
+        {/* P2.3 mount block — dashboard Ads section, range=7d (from ads/performance wireframe) */}
+        <div className="mount" data-testid="ads-mount">
+          <div className="dashcard">
+            <div className="dh">
+              <b>Ads performance <span className="badge-mock">Demo data</span></b>
+              <span>last 7 days · INR</span>
+            </div>
+            <div className="ministats">
+              <div className="ms"><div className="k">Spend</div><div className="v">{inr(adsRep.totals.spend)}</div></div>
+              <div className="ms"><div className="k">Results</div><div className="v">{adsRep.totals.results.toLocaleString("en-IN")}</div></div>
+              <div className="ms"><div className="k">Clicks</div><div className="v">{adsRep.totals.clicks.toLocaleString("en-IN")}</div></div>
+              <div className="ms"><div className="k">Cost / result</div><div className="v">{adsRep.totals.cost_per_result > 0 ? inr(adsRep.totals.cost_per_result) : "—"}</div></div>
+            </div>
+            <div className="spark" aria-hidden="true">
+              {adsRep.series.map((s, i) => (
+                <i key={i} style={{ height: `${Math.max(6, Math.round((s.spend / adsMax) * 100))}%` }} />
+              ))}
+            </div>
+            <a className="dashlink" href="/ads/performance">View performance<img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/caret-right-bold.svg" alt="" /></a>
           </div>
         </div>
 

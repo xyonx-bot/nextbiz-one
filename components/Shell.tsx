@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Shell v4.3 (locked app-wide, approval-nbo-sidebar) — ported 1:1 from
@@ -18,23 +18,46 @@ export function Shell({
   userInitials,
   userName,
   unread = 0,
+  qa,
   children,
 }: {
-  active?: "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts" | "automation" | "settings";
+  active?: "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts" | "automation" | "settings" | "ads" | "ads-new" | "ads-perf";
   userInitials: string;
   userName: string;
   unread?: number;
+  /** header quick-action slot (ads pages pass <AdsQA />) */
+  qa?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [railExpanded, setRailExpanded] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [panelFlyout, setPanelFlyout] = useState(false);
+  const [adsOpen, setAdsOpen] = useState(true);
+  const [adsCounts, setAdsCounts] = useState<{ all: number; drafts: number; review: number } | null>(null);
   // v4.3: Dashboard + Settings are LEAF pages (panel hidden); Chat module
   // pages (Inbox, Contacts, Templates, Broadcasts, Automation) show the panel.
   const leafActive = active === "dashboard" || active === "settings";
   const chatActive =
     active === "inbox" || active === "contacts" || active === "templates" ||
     active === "broadcasts" || active === "automation";
+  const adsActive = active === "ads" || active === "ads-new" || active === "ads-perf";
+
+  // P2 unlock: ads panel chips carry live counts from the mock API
+  useEffect(() => {
+    if (!adsActive) return;
+    fetch("/api/ads/campaigns", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.campaigns) return;
+        const cs = d.campaigns as { status: string }[];
+        setAdsCounts({
+          all: cs.length,
+          drafts: cs.filter((c) => c.status === "DRAFT").length,
+          review: cs.filter((c) => c.status === "IN_REVIEW").length,
+        });
+      })
+      .catch(() => {});
+  }, [adsActive]);
 
   // Wireframe behavior: clicking a parent module chip at tablet width opens
   // the panel flyout (scrim behind); at desktop it navigates straight to
@@ -77,7 +100,14 @@ export function Shell({
             </a>
             <span className="tip">NextBiz Chat</span>
           </div>
-          <div className="ri mod-ads parent"><span className="mdoti" style={{ background: "var(--ads)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">NextBiz Ads</span><span className="tip">NextBiz Ads</span></div>
+          <div className={`ri mod-ads parent${adsActive ? " on" : ""}`} onClick={onParentChip}>
+            <a href="/ads" style={{ display: "contents" }}>
+              <span className="mdoti" style={{ background: "var(--ads)" }} />
+              <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" />
+              <span className="lbl">NextBiz Ads</span>
+            </a>
+            <span className="tip">NextBiz Ads</span>
+          </div>
           <div className="ri mod-social parent"><span className="mdoti" style={{ background: "var(--social)" }} /><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/images.svg" alt="" /><span className="lbl">NextBiz Social</span><span className="tip">NextBiz Social</span></div>
           <div className="sp" />
           <div className={`ri mod-ws leaf${active === "settings" ? " on" : ""}`}><a href="/settings" style={{ display: "contents" }}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/gear.svg" alt="" /><span className="lbl">Settings</span></a><span className="tip">Settings</span></div>
@@ -99,7 +129,7 @@ export function Shell({
               <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/caret-down.svg" alt="" />
             </div>
             <div className="trees">
-              <div className="tree" data-tree="chat">
+              <div className={`tree${adsActive ? " hidden" : ""}`} data-tree="chat">
                 <div className="sec"><span className="mdot" style={{ background: "var(--chat)" }} />NextBiz Chat</div>
                 <div className="sub-chips">
                   <a href="/inbox" style={{ display: "contents" }}><div className={`schip${active === "inbox" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/tray.svg" alt="" /><span className="lbl">Inbox</span>{unread > 0 && <span className="cnt">{unread}</span>}</div></a>
@@ -108,6 +138,20 @@ export function Shell({
                   <a href="/broadcasts" style={{ display: "contents" }}><div className={`schip${active === "broadcasts" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/megaphone.svg" alt="" /><span className="lbl">Broadcasts</span></div></a>
                   <a href="/automation" style={{ display: "contents" }}><div className={`schip${active === "automation" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/lightning.svg" alt="" /><span className="lbl">Automation</span></div></a>
                 </div>
+              </div>
+              <div className={`tree${adsActive ? "" : " hidden"}`} data-tree="ads">
+                <div className="sec"><span className="mdot" style={{ background: "var(--ads)" }} />NextBiz Ads</div>
+                <div className="sub-chips" style={{ paddingBottom: 2 }}>
+                  <a href="/ads/performance" style={{ display: "contents" }}><div className={`schip${active === "ads-perf" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/chart-line-up.svg" alt="" /><span className="lbl">Performance</span></div></a>
+                </div>
+                <div className={`modrow${adsOpen ? " open" : ""}`} onClick={() => setAdsOpen((v) => !v)} data-testid="ads-campaigns-modrow"><span>Campaigns</span><img className="chev" src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/caret-right.svg" alt="" /></div>
+                {adsOpen && (
+                <div className="sub-chips">
+                  <a href="/ads" style={{ display: "contents" }}><div className={`schip${active === "ads" ? " on" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/list.svg" alt="" /><span className="lbl">All campaigns</span>{adsCounts && <span className="cnt">{adsCounts.all}</span>}</div></a>
+                  <a href="/ads?status=DRAFT" style={{ display: "contents" }}><div className={`schip${active === "ads" ? "" : ""}`}><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/files.svg" alt="" /><span className="lbl">Drafts</span>{adsCounts && <span className="cnt">{adsCounts.drafts}</span>}</div></a>
+                  <a href="/ads?status=IN_REVIEW" style={{ display: "contents" }}><div className="schip"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/warning-circle.svg" alt="" /><span className="lbl">Needs review</span>{adsCounts && <span className="cnt">{adsCounts.review}</span>}</div></a>
+                </div>
+                )}
               </div>
             </div>
           </div>
@@ -127,6 +171,7 @@ export function Shell({
               <span className="kbd">⌘K</span>
             </div>
             <div className="spacer" />
+            {qa}
             <div className="status-pill"><span className="pulse" />Connected</div>
             <div className="iconbtn">
               <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/bell.svg" alt="" />

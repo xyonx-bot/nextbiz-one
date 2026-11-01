@@ -54,6 +54,14 @@ describe("ads mock data layer", () => {
       expect(r.totals.cost_per_result).toBeGreaterThan(0);
       // dates are YYYY-MM-DD and unique
       expect(new Set(r.series.map((p) => p.date)).size).toBe(days);
+      // prev window exists, same shape, deterministic, plausible (0.5x–1.4x)
+      expect(r.prev_totals.spend).toBeGreaterThan(0);
+      expect(r.prev_totals.cost_per_result).toBeGreaterThan(0);
+      const r2b = performance(cs, days, WS);
+      expect(r2b.prev_totals).toEqual(r.prev_totals);
+      const ratio = r.prev_totals.spend / r.totals.spend;
+      expect(ratio).toBeGreaterThan(0.4);
+      expect(ratio).toBeLessThan(1.6);
     }
   });
 });
