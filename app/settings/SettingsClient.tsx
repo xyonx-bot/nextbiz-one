@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
  */
 type Profile = { name: string; about: string | null; connection: { display_name: string | null; status: string | null } | null };
 type Session = { id: string; created_at: string; expires_at: string; current: boolean };
+type IgAccount = { ig_user_id: string; username: string | null; display_name: string | null; scopes: string[]; live: boolean; updated_at: string };
 
 const IC = "https://cdn.joyverse.fun/mira-assets/phosphor/bold/";
 const SECTIONS = [
@@ -23,18 +24,34 @@ export function SettingsClient({ email }: { email: string }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [note, setNote] = useState("");
+  const [ig, setIg] = useState<{ live: boolean; account: IgAccount | null } | null>(null);
+  const [igToken, setIgToken] = useState("");
 
   const load = useCallback(async () => {
-    // no-store on both: these GETs were heuristic-cached and re-served stale
+    // no-store on all: these GETs were heuristic-cached and re-served stale
     // after mutations (revoke updated the DB, the list didn't move)
-    const [p, s] = await Promise.all([
+    const [p, s, g] = await Promise.all([
       fetch("/api/settings/profile", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
       fetch("/api/settings/sessions", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
+      fetch("/api/instagram/connect", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
     ]);
     if (p?.ok) setProfile(p.profile);
     if (s?.ok) setSessions(s.sessions ?? []);
+    if (g?.ok) setIg({ live: g.live, account: g.account });
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  async function connectIg() {
+    const t = igToken.trim();
+    if (!t) { setNote("Paste an Instagram user access token first"); return; }
+    setNote("Connecting…");
+    const d = await fetch("/api/instagram/connect", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: t }),
+    }).then((x) => x.json()).catch(() => null);
+    setNote(d?.ok ? (d.mock ? "Connected in mock mode — Meta app review pending" : "Connected ✓") : (d?.error ?? "Connect failed"));
+    setIgToken("");
+    await load();
+  }
 
   async function saveProfile(patch: Record<string, unknown>) {
     const d = await fetch("/api/settings/profile", {
@@ -100,6 +117,18 @@ export function SettingsClient({ email }: { email: string }) {
             </div>
             <div className="connect-strip">
               <span><b>Adding another number?</b> Connect flow: verify number → set display name → start messaging. A number can only serve one workspace.</span>
+            </div>
+            <div className="acct" data-testid="ig-acct">
+              <span className="aic ig"><img src={`${IC}instagram-logo-bold.svg`} alt="" /></span>
+              <div className="t"><b>Instagram · {ig?.account?.username ?? "—"}</b>
+                <span>{ig?.account ? (ig.account.live ? "Connected · live" : "Mock mode — Meta app review pending") : "Not connected"}</span></div>
+              {ig?.account && !ig.account.live && <span className="badge-mock">Mock data</span>}
+              <span className={`st ${ig?.account?.live ? "ok" : "pend"}`}>{ig?.account?.live ? "Connected" : ig?.account ? "Mock" : "Pending"}</span>
+            </div>
+            <div className="connect-strip" data-testid="ig-connect-strip">
+              <span><b>Connect Instagram?</b> Paste an IG user access token — stored mock-badged until Meta app review approves the IG permissions. Webhook callback: <code>/api/webhooks/instagram</code></span>
+              <input className="ig-inp" data-testid="ig-token" placeholder="IG user access token…" value={igToken} onChange={(e) => setIgToken(e.target.value)} />
+              <button className="btn btn-ads btn-sm" data-testid="ig-connect" onClick={connectIg}>Connect</button>
             </div>
           </section>
         )}
