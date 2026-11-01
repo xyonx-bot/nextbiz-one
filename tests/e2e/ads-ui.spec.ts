@@ -85,6 +85,50 @@ test.describe("Ads UI (P2 mock port)", () => {
     await expect(page.locator(`.crow[data-testid="crow-${cid}"]`)).toBeVisible();
   });
 
+  test("P2.1 v2 — row kebab per row (no row-select on trigger, one-open, Esc close, copy hint), grid rows, tint wells, slist settings", async ({ page }) => {
+    await login(page);
+    await page.goto("/ads");
+    await expect(page.getByTestId("ads-campaigns")).toBeVisible();
+    // v2: rows are compact left-aligned 4-col grids, not tall centered boxes
+    const demoRow = page.locator('.crow[data-testid^="crow-demo-"]').first();
+    await expect(demoRow).toBeVisible();
+    const rowId = (await demoRow.getAttribute("data-testid"))!.slice("crow-".length);
+    expect(await demoRow.evaluate((el) => getComputedStyle(el).display)).toBe("grid");
+    // kebab on the row; trigger click must NOT fire row select
+    const headTitleBefore = await page.locator(".cd-head .tt b").textContent();
+    await page.getByTestId(`kebab-${rowId}`).click();
+    await expect(page.getByTestId(`kebab-menu-${rowId}`)).toBeVisible();
+    expect(await page.locator(".cd-head .tt b").textContent()).toBe(headTitleBefore);
+    // menu contents: pause/resume disabled on demo rows; copy item carries the mono id hint
+    await expect(page.getByTestId(`menu-toggle-row-${rowId}`)).toBeDisabled();
+    await expect(page.getByTestId(`menu-copy-row-${rowId}`)).toContainText(rowId);
+    // one open at a time: opening another row's kebab leaves exactly one .kebab.open
+    const otherRow = page.locator('.crow[data-testid^="crow-demo-"]').nth(1);
+    const otherId = (await otherRow.getAttribute("data-testid"))!.slice("crow-".length);
+    await page.getByTestId(`kebab-${otherId}`).click();
+    await expect(page.locator(".azone .kebab.open")).toHaveCount(1);
+    await expect(page.getByTestId(`kebab-menu-${otherId}`)).toBeVisible();
+    // Esc closes
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".azone .kebab.open")).toHaveCount(0);
+    // View performance navigates from the row menu
+    await page.getByTestId(`kebab-${rowId}`).click();
+    await Promise.all([
+      page.getByTestId(`menu-perf-row-${rowId}`).click(),
+      page.waitForURL("**/ads/performance"),
+    ]);
+    // back on /ads: v2 detail — ads-tint wells with NO delta arrows, slist def-list, two sunken .cdc panels, no fixture/API-409 body text
+    await page.goto("/ads");
+    await page.locator('.crow[data-testid^="crow-demo-"]').first().click();
+    await expect(page.getByTestId("insights-wells")).toBeVisible();
+    expect(await page.locator(".azone .well .d").count()).toBe(0);
+    expect(await page.locator(".azone .well").first().evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(255, 240, 227)");
+    await expect(page.locator(".azone .cdc")).toHaveCount(2);
+    await expect(page.locator(".azone .slist .srow").first()).toBeVisible();
+    await expect(page.locator(".azone .cd-body")).not.toContainText("fixture");
+    await expect(page.locator(".azone .cd-body")).not.toContainText("API 409");
+  });
+
   test("P2.2 /ads/new — 7-step wizard, validation, live preview, submit → IN_REVIEW", async ({ page }) => {
     await login(page);
     await page.goto("/ads/new");

@@ -1727,38 +1727,58 @@ body.composer-open .bcomposer { transform: none; }
 .azone .st.review, .pzone .st.review { background: #FFD21F; color: #1A1D23; }
 .azone .st.draft, .pzone .st.draft { background: var(--bg); color: var(--ink-2); border: 1px dashed var(--line-strong); }
 .azone .st.cancelled, .pzone .st.cancelled { background: var(--danger-tint, #FDE8E8); color: var(--danger); border: 1px solid var(--danger); }
-/* campaign detail kebab menu (3-dot) — list dropdown in the design-system language */
-.cd-menu-wrap { position: relative; flex-shrink: 0; }
-.cd-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 190px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: 0 4px 8px rgba(26,29,35,.06), 0 16px 36px rgba(26,29,35,.14); padding: 5px; display: flex; flex-direction: column; gap: 2px; z-index: 80; }
-.cd-menu .mi { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-radius: 7px; padding: 8px 10px; font-size: 11.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
-.cd-menu .mi img { width: 13px; height: 13px; color: var(--ink-3); }
-.cd-menu .mi:hover:not(:disabled) { background: var(--bg); }
-.cd-menu .mi:disabled { opacity: .45; cursor: not-allowed; }
-.cd-menu .mi.danger { color: var(--danger); }
-.cd-menu .mi.danger img { color: var(--danger); }
-.cd-menu .mi.danger.armed { background: var(--danger-tint, #FDE8E8); font-weight: 800; }
+/* kebab (overflow) menu — v2 (Joydip Nov 1): on EVERY list row + detail head.
+   List dropdown in the design-system language: surface card, r-md, soft shadow.
+   One open at a time; .up opens above the trigger near the scroller bottom;
+   Esc / outside click closes (handled in AdsClient). */
+.azone .kebab { position: relative; flex-shrink: 0; }
+.azone .kebab-btn { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--ink-3); opacity: .55; cursor: pointer; transition: background .15s var(--ease), opacity .15s var(--ease), color .15s var(--ease); flex-shrink: 0; }
+.azone .kebab-btn img { width: 15px; height: 15px; }
+.azone .crow:hover .kebab-btn, .azone .crow.on .kebab-btn, .azone .kebab.open .kebab-btn, .azone .cd-head:hover .kebab .kebab-btn { opacity: 1; color: var(--ink-2); }
+.azone .kebab-btn:hover, .azone .kebab.open .kebab-btn { background: var(--surface-sunken); color: var(--ink); }
+.azone .crow.on .kebab-btn:hover, .azone .crow.on .kebab.open .kebab-btn { background: #fff; }
+.azone .kebab-menu { position: absolute; top: calc(100% + 4px); right: 0; width: 240px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: 0 4px 8px rgba(26,29,35,.06), 0 16px 36px rgba(26,29,35,.14); padding: 5px; display: none; z-index: 90; overflow: hidden; }
+.azone .kebab.open .kebab-menu { display: block; }
+.azone .kebab-menu.up { top: auto; bottom: calc(100% + 4px); }
+.azone .kitem { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 9px; border-radius: 7px; font-size: 12px; font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; white-space: nowrap; min-width: 0; background: none; border: 0; font-family: inherit; }
+.azone .kitem img { width: 14px; height: 14px; color: var(--ink-2); flex-shrink: 0; }
+.azone .kitem:hover:not(:disabled) { background: var(--bg); }
+.azone .kitem .khint { margin-left: auto; font-size: 9.5px; font-weight: 500; color: var(--ink-3); font-family: ui-monospace, monospace; min-width: 0; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; }
+.azone .kitem.dis, .azone .kitem:disabled { opacity: .45; cursor: not-allowed; }
+.azone .kitem.dis:hover, .azone .kitem:disabled:hover { background: none; }
+.azone .kitem.danger { color: var(--danger); }
+.azone .kitem.danger img { color: var(--danger); }
+.azone .kitem.danger.armed { background: var(--danger-tint, #FBE7E2); font-weight: 800; }
+.azone .ksep { height: 1px; background: var(--line); margin: 5px 4px; }
 
 /* ── P2.1 campaigns master-detail ── */
 .azone { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px 1fr; gap: 14px; padding: 0 0 12px; }
 .azone .clist { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 .azone .clist-head { padding: 12px 12px 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; flex-shrink: 0; }
-.azone .tpills { display: flex; gap: 6px; flex-wrap: wrap; }
+/* v2: pills never wrap in the narrow list column — one scrollable row, hidden
+   scrollbar, right-edge fade mask (Joydip Nov 1) */
+.azone .tpills { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); flex-shrink: 0; }
+.azone .tpills::-webkit-scrollbar { display: none; }
 .azone .tsearch { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); padding: 7px 10px; box-shadow: var(--clay-in); }
 .azone .tsearch img { width: 13px; height: 13px; }
 .azone .tsearch input { border: none; outline: none; background: none; font: inherit; font-size: 12px; width: 100%; min-width: 0; color: var(--ink); }
 .azone .tsearch input::placeholder { color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.azone .crows { overflow-y: auto; padding: 6px; flex: 1; min-height: 0; }
-.azone .crow { display: flex; flex-direction: column; gap: 4px; padding: 9px 10px; border-radius: var(--r-sm); cursor: pointer; }
+.azone .crows { overflow-y: auto; overflow-x: hidden; padding: 6px; flex: 1; min-height: 0; }
+/* v2 row (Joydip Nov 1): compact 4-col grid — icon | name+meta | status+spend
+   right stack | kebab — LEFT-aligned, height = content, hairline dividers
+   between rows (none around the selected row). Never a tall centered box. */
+.azone .crow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; border-top: 1px solid var(--line); }
+.azone .crows .crow:first-child, .azone .crow.on, .azone .crow.on + .crow { border-top-color: transparent; }
 .azone .crow:hover { background: var(--surface-sunken); }
 .azone .crow.on { background: var(--ads-tint); }
-.azone .crow .r1 { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.azone .crow .r1 .dt-ic { margin-right: 0; }
-.azone .crow .r1 b { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.azone .crow .r1 .st { margin-left: auto; }
-.azone .crow .r2 { display: flex; gap: 6px; align-items: center; font-size: 10.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; }
-.azone .crow .r2 .obj { overflow: hidden; text-overflow: ellipsis; }
-.azone .crow .r2 .sep { color: var(--ink-3); }
-.azone .crow .r2 .spend { margin-left: auto; font-weight: 700; color: var(--ink); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.azone .crow .dt-ic { margin-right: 0; }
+.azone .crow .mid { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.azone .crow .mid b { font-size: 13px; font-weight: 800; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.azone .crow .mid .meta { font-size: 10.5px; font-weight: 400; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.azone .crow .mid .meta .sep { color: var(--ink-3); }
+.azone .crow .side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.azone .crow .spend { font-size: 11px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.azone .crow .spend.zero { color: var(--ink-3); font-weight: 500; }
 .azone .cempty { padding: 22px 14px; text-align: center; color: var(--ink-3); font-size: 12px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .azone .cempty img { width: 22px; height: 22px; opacity: .5; }
 .azone .cdetail { display: flex; flex-direction: column; overflow: hidden; min-height: 0; min-width: 0; }
@@ -1770,23 +1790,40 @@ body.composer-open .bcomposer { transform: none; }
 .azone .cd-head .back { display: none; width: 30px; height: 30px; border-radius: var(--r-sm); background: var(--bg); border: 1px solid var(--line); place-items: center; flex-shrink: 0; }
 .azone .cd-head .back img { width: 14px; height: 14px; }
 .azone .cd-body { flex: 1; overflow-y: auto; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
-.azone .cd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; min-height: 0; }
-.azone .wells { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border-radius: var(--r-md); overflow: hidden; box-shadow: var(--clay-in); }
-.azone .well { background: var(--surface-sunken); padding: 10px 12px; min-width: 0; }
-.azone .well .k { overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
-.azone .well .v { overflow: hidden; text-overflow: ellipsis; font-size: 17px; font-weight: 800; letter-spacing: -0.02em; margin-top: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.azone .well .d { font-size: 10px; font-weight: 700; color: var(--chat-deep); margin-top: 2px; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
-.azone .well .d img { width: 10px; height: 10px; }
-.azone .well .d.down { color: var(--danger); }
-.azone .mgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
-.azone .mgrid .m .k { font-size: var(--fs-micro); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
-.azone .mgrid .m .v { font-size: 12.5px; font-weight: 600; margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.azone .mgrid .m .v img { width: 12px; height: 12px; color: var(--ink-3); }
-.azone .arow { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: var(--r-sm); }
-.azone .arow:hover { background: var(--surface-sunken); }
-.azone .arow b { font-size: 12.5px; font-weight: 700; }
-.azone .arow .meta { font-size: 10.5px; color: var(--ink-2); }
-.azone .arow .spend { margin-left: auto; font-size: 11px; font-weight: 700; }
+/* v2: cd-grid sizes to content, panels stretch to equal height (cd-body scrolls
+   as a whole) */
+.azone .cd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
+/* v2 insights: ONE ads-tint strip, hairline dividers, values left-aligned
+   tabular en-IN — NO sunken wells, NO delta chips/arrows on this page */
+.azone .wells { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border-radius: var(--r-md); overflow: hidden; }
+.azone .well { background: var(--ads-tint); padding: 11px 12px; min-width: 0; }
+.azone .well .k { overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ads-deep); white-space: nowrap; opacity: .85; }
+.azone .well .v { overflow: hidden; text-overflow: ellipsis; font-size: 17px; font-weight: 800; letter-spacing: -0.02em; margin-top: 4px; white-space: nowrap; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* v2 lower sections: two sunken .cdc panels with tinted header bands (depth
+   change inside the white detail card — never nested raised white cards) */
+.azone .cdc { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.azone .cdc-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-sunken); border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.azone .cdc-head img { width: 13px; height: 13px; color: var(--ads-deep); flex-shrink: 0; }
+.azone .cdc-head .t { font-size: var(--fs-micro); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.azone .cdc-head .ro { margin-left: auto; font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); flex-shrink: 0; }
+.azone .cdc-body { padding: 2px 12px 8px; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.azone .cdc-note { margin: auto 12px 10px; background: var(--ads-tint); border-radius: var(--r-sm); padding: 7px 10px; display: flex; gap: 7px; align-items: flex-start; font-size: 10.5px; font-weight: 500; color: var(--ads-deep); line-height: 1.45; }
+.azone .cdc-note img { width: 12px; height: 12px; flex-shrink: 0; margin-top: 1px; }
+/* v2 settings: definition list — fixed 108px label col, hairline dividers, NO
+   icons in values (values share one x-edge), notes 10.5/400 ink-3 */
+.azone .slist { display: flex; flex-direction: column; }
+.azone .srow { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.azone .srow:last-child { border-bottom: 0; }
+.azone .srow .k { font-size: var(--fs-micro); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+.azone .srow .v { font-size: 12.5px; font-weight: 600; color: var(--ink); line-height: 1.45; min-width: 0; overflow-wrap: break-word; font-variant-numeric: tabular-nums; }
+.azone .srow .v .badge-mock { margin-right: 6px; }
+/* v2 ad set rows: bold 800 name over 400 meta (no repeated "Active" in meta), pill right */
+.azone .arow { display: flex; align-items: center; gap: 9px; padding: 9px 2px; }
+.azone .arow + .arow { border-top: 1px solid var(--line); }
+.azone .arow .mid { min-width: 0; flex: 1; }
+.azone .arow b { display: block; font-size: 12.5px; font-weight: 800; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.azone .arow .meta { font-size: 10.5px; font-weight: 400; color: var(--ink-2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.azone .arow .st { margin-left: auto; }
 .azone .banner-review { background: var(--warn-tint); border: 1px solid #F0E3AC; border-radius: var(--r-md); padding: 10px 12px; display: flex; gap: 9px; align-items: flex-start; }
 .azone .banner-review img { width: 14px; height: 14px; color: var(--warn); margin-top: 1px; flex-shrink: 0; }
 .azone .banner-review b { display: block; font-size: 11.5px; font-weight: 800; color: var(--warn); }
@@ -1804,13 +1841,17 @@ body.composer-open .bcomposer { transform: none; }
   body.show-detail .azone .clist { display: none; }
   .azone .cd-head .back { display: grid; }
   .azone .cd-head { flex-wrap: wrap; }
-  .azone .cd-head .acts { width: 100%; }
+  /* v2: actions + kebab share one row on mobile (kebab must not wrap alone) */
+  .azone .cd-head .acts { flex: 1; width: auto; }
   .azone .cd-head .acts .btn { flex: 1; justify-content: center; }
   .azone .wells { grid-template-columns: repeat(2, 1fr); }
-  .azone .mgrid { grid-template-columns: 1fr; }
   .azone .cd-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 420px) { .azone .crow .r2 .obj { display: none; } .azone .crow .r2 .sep { display: none; } }
+@media (max-width: 420px) {
+  .azone .crow .mid .meta .obj, .azone .crow .mid .meta .sep { display: none; }
+  .azone .srow { grid-template-columns: 92px minmax(0, 1fr); gap: 8px; }
+  .azone .kebab-menu { width: 224px; }
+}
 
 /* ── P2.2 wizard ── */
 .wzone { flex: 1; min-height: 0; display: grid; grid-template-columns: 208px 1fr 300px; gap: 14px; padding: 0 0 12px; align-items: start; }
