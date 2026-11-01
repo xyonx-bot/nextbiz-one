@@ -103,11 +103,14 @@ test.describe("Ads UI (P2 mock port)", () => {
     await expect(page.getByTestId(`menu-toggle-row-${rowId}`)).toBeDisabled();
     await expect(page.getByTestId(`menu-copy-row-${rowId}`)).toContainText(rowId);
     // one open at a time: opening another row's kebab leaves exactly one .kebab.open
+    // (dispatchEvent: the first menu overlaps row 2's trigger geometrically — real
+    // pointer would land on the open menu item, which also closes it)
     const otherRow = page.locator('.crow[data-testid^="crow-demo-"]').nth(1);
     const otherId = (await otherRow.getAttribute("data-testid"))!.slice("crow-".length);
-    await page.getByTestId(`kebab-${otherId}`).click();
+    await page.getByTestId(`kebab-${otherId}`).dispatchEvent("click");
     await expect(page.locator(".azone .kebab.open")).toHaveCount(1);
     await expect(page.getByTestId(`kebab-menu-${otherId}`)).toBeVisible();
+    await expect(page.getByTestId(`kebab-menu-${rowId}`)).toHaveCount(0);
     // Esc closes
     await page.keyboard.press("Escape");
     await expect(page.locator(".azone .kebab.open")).toHaveCount(0);
