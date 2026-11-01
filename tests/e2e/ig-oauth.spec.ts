@@ -63,4 +63,20 @@ test.describe("IG business login OAuth", () => {
     await expect(page.getByTestId("ig-oauth")).toBeVisible();
     await expect(page.getByTestId("ig-oauth")).toContainText("Login with Instagram");
   });
+
+  test("rail: ads chip navigates to /ads; social chip opens social tree with connect CTA", async ({ page }) => {
+    await login(page);
+    await page.goto("/");
+    // ads parent chip -> /ads (desktop width navigates via anchor)
+    await page.locator(".ri.mod-ads a").click();
+    await page.waitForURL("**/ads**");
+    expect(page.url()).toContain("/ads");
+    // social chip -> panel tree (no dead button)
+    await page.locator('[data-testid="rail-social"]').click();
+    await expect(page.getByTestId("social-tree")).toBeVisible();
+    await expect(page.getByTestId("ig-p3-pending")).toContainText("P3");
+    await page.getByTestId("ig-connect-link").click();
+    await page.waitForURL("**/settings**");
+    expect(page.url()).toContain("/settings");
+  });
 });

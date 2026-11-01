@@ -12,7 +12,9 @@ import { verifySignature } from "./webhook";
 export const igLive = (): boolean => process.env.IG_LIVE === "true";
 
 export function verifyIgSignature(rawBody: string, header: string | null): boolean {
-  const secret = process.env.IG_APP_SECRET;
+  // IG webhook signature uses the Meta APP secret — same app as WhatsApp,
+  // so fall back to WHATSAPP_APP_SECRET when IG_APP_SECRET is unset.
+  const secret = process.env.IG_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
   if (!secret) return true; // optional in dev, FORCED when configured (same as WA)
   return verifySignature(rawBody, header, secret);
 }

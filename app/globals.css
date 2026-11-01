@@ -116,6 +116,7 @@ body:not(.rail-expanded) .ri:hover .tip { opacity: 1; transform: translateY(-50%
 .npanel .trees { flex: 1; overflow-y: auto; min-height: 0; }
 .tree { display: flex; flex-direction: column; }
 .tree.hidden { display: none; }
+.treenote { font-size: 9.5px; color: var(--ink-3); padding: 6px 10px 8px; line-height: 1.45; border-top: 1px dashed var(--line); margin-top: 4px; }
 /* children — flat rows, subtle tint */
 .sub-chips { display: flex; flex-direction: column; gap: 2px; padding: 2px 8px 8px; }
 .schip { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--ink-2); transition: background .15s var(--ease), color .15s var(--ease); }
