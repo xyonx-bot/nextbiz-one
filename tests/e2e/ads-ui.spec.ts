@@ -218,4 +218,82 @@ test.describe("Ads UI (P2 mock port)", () => {
     await expect(mount.locator(".ministats .ms")).toHaveCount(4);
     await expect(mount.locator(".dashlink")).toContainText("View performance");
   });
+
+  test("P2.1 v3 scale-down — computed styles match wireframe v3 numbers + zero overflow at 360/768/1440", async ({ page }) => {
+    await login(page);
+    await page.goto("/ads"); // default project viewport 1440x900
+    const firstRow = page.locator('.crow[data-testid^="crow-demo-"]').first();
+    await firstRow.click();
+    await expect(page.getByTestId("insights-wells")).toBeVisible();
+
+    const cs = (sel: string, prop: string) =>
+      page.locator(sel).first().evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
+
+    // list row: left-aligned content-height grid (~45px), v3 padding 7px 9px
+    expect(await cs(".azone .crow", "display")).toBe("grid");
+    expect(await cs(".azone .crow", "padding-top")).toBe("7px");
+    expect(await cs(".azone .crow", "padding-left")).toBe("9px");
+    const rowH = await firstRow.evaluate((el) => el.getBoundingClientRect().height);
+    // content-height compact row (wireframe measures ≈45px; app line-height makes it
+    // ~49px — the point: NOT the old tall ~105px centered box, NOT v2's taller row)
+    expect(rowH, `row height ${rowH}px`).toBeGreaterThan(42);
+    expect(rowH, `row height ${rowH}px`).toBeLessThan(52);
+    // v3 type roles on the row
+    expect(await cs(".azone .crow .mid b", "font-size")).toBe("12px");
+    expect(await cs(".azone .crow .mid b", "font-weight")).toBe("800");
+    expect(await cs(".azone .crow .mid .meta", "font-size")).toBe("10px");
+    expect(await cs(".azone .crow .spend", "font-size")).toBe("10.5px");
+    expect(await cs(".azone .crow .st", "font-size")).toBe("8.5px");
+    expect(await cs(".azone .crow .dt-ic", "width")).toBe("24px");
+    // kebab: 26px trigger, 224px menu when open (208px <420)
+    expect(await cs(".azone .crow .kebab-btn", "width")).toBe("26px");
+    const rowId = (await firstRow.getAttribute("data-testid"))!.slice("crow-".length);
+    await page.getByTestId(`kebab-${rowId}`).click();
+    expect(await page.locator(".azone .kebab-menu").first().evaluate((el) => el.getBoundingClientRect().width)).toBe(224);
+    await page.keyboard.press("Escape");
+    // filter chips + demo badge scaled down
+    expect(await cs(".azone .tpills .chip", "font-size")).toBe("10.5px");
+    expect(await cs(".azone .badge-mock", "font-size")).toBe("9px");
+    // detail head + body
+    expect(await cs(".azone .cd-head", "padding-top")).toBe("10px");
+    expect(await cs(".azone .cd-head .tt b", "font-size")).toBe("13.5px");
+    expect(await cs(".azone .cd-head .tt span", "font-size")).toBe("10.5px");
+    expect(await cs(".azone .cd-head .dt-ic.ads.big", "width")).toBe("30px");
+    expect(await cs(".azone .cd-head .acts .btn", "min-height")).toBe("32px");
+    expect(await cs(".azone .cd-body", "padding-top")).toBe("10px");
+    // insights strip: tint well, k 9 / v 15
+    expect(await cs(".azone .well", "padding-top")).toBe("9px");
+    expect(await cs(".azone .well .k", "font-size")).toBe("9px");
+    expect(await cs(".azone .well .v", "font-size")).toBe("15px");
+    // settings def-list: 100px label col, v 12/600; Destination populated per wireframe
+    expect((await cs(".azone .srow", "grid-template-columns")).startsWith("100px")).toBe(true);
+    expect(await cs(".azone .srow .v", "font-size")).toBe("12px");
+    await expect(page.locator(".azone .srow").filter({ hasText: "Destination" })).toContainText("WhatsApp — Acme Studio");
+    // ad-set rows scaled
+    expect(await cs(".azone .arow", "padding-top")).toBe("8px");
+    expect(await cs(".azone .arow b", "font-size")).toBe("12px");
+    expect(await cs(".azone .arow .meta", "font-size")).toBe("10px");
+
+    // zero horizontal overflow at 360/768/1440 — list AND detail states
+    for (const w of [360, 768, 1440]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.goto("/ads");
+      await expect(page.getByTestId("ads-campaigns")).toBeVisible();
+      let over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(over, `list h-overflow at ${w}px`).toBeLessThanOrEqual(0);
+      // row tap → detail (<640 swaps list→detail via body.show-detail)
+      await page.locator('.crow[data-testid^="crow-demo-"]').first().click();
+      await expect(page.getByTestId("insights-wells")).toBeVisible();
+      over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(over, `detail h-overflow at ${w}px`).toBeLessThanOrEqual(0);
+      if (w === 360) {
+        // <420 overrides: srow label col 88px, kebab menu 208px (detail-head kebab —
+        // row kebabs are hidden with the list at <640)
+        expect((await cs(".azone .srow", "grid-template-columns")).startsWith("88px")).toBe(true);
+        await page.getByTestId("kebab").click();
+        expect(await page.locator(".azone .kebab-menu").first().evaluate((el) => el.getBoundingClientRect().width)).toBe(208);
+        await page.keyboard.press("Escape");
+      }
+    }
+  });
 });
