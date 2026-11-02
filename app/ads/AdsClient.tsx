@@ -4,13 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * P2.1 Ads campaigns v2 — master-detail, ported 1:1 from
- * ~/workspaces/mira/prototypes/nextbiz-one/ads/campaigns/wireframe.html v2
- * (Joydip Nov 1 redesign) + HANDOFF.md "Revisions Nov 1" + port-bug list:
+ * P2.1 Ads campaigns v3 — master-detail, ported 1:1 from
+ * ~/workspaces/mira/prototypes/nextbiz-one/ads/campaigns/wireframe.html v3
+ * (Joydip Nov 1 pm SCALE-DOWN; v2 restructure + port-bug list carried):
  * compact 4-col left-aligned rows w/ hairline dividers, kebab on EVERY row +
  * detail head, ads-tint insights strip (no deltas), two sunken .cdc panels,
- * settings as 108px definition list (Source=badge only, Status=pill only),
- * peach read-only note. Mock-badged (Meta audit: no ad account / no ads perms).
+ * settings as 100px definition list (Source=badge only, Status=pill only),
+ * peach read-only note. v3 numbers live in the .azone-scoped override block
+ * at the end of the ads section in globals.css. Mock-badged (Meta audit: no
+ * ad account / no ads perms).
  * Demo rows read-only (PATCH → 409); drafts support pause/resume/duplicate.
  * Mobile <640 uses body.show-detail master→detail like contacts.
  */
@@ -477,7 +479,7 @@ export function AdsClient({ initialStatus }: { initialStatus: string }) {
                         <span className="k">Destination</span>
                         <span className="v">
                           {sel.destination === "whatsapp"
-                            ? "WhatsApp — NextBiz One"
+                            ? "WhatsApp — Acme Studio"
                             : sel.destination === "website"
                               ? "Website — link clicks to your site"
                               : "Not set"}
