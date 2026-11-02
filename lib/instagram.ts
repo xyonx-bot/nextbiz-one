@@ -241,7 +241,7 @@ export const IG_SCOPES = [
 ] as const;
 
 /** Dialog URL the Settings "Login with Instagram" button redirects to. */
-export function igOAuthDialogUrl(redirectUri: string, state: string, appId: string): string {
+export function igOAuthDialogUrl(redirectUri: string, state: string, appId: string, configId?: string): string {
   const q = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
@@ -249,6 +249,9 @@ export function igOAuthDialogUrl(redirectUri: string, state: string, appId: stri
     response_type: "code",
     state,
   });
+  // Unified Instagram login config (App Dashboard → Instagram use case → config ID).
+  // Without config_id Meta rejects instagram_business_* scopes as invalid.
+  if (configId) q.set("config_id", configId);
   return `https://www.facebook.com/v21.0/dialog/oauth?${q.toString()}`;
 }
 

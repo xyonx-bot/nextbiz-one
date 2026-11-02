@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   }
   const redirectUri = `${base}/api/auth/instagram/callback`;
   const state = randomBytes(16).toString("hex");
-  const res = NextResponse.redirect(igOAuthDialogUrl(redirectUri, state, appId));
+  const res = NextResponse.redirect(igOAuthDialogUrl(redirectUri, state, appId, process.env.IG_CONFIG_ID || undefined));
   res.cookies.set("ig_oauth_state", state, {
     httpOnly: true, sameSite: "lax", secure: true, path: "/", maxAge: 600,
   });

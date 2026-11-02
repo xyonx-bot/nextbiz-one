@@ -12,6 +12,12 @@ describe("igOAuthDialogUrl (Instagram Business Login)", () => {
     expect(q.get("state")).toBe("st-123");
     expect(q.get("scope")?.split(",")).toEqual([...IG_SCOPES]);
     expect(q.get("scope")).toContain("instagram_business_manage_messages");
+    expect(q.get("config_id")).toBeNull(); // optional — only with unified login config
+  });
+
+  it("includes config_id when the unified Instagram login config is provided", () => {
+    const u = igOAuthDialogUrl("https://one-beta.nextbizstudio.com/api/auth/instagram/callback", "st-9", "APPID", "1823777935713893");
+    expect(new URL(u).searchParams.get("config_id")).toBe("1823777935713893");
   });
 });
 
