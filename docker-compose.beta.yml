@@ -43,6 +43,7 @@ services:
       IG_APP_ID: ${IG_APP_ID:-}
       IG_APP_SECRET: ${IG_APP_SECRET:-}
       IG_WEBHOOK_VERIFY_TOKEN: ${IG_WEBHOOK_VERIFY_TOKEN:-}
+      IG_CONFIG_ID: ${IG_CONFIG_ID:-}
       NODE_ENV: production
     networks: [joyverse_main_network]
 
