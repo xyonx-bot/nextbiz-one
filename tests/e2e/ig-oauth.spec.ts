@@ -81,7 +81,7 @@ test.describe("IG business login OAuth", () => {
     // social chip -> panel tree (no dead button)
     await page.locator('[data-testid="rail-social"]').click();
     await expect(page.getByTestId("social-tree")).toBeVisible();
-    await expect(page.getByTestId("ig-p3-pending")).toContainText("P3");
+    await expect(page.getByTestId("ig-connect-link")).toBeVisible();
     await page.getByTestId("ig-connect-link").click();
     await page.waitForURL("**/settings**");
     expect(page.url()).toContain("/settings");
