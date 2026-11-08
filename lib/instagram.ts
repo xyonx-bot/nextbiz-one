@@ -20,6 +20,11 @@ export async function gfetch(url: string): Promise<Response> {
   return fetch(url, { signal: AbortSignal.timeout(12000) });
 }
 
+/** encodeURIComponent shorthand for token-in-URL spots. */
+function encToken(t: string): string {
+  return encodeURIComponent(t);
+}
+
 /** Read Meta's error.message out of a failed Graph response (best effort). */
 async function metaErr(res: Response): Promise<string> {
   try {
@@ -342,8 +347,21 @@ export async function exchangeIgCode(
     if (long.access_token) { token = long.access_token; expiresIn = long.expires_in; }
   }
 
+  // Diagnostic (never throws): log the scopes Meta actually granted, so a
+  // missing-permission failure (e.g. business_management) is readable from
+  // the container log instead of guessed in the browser.
+  try {
+    const dbg = await gfetch(
+      `https://graph.facebook.com/v21.0/debug_token?input_token=${encToken(token)}&access_token=${appId}%7C${appSecret}`,
+    );
+    if (dbg.ok) {
+      const j = (await dbg.json()) as { data?: { scopes?: string[]; type?: string } };
+      console.log(`[ig] token scopes: ${j.data?.scopes?.join(",") ?? "unknown"} (type ${j.data?.type ?? "?"})`);
+    }
+  } catch { /* diagnostic only */ }
+
   const ig = await resolveIgAccount(token);
-  if (!ig.id) throw new Error("IG account not found for this token — check the config's IG asset / business portfolio");
+  if (!ig.id) throw new Error("IG account not found for this token — the login config likely lacks business_management (check App Dashboard → Instagram use case → config permissions)");
 
   const p = getPool();
   const wsId = await ensureWs();
@@ -380,6 +398,18 @@ export async function resolveIgAccount(token: string): Promise<{ id: string | nu
       if (first?.id) return { id: String(first.id), username: first.username };
     } else {
       console.error("[ig] owned_instagram_accounts lookup failed:", await metaErr(r));
+    }
+    // 1b) Same asset via the edge (not the field) — some token types allow
+    // the edge but not the business-object field read.
+    const e = await gfetch(
+      `https://graph.facebook.com/v21.0/${businessId}/owned_instagram_accounts?fields=id%2Cusername&access_token=${enc}`,
+    );
+    if (e.ok) {
+      const j = (await e.json()) as { data?: { id?: string; username?: string }[] };
+      const first = j.data?.[0];
+      if (first?.id) return { id: String(first.id), username: first.username };
+    } else {
+      console.error("[ig] owned_instagram_accounts edge failed:", await metaErr(e));
     }
   }
   // 2) Classic FB-login fallback: Page-linked instagram_business_account.
