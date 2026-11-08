@@ -245,13 +245,21 @@ export function igOAuthDialogUrl(redirectUri: string, state: string, appId: stri
   const q = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
-    scope: IG_SCOPES.join(","),
     response_type: "code",
     state,
   });
-  // Unified Instagram login config (App Dashboard → Instagram use case → config ID).
-  // Without config_id Meta rejects instagram_business_* scopes as invalid.
-  if (configId) q.set("config_id", configId);
+  if (configId) {
+    // Unified login / Facebook Login for Business: permissions live INSIDE the
+    // saved config (App Dashboard → Instagram use case → config ID). Passing
+    // instagram_business_* as a raw `scope` alongside config_id makes Meta
+    // reject the dialog with "Invalid Scopes: instagram_business_*".
+    // Per Meta docs for config-based login, scope must NOT be sent and
+    // override_default_response_type=true makes response_type=code win.
+    q.set("config_id", configId);
+    q.set("override_default_response_type", "true");
+  } else {
+    q.set("scope", IG_SCOPES.join(","));
+  }
   return `https://www.facebook.com/v21.0/dialog/oauth?${q.toString()}`;
 }
 

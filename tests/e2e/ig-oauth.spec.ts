@@ -32,7 +32,14 @@ test.describe("IG business login OAuth", () => {
     expect(loc.startsWith("https://www.facebook.com/v21.0/dialog/oauth?")).toBe(true);
     const q = new URL(loc).searchParams;
     expect(q.get("response_type")).toBe("code");
-    expect(q.get("scope")).toContain("instagram_business_manage_messages");
+    // unified config mode: config_id present, raw scope must be absent (Meta rejects it);
+    // legacy mode (no config): raw scope present.
+    if (q.get("config_id")) {
+      expect(q.get("scope")).toBeNull();
+      expect(q.get("override_default_response_type")).toBe("true");
+    } else {
+      expect(q.get("scope")).toContain("instagram_business_manage_messages");
+    }
     // redirect_uri points back at THIS host's callback (origin-derived or PUBLIC_URL)
     expect(q.get("redirect_uri")).toMatch(/\/api\/auth\/instagram\/callback$/);
     expect(q.get("state")).toBeTruthy();
