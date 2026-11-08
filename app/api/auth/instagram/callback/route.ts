@@ -53,6 +53,10 @@ export async function GET(req: Request) {
     console.log(`[ig] connected @${account.username ?? account.ig_user_id} via business login`);
     return res;
   } catch (e) {
-    return html(`<h1>Connect failed</h1><p>${(e as Error).message}</p><a class="b" href="/settings">Back to Settings</a>`, 502);
+    // 200, not 502: a 5xx status here is rendered by Cloudflare as a generic
+    // "Bad Gateway" page and the real error is lost. Log server-side and
+    // show the message so the failure is debuggable from the browser.
+    console.error("[ig] callback exchange failed:", (e as Error).message);
+    return html(`<h1>Connect failed</h1><p>${(e as Error).message}</p><a class="b" href="/settings">Back to Settings</a>`, 200);
   }
 }
