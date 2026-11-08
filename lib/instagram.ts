@@ -11,6 +11,24 @@ import { verifySignature } from "./webhook";
 
 export const igLive = (): boolean => process.env.IG_LIVE === "true";
 
+/**
+ * Fetch with a hard timeout. Without this, one slow Graph call hangs the
+ * callback past nginx's proxy_read_timeout and Cloudflare renders a
+ * generic 502 — the real failure disappears. 12s is generous for Graph.
+ */
+export async function gfetch(url: string): Promise<Response> {
+  return fetch(url, { signal: AbortSignal.timeout(12000) });
+}
+
+/** Read Meta's error.message out of a failed Graph response (best effort). */
+async function metaErr(res: Response): Promise<string> {
+  try {
+    const j = (await res.json()) as { error?: { message?: string; code?: number } };
+    if (j.error?.message) return `${res.status} ${j.error.message}${j.error.code ? ` (code ${j.error.code})` : ""}`;
+  } catch { /* non-JSON error body */ }
+  return `${res.status}`;
+}
+
 export function verifyIgSignature(rawBody: string, header: string | null): boolean {
   // IG webhook signature uses the Meta APP secret — same app as WhatsApp,
   // so fall back to WHATSAPP_APP_SECRET when IG_APP_SECRET is unset.
@@ -187,16 +205,16 @@ export async function connectIgAccount(
   const appId = process.env.IG_APP_ID;
   const appSecret = process.env.IG_APP_SECRET;
   if (!appId || !appSecret) throw new Error("IG_APP_ID / IG_APP_SECRET not configured on host");
-  const exRes = await fetch(
+  const exRes = await gfetch(
     `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${encodeURIComponent(shortToken)}`,
   );
   if (!exRes.ok) throw new Error(`token exchange failed: ${exRes.status}`);
   const ex = (await exRes.json()) as { access_token?: string; expires_in?: number };
   if (!ex.access_token) throw new Error("token exchange returned no access_token");
-  const meRes = await fetch(
+  const meRes = await gfetch(
     `https://graph.facebook.com/v21.0/me?fields=id,username,name&access_token=${encodeURIComponent(ex.access_token)}`,
   );
-  if (!meRes.ok) throw new Error(`IG /me failed: ${meRes.status}`);
+  if (!meRes.ok) throw new Error(`IG /me failed: ${await metaErr(meRes)}`);
   const me = (await meRes.json()) as { id?: string; username?: string; name?: string };
   if (!me.id) throw new Error("IG /me returned no id");
   const expiresAt = ex.expires_in ? new Date(Date.now() + ex.expires_in * 1000).toISOString() : null;
@@ -288,8 +306,8 @@ export async function exchangeIgCode(
     client_id: appId, client_secret: appSecret,
     redirect_uri: redirectUri, code: cleanCode,
   });
-  const tRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${q.toString()}`);
-  if (!tRes.ok) throw new Error(`IG code exchange failed: ${tRes.status}`);
+  const tRes = await gfetch(`https://graph.facebook.com/v21.0/oauth/access_token?${q.toString()}`);
+  if (!tRes.ok) throw new Error(`IG code exchange failed: ${await metaErr(tRes)}`);
   const short = (await tRes.json()) as { access_token?: string; expires_in?: number };
   if (!short.access_token) throw new Error("IG code exchange returned no access_token");
 
@@ -301,7 +319,7 @@ export async function exchangeIgCode(
     grant_type: "fb_exchange_token",
     client_id: appId, client_secret: appSecret, fb_exchange_token: token,
   });
-  const exRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${exQ.toString()}`);
+  const exRes = await gfetch(`https://graph.facebook.com/v21.0/oauth/access_token?${exQ.toString()}`);
   if (exRes.ok) {
     const long = (await exRes.json()) as { access_token?: string; expires_in?: number };
     if (long.access_token) { token = long.access_token; expiresIn = long.expires_in; }
@@ -336,17 +354,19 @@ export async function resolveIgAccount(token: string): Promise<{ id: string | nu
   // 1) Unified login: IG account is a business-portfolio asset.
   const businessId = process.env.META_BUSINESS_ID;
   if (businessId) {
-    const r = await fetch(
+    const r = await gfetch(
       `https://graph.facebook.com/v21.0/${businessId}?fields=owned_instagram_accounts%7Bid%2Cusername%7D&access_token=${enc}`,
     );
     if (r.ok) {
       const j = (await r.json()) as { owned_instagram_accounts?: { data?: { id?: string; username?: string }[] } };
       const first = j.owned_instagram_accounts?.data?.[0];
       if (first?.id) return { id: String(first.id), username: first.username };
+    } else {
+      console.error("[ig] owned_instagram_accounts lookup failed:", await metaErr(r));
     }
   }
   // 2) Classic FB-login fallback: Page-linked instagram_business_account.
-  const r2 = await fetch(
+  const r2 = await gfetch(
     `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account%7Bid%7D&access_token=${enc}`,
   );
   if (r2.ok) {
@@ -357,6 +377,8 @@ export async function resolveIgAccount(token: string): Promise<{ id: string | nu
     if (hit?.instagram_business_account?.id) {
       return { id: String(hit.instagram_business_account.id), username: hit.name };
     }
+  } else {
+    console.error("[ig] /me/accounts lookup failed:", await metaErr(r2));
   }
   return { id: null };
 }

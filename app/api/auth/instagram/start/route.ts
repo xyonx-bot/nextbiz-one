@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   const state = randomBytes(16).toString("hex");
   const res = NextResponse.redirect(igOAuthDialogUrl(redirectUri, state, appId, process.env.IG_CONFIG_ID || undefined));
   res.cookies.set("ig_oauth_state", state, {
-    httpOnly: true, sameSite: "lax", secure: true, path: "/", maxAge: 600,
+    httpOnly: true, sameSite: "lax", secure: true, path: "/", maxAge: 1800,
   });
   return res;
 }
