@@ -122,16 +122,22 @@ test.describe("IG access prep (r-nbo-ig-access-prep)", () => {
     expect(badMsg.rowCount).toBe(0);
   });
 
-  test("settings connections: IG row mock-badged; connect stores mock account", async ({ page }) => {
+  test("settings connections: IG connect via API stores mock account (IG_LIVE=false)", async ({ page }) => {
     await login(page);
     await page.goto("/settings");
     await page.locator(".si", { hasText: "Connections" }).click();
     await expect(page.getByTestId("ig-acct")).toBeVisible();
     await expect(page.getByTestId("ig-acct").locator(".st")).toBeVisible();
-    await page.getByTestId("ig-token").fill("EAAmock-token-123");
-    await page.getByTestId("ig-connect").click();
+    const conn = await page.request.post("/api/instagram/connect", {
+      data: { access_token: "EAAmock-token-123" },
+    });
+    const connJ = (await conn.json()) as { ok: boolean; mock: boolean };
+    expect(connJ.ok).toBe(true);
+    expect(connJ.mock).toBe(true);
+    await page.reload();
+    await page.locator(".si", { hasText: "Connections" }).click();
     await expect(page.getByTestId("ig-acct")).toContainText("@mock_business");
-    await expect(page.getByTestId("ig-acct").locator(".badge-mock")).toBeVisible(); // still mock-badged (IG_LIVE=false)
+    await expect(page.getByTestId("ig-acct")).toContainText("Connecting…");
     const st = await page.request.get("/api/instagram/connect");
     const j = (await st.json()) as { ok: boolean; live: boolean; account: { live: boolean; username: string } | null };
     expect(j.ok).toBe(true);

@@ -56,6 +56,16 @@ Model: the business owner ("operator") connects their OWN WhatsApp number, Insta
 ## public_profile
 > Basic Facebook profile (name, id) of the person logging in, used to create and label their workspace account. No posting, no friend-list access.
 
+## Human Agent
+> Human Agent tag is used when a business operator replies to a customer conversation from the NextBiz One inbox (WhatsApp and Instagram DMs). The tag is applied only to messages an operator actually writes and sends from the app, so Meta knows a human — not a bot — is handling the thread. It is never applied to automated or template messages.
+
+## Reviewer instructions (Meta reviewers / testers)
+- App domain: one.nextbizstudio.com (prod). Beta mirror: one-beta.nextbizstudio.com.
+- Privacy policy: https://one.nextbizstudio.com/privacy
+- IG connect (reviewer reproduction): log in as the reviewer/test account → Settings → Connections → "Login with Instagram" → Meta Business Login dialog → select the business portfolio + Instagram account → Confirm → "Instagram connected ✓". The connected @nextbizstudio account shows in Settings and in the Social sidebar tree.
+- DM test: send a test message to the connected IG account from another account → webhook event lands in the app.
+- Test login credentials are provided in the review submission notes (never in the repo).
+
 ---
 
 ## Dependency notes (form requirements)

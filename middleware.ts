@@ -23,5 +23,5 @@ export const config = {
   // (login checks creds; webhook's gate is the HMAC signature)
   // signup + request-access are public intake pages (S3); onboarding stays
   // gated — a session only exists after approval.
-  matcher: ["/((?!_next|api/|login$|signup$|request-access$|favicon.ico).*)"],
+  matcher: ["/((?!_next|api/|login$|signup$|request-access$|privacy$|favicon.ico).*)"],
 };

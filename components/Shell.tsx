@@ -35,6 +35,7 @@ export function Shell({
   const [adsOpen, setAdsOpen] = useState(true);
   const [socialOpen, setSocialOpen] = useState(false);
   const [adsCounts, setAdsCounts] = useState<{ all: number; drafts: number; review: number } | null>(null);
+  const [igAcct, setIgAcct] = useState<{ username: string | null; live: boolean } | null>(null);
   // v4.3: Dashboard + Settings are LEAF pages (panel hidden); Chat module
   // pages (Inbox, Contacts, Templates, Broadcasts, Automation) show the panel.
   const leafActive = active === "dashboard" || active === "settings";
@@ -59,6 +60,17 @@ export function Shell({
       })
       .catch(() => {});
   }, [adsActive]);
+
+  // Social module: show the connected IG account when the tree opens.
+  useEffect(() => {
+    if (!socialOpen) return;
+    fetch("/api/instagram/connect", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.account) setIgAcct({ username: d.account.username ?? null, live: !!d.account.live });
+      })
+      .catch(() => {});
+  }, [socialOpen]);
 
   // Wireframe behavior: clicking a parent module chip at tablet width opens
   // the panel flyout (scrim behind); at desktop it navigates straight to
@@ -177,16 +189,18 @@ export function Shell({
               <div className={`tree${socialOpen ? "" : " hidden"}`} data-tree="social" data-testid="social-tree">
                 <div className="sec"><span className="mdot" style={{ background: "var(--social)" }} />NextBiz Social</div>
                 <div className="sub-chips">
-                  <div className="schip" style={{ opacity: .55, cursor: "default" }} data-testid="ig-p3-pending">
-                    <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/instagram-logo.svg" alt="" />
-                    <span className="lbl">Instagram DMs · P3 UI pending</span>
-                  </div>
-                  <a href="/settings" style={{ display: "contents" }} onClick={closeNav}><div className="schip" data-testid="ig-connect-link">
-                    <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/plugs-connected.svg" alt="" />
-                    <span className="lbl">Connect Instagram</span>
-                  </div></a>
+                  {igAcct?.live ? (
+                    <a href="/settings" style={{ display: "contents" }} onClick={closeNav}><div className="schip" data-testid="ig-connected-chip">
+                      <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/instagram-logo.svg" alt="" />
+                      <span className="lbl">@{igAcct.username ?? "instagram"} · Connected</span>
+                    </div></a>
+                  ) : (
+                    <a href="/settings" style={{ display: "contents" }} onClick={closeNav}><div className="schip" data-testid="ig-connect-link">
+                      <img src="https://cdn.joyverse.fun/mira-assets/phosphor/regular/plugs-connected.svg" alt="" />
+                      <span className="lbl">Connect Instagram</span>
+                    </div></a>
+                  )}
                 </div>
-                <div className="treenote">Webhook + business-login backend live on beta (mock-badged until app review). P3.1 inbox/automation UI is Mira's queued design package.</div>
               </div>
             </div>
           </div>

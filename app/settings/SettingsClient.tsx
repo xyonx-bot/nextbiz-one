@@ -25,7 +25,6 @@ export function SettingsClient({ email }: { email: string }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [note, setNote] = useState("");
   const [ig, setIg] = useState<{ live: boolean; account: IgAccount | null } | null>(null);
-  const [igToken, setIgToken] = useState("");
 
   const load = useCallback(async () => {
     // no-store on all: these GETs were heuristic-cached and re-served stale
@@ -46,18 +45,6 @@ export function SettingsClient({ email }: { email: string }) {
     if (q === "connected") setNote("Instagram connected ✓");
     if (q === "err-noappid") setNote("IG_APP_ID not configured on host — set env, then retry");
   }, []);
-
-  async function connectIg() {
-    const t = igToken.trim();
-    if (!t) { setNote("Paste an Instagram user access token first"); return; }
-    setNote("Connecting…");
-    const d = await fetch("/api/instagram/connect", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: t }),
-    }).then((x) => x.json()).catch(() => null);
-    setNote(d?.ok ? (d.mock ? "Connected in mock mode — Meta app review pending" : "Connected ✓") : (d?.error ?? "Connect failed"));
-    setIgToken("");
-    await load();
-  }
 
   async function saveProfile(patch: Record<string, unknown>) {
     const d = await fetch("/api/settings/profile", {
@@ -127,15 +114,12 @@ export function SettingsClient({ email }: { email: string }) {
             <div className="acct" data-testid="ig-acct">
               <span className="aic ig"><img src={`${IC}instagram-logo-bold.svg`} alt="" /></span>
               <div className="t"><b>Instagram · {ig?.account?.username ?? "—"}</b>
-                <span>{ig?.account ? (ig.account.live ? "Connected · live" : "Mock mode — Meta app review pending") : "Not connected"}</span></div>
-              {ig?.account && !ig.account.live && <span className="badge-mock">Mock data</span>}
-              <span className={`st ${ig?.account?.live ? "ok" : "pend"}`}>{ig?.account?.live ? "Connected" : ig?.account ? "Mock" : "Pending"}</span>
+                <span>{ig?.account ? (ig.account.live ? "Connected · live" : "Connecting…") : "Not connected"}</span></div>
+              <span className={`st ${ig?.account?.live ? "ok" : "pend"}`}>{ig?.account?.live ? "Connected" : "Pending"}</span>
             </div>
             <div className="connect-strip" data-testid="ig-connect-strip">
-              <span><b>Connect Instagram?</b> Paste an IG user access token — stored mock-badged until Meta app review approves the IG permissions. Webhook callback: <code>/api/webhooks/instagram</code></span>
-              <input className="ig-inp" data-testid="ig-token" placeholder="IG user access token…" value={igToken} onChange={(e) => setIgToken(e.target.value)} />
-              <button className="btn btn-ads btn-sm" data-testid="ig-connect" onClick={connectIg}>Connect</button>
-              <button className="btn btn-soft btn-sm" data-testid="ig-oauth" onClick={() => { window.location.href = "/api/auth/instagram/start"; }}>
+              <span><b>Connect Instagram?</b> One click — Meta OAuth. Your professional account is linked securely; read and reply to DMs and comments from the app.</span>
+              <button className="btn btn-ads btn-sm" data-testid="ig-oauth" onClick={() => { window.location.href = "/api/auth/instagram/start"; }}>
                 <img src={`${IC}instagram-logo-bold.svg`} alt="" style={{ width: 12, height: 12 }} /> Login with Instagram
               </button>
             </div>
