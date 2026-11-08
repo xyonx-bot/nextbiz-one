@@ -282,6 +282,24 @@ export function igOAuthDialogUrl(redirectUri: string, state: string, appId: stri
 }
 
 /**
+ * Resolve the Meta app id + secret for the unified-login flow.
+ * The secret must be the APP SECRET of the app that owns the config_id
+ * (app 1950786512230644). Env files may carry stub/placeholder values
+ * (beta stubs WhatsApp creds; prod has a 17-char IG_APP_SECRET label) —
+ * those must never shadow the real secret. Meta app secrets are 32 hex
+ * chars, app ids are 10-20 digits: junk that doesn't match the shape is
+ * skipped in favour of the next candidate.
+ */
+export function resolveMetaCreds(env: NodeJS.ProcessEnv = process.env): { appId: string; appSecret: string } {
+  const secretCandidates = [env.IG_APP_SECRET, env.WHATSAPP_APP_SECRET].filter(Boolean) as string[];
+  const appSecret =
+    secretCandidates.find((s) => /^[0-9a-f]{32}$/i.test(s)) ?? secretCandidates[0] ?? "";
+  const idCandidates = [env.IG_APP_ID, env.META_APP_ID].filter(Boolean) as string[];
+  const appId = idCandidates.find((s) => /^[0-9]{10,20}$/.test(s)) ?? idCandidates[0] ?? "";
+  return { appId, appSecret };
+}
+
+/**
  * Exchange the OAuth `code` for a token, resolve the IG account, store it.
  * Unified login (FL4B + config_id): permissions live in the saved config;
  * the dialog redirects with ?code= and the exchange happens at
@@ -295,8 +313,7 @@ export async function exchangeIgCode(
   code: string, redirectUri: string,
 ): Promise<{ account: IgAccountRow; mock: boolean }> {
   if (!igLive()) throw new Error("IG_LIVE is not true — mock mode, no Graph call");
-  const appId = process.env.IG_APP_ID || process.env.META_APP_ID;
-  const appSecret = process.env.IG_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
+  const { appId, appSecret } = resolveMetaCreds();
   if (!appId || !appSecret) throw new Error("IG_APP_ID / IG_APP_SECRET not configured on host");
 
   // Strip the "#_" suffix Meta sometimes appends to the code.
