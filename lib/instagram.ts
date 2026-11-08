@@ -264,7 +264,13 @@ export function igOAuthDialogUrl(redirectUri: string, state: string, appId: stri
 }
 
 /**
- * Exchange the OAuth `code` for an IG user token, then long-lived, then /me.
+ * Exchange the OAuth `code` for a token, resolve the IG account, store it.
+ * Unified login (FL4B + config_id): permissions live in the saved config;
+ * the dialog redirects with ?code= and the exchange happens at
+ * graph.facebook.com/oauth/access_token (grant_type=authorization_code).
+ * The resulting token (user token or system-user SUAT) then resolves the IG
+ * account — via the business portfolio (owned_instagram_accounts) first, then
+ * via /me/accounts (Page-linked instagram_business_account) as fallback.
  * Guarded: IG_LIVE != "true" never touches the network (mock mode).
  */
 export async function exchangeIgCode(
@@ -275,34 +281,38 @@ export async function exchangeIgCode(
   const appSecret = process.env.IG_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
   if (!appId || !appSecret) throw new Error("IG_APP_ID / IG_APP_SECRET not configured on host");
 
-  const form = new URLSearchParams({
+  // Strip the "#_" suffix Meta sometimes appends to the code.
+  const cleanCode = code.replace(/#_$/, "");
+  const q = new URLSearchParams({
+    grant_type: "authorization_code",
     client_id: appId, client_secret: appSecret,
-    grant_type: "authorization_code", redirect_uri: redirectUri, code,
+    redirect_uri: redirectUri, code: cleanCode,
   });
-  const tRes = await fetch("https://api.instagram.com/oauth/access_token", {
-    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form.toString(),
-  });
+  const tRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${q.toString()}`);
   if (!tRes.ok) throw new Error(`IG code exchange failed: ${tRes.status}`);
-  const short = (await tRes.json()) as { access_token?: string; user_id?: string };
+  const short = (await tRes.json()) as { access_token?: string; expires_in?: number };
   if (!short.access_token) throw new Error("IG code exchange returned no access_token");
 
-  const exRes = await fetch(
-    `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${encodeURIComponent(short.access_token)}`,
-  );
-  if (!exRes.ok) throw new Error(`IG long-lived exchange failed: ${exRes.status}`);
-  const long = (await exRes.json()) as { access_token?: string; expires_in?: number };
-  if (!long.access_token) throw new Error("IG long-lived exchange returned no access_token");
+  // Extend to long-lived when possible; SUAT (system-user, never-expires)
+  // tokens reject fb_exchange — keep the original token in that case.
+  let token = short.access_token;
+  let expiresIn = short.expires_in;
+  const exQ = new URLSearchParams({
+    grant_type: "fb_exchange_token",
+    client_id: appId, client_secret: appSecret, fb_exchange_token: token,
+  });
+  const exRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${exQ.toString()}`);
+  if (exRes.ok) {
+    const long = (await exRes.json()) as { access_token?: string; expires_in?: number };
+    if (long.access_token) { token = long.access_token; expiresIn = long.expires_in; }
+  }
 
-  const meRes = await fetch(
-    `https://graph.instagram.com/v21.0/me?fields=id,username,name&access_token=${encodeURIComponent(long.access_token)}`,
-  );
-  if (!meRes.ok) throw new Error(`IG /me failed: ${meRes.status}`);
-  const me = (await meRes.json()) as { id?: string; username?: string; name?: string };
-  if (!me.id) throw new Error("IG /me returned no id");
+  const ig = await resolveIgAccount(token);
+  if (!ig.id) throw new Error("IG account not found for this token — check the config's IG asset / business portfolio");
 
   const p = getPool();
   const wsId = await ensureWs();
-  const expiresAt = long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString() : null;
+  const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
   const { rows } = await p.query(
     `INSERT INTO ig_accounts (workspace_id, ig_user_id, username, display_name, access_token, scopes, expires_at, live)
      VALUES ($1, $2, $3, $4, $5, $6, $7, true)
@@ -311,11 +321,42 @@ export async function exchangeIgCode(
        access_token = EXCLUDED.access_token, expires_at = EXCLUDED.expires_at,
        live = true, updated_at = now()
      RETURNING id, ig_user_id, username, display_name, scopes, expires_at, live, updated_at`,
-    [wsId, me.id, me.username ?? null, me.name ?? null, long.access_token, [...IG_SCOPES], expiresAt],
+    [wsId, ig.id, ig.username ?? null, null, token, [...IG_SCOPES], expiresAt],
   );
   await p.query(
     `INSERT INTO ig_audit (workspace_id, action, detail) VALUES ($1, 'oauth-callback', $2::jsonb)`,
-    [wsId, JSON.stringify({ ig_user_id: me.id, via: "instagram-business-login" })],
+    [wsId, JSON.stringify({ ig_user_id: ig.id, via: "unified-login", token_expires_in: expiresIn ?? null })],
   );
   return { account: rows[0] as IgAccountRow, mock: false };
+}
+
+/** Resolve the IG business account id (+username when available) for a token. */
+export async function resolveIgAccount(token: string): Promise<{ id: string | null; username?: string }> {
+  const enc = encodeURIComponent(token);
+  // 1) Unified login: IG account is a business-portfolio asset.
+  const businessId = process.env.META_BUSINESS_ID;
+  if (businessId) {
+    const r = await fetch(
+      `https://graph.facebook.com/v21.0/${businessId}?fields=owned_instagram_accounts%7Bid%2Cusername%7D&access_token=${enc}`,
+    );
+    if (r.ok) {
+      const j = (await r.json()) as { owned_instagram_accounts?: { data?: { id?: string; username?: string }[] } };
+      const first = j.owned_instagram_accounts?.data?.[0];
+      if (first?.id) return { id: String(first.id), username: first.username };
+    }
+  }
+  // 2) Classic FB-login fallback: Page-linked instagram_business_account.
+  const r2 = await fetch(
+    `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account%7Bid%7D&access_token=${enc}`,
+  );
+  if (r2.ok) {
+    const j = (await r2.json()) as {
+      data?: { instagram_business_account?: { id?: string }; name?: string }[];
+    };
+    const hit = (j.data ?? []).find((d) => d.instagram_business_account?.id);
+    if (hit?.instagram_business_account?.id) {
+      return { id: String(hit.instagram_business_account.id), username: hit.name };
+    }
+  }
+  return { id: null };
 }

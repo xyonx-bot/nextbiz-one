@@ -35,3 +35,52 @@ describe("exchangeIgCode guard", () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe("resolveIgAccount (unified login)", () => {
+  function jsonRes(body: unknown, ok = true) {
+    return { ok, json: async () => body } as Response;
+  }
+
+  it("prefers the business portfolio's owned_instagram_accounts", async () => {
+    vi.stubEnv("META_BUSINESS_ID", "2865391483826091");
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes("owned_instagram_accounts")) {
+        return jsonRes({ owned_instagram_accounts: { data: [{ id: "17841400000000001", username: "nextbiz" }] } });
+      }
+      return jsonRes({ data: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { resolveIgAccount } = await import("@/lib/instagram");
+    await expect(resolveIgAccount("TOK")).resolves.toEqual({ id: "17841400000000001", username: "nextbiz" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("2865391483826091");
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("falls back to /me/accounts instagram_business_account", async () => {
+    vi.stubEnv("META_BUSINESS_ID", "");
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (String(url).includes("/me/accounts")) {
+        return jsonRes({ data: [
+          { id: "p1", name: "NoPage" },
+          { id: "p2", name: "PageX", instagram_business_account: { id: "17841400000000002" } },
+        ] });
+      }
+      return jsonRes({});
+    }));
+    const { resolveIgAccount } = await import("@/lib/instagram");
+    await expect(resolveIgAccount("TOK")).resolves.toEqual({ id: "17841400000000002", username: "PageX" });
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("returns null id when nothing resolves", async () => {
+    vi.stubEnv("META_BUSINESS_ID", "");
+    vi.stubGlobal("fetch", vi.fn(async () => jsonRes({ data: [] })));
+    const { resolveIgAccount } = await import("@/lib/instagram");
+    await expect(resolveIgAccount("TOK")).resolves.toEqual({ id: null });
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+});
