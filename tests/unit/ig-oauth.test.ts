@@ -36,6 +36,34 @@ describe("exchangeIgCode guard", () => {
   });
 });
 
+describe("resolveMetaCreds", () => {
+  const REAL = "a1b2c3d4e5f60718293a4b5c6d7e8f90"; // 32 hex
+  it("skips a junk IG_APP_SECRET placeholder and uses the real app secret", async () => {
+    const { resolveMetaCreds } = await import("@/lib/instagram");
+    const r = resolveMetaCreds({
+      IG_APP_SECRET: "not-a-real-secret",
+      WHATSAPP_APP_SECRET: REAL,
+      IG_APP_ID: "1950786512230644",
+      META_APP_ID: "1950786512230644",
+    } as unknown as NodeJS.ProcessEnv);
+    expect(r.appSecret).toBe(REAL);
+    expect(r.appId).toBe("1950786512230644");
+  });
+
+  it("prefers a valid IG_APP_SECRET over the WhatsApp fallback", async () => {
+    const { resolveMetaCreds } = await import("@/lib/instagram");
+    const IG = "f0e1d2c3b4a5968778695a4b3c2d1e0f";
+    const r = resolveMetaCreds({ IG_APP_SECRET: IG, WHATSAPP_APP_SECRET: REAL } as unknown as NodeJS.ProcessEnv);
+    expect(r.appSecret).toBe(IG);
+  });
+
+  it("falls back to first candidate when none match the secret shape", async () => {
+    const { resolveMetaCreds } = await import("@/lib/instagram");
+    const r = resolveMetaCreds({ IG_APP_SECRET: "stub", WHATSAPP_APP_SECRET: "also-stub" } as unknown as NodeJS.ProcessEnv);
+    expect(r.appSecret).toBe("stub");
+  });
+});
+
 describe("resolveIgAccount (unified login)", () => {
   function jsonRes(body: unknown, ok = true) {
     return { ok, json: async () => body } as Response;
