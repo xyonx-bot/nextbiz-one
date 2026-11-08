@@ -17,7 +17,13 @@ describe("igOAuthDialogUrl (Instagram Business Login)", () => {
 
   it("includes config_id when the unified Instagram login config is provided", () => {
     const u = igOAuthDialogUrl("https://one-beta.nextbizstudio.com/api/auth/instagram/callback", "st-9", "APPID", "1823777935713893");
-    expect(new URL(u).searchParams.get("config_id")).toBe("1823777935713893");
+    const q = new URL(u).searchParams;
+    expect(q.get("config_id")).toBe("1823777935713893");
+    // With a config, raw scope must NOT be sent — Meta rejects
+    // "Invalid Scopes: instagram_business_*" otherwise. Permissions live in the config.
+    expect(q.get("scope")).toBeNull();
+    expect(q.get("override_default_response_type")).toBe("true");
+    expect(q.get("response_type")).toBe("code");
   });
 });
 
