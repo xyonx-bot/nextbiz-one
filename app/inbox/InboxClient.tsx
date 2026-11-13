@@ -83,7 +83,9 @@ export function InboxClient() {
     setConvs(data?.conversations ?? []);
   }, [filter]);
 
-  const open = useCallback(async (id: string, focusThread = true) => {
+  /** Open a thread. `markRead` only when a person actually chose it — the desktop auto-open just previews
+   *  the newest chat and must not silently clear its unread state. */
+  const open = useCallback(async (id: string, { focusThread = true, markRead = true } = {}) => {
     setSelected(id);
     if (focusThread) setViewThread(true);
     setSendErr("");
@@ -91,15 +93,17 @@ export function InboxClient() {
     const data = (await res.json().catch(() => null)) as Thread | null;
     if (data?.conversation) {
       setThread(data);
-      await fetch(`/api/conversations/${id}/read`, { method: "POST" }).catch(() => {});
-      void loadList();
+      if (markRead) {
+        await fetch(`/api/conversations/${id}/read`, { method: "POST" }).catch(() => {});
+        void loadList();
+      }
     }
   }, [loadList]);
 
   useEffect(() => { void loadList(); }, [loadList]);
   // desktop: open the newest conversation so the thread is never an empty pane
   useEffect(() => {
-    if (!selected && convs && convs.length > 0 && window.matchMedia("(min-width: 768px)").matches) void open(convs[0].id, false);
+    if (!selected && convs && convs.length > 0 && window.matchMedia("(min-width: 768px)").matches) void open(convs[0].id, { focusThread: false, markRead: false });
   }, [convs, selected, open]);
   // keep list fresh + window countdown ticking
   useEffect(() => {
@@ -132,7 +136,7 @@ export function InboxClient() {
       });
       const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
       if (!res.ok || !data?.ok) setSendErr(data?.error ?? "Couldn't send — try again.");
-      else { setDraft(""); await open(selected, false); }
+      else { setDraft(""); await open(selected, { focusThread: false }); }
     } finally { setSending(false); }
   }
 
