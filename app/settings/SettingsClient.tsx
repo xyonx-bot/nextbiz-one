@@ -10,7 +10,8 @@ import { Icon } from "@/components/Icon";
  */
 type Profile = { name: string; about: string | null; connection: { display_name: string | null; status: string | null } | null };
 type Session = { id: string; created_at: string; expires_at: string; current: boolean };
-type IgAccount = { ig_user_id: string; username: string | null; display_name: string | null; scopes: string[]; live: boolean; updated_at: string };
+type IgAccount = { ig_user_id: string; username: string | null; display_name: string | null; scopes: string[]; live: boolean; updated_at: string;
+  expires_at: string | null; webhook_subscribed?: boolean; last_error?: string | null; profile_picture_url?: string | null };
 
 const SECTIONS: [string, string, string, string][] = [
   ["Workspace", "profile", "Business profile", "storefront"],
@@ -47,7 +48,7 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("ig");
-    if (q === "connected") setNote({ kind: "ok", text: "Instagram connected" });
+    if (q === "connected") setNote({ kind: "ok", text: "Instagram connected — DMs and comments will show up in your inbox" });
     if (q && q.startsWith("err")) setNote({ kind: "bad", text: q === "err-noappid" ? "Instagram isn't configured on this server yet." : "Instagram connection failed — try again." });
     const h = window.location.hash.slice(1); if (h) requestAnimationFrame(() => document.getElementById(h)?.scrollIntoView());
   }, []);
@@ -128,14 +129,24 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
             <div className="chan">
               <div className="ch" data-testid="ig-acct" style={ig?.account ? { borderStyle: "solid", background: "var(--surface)" } : undefined}>
                 <span className="icon-tile pink lg"><Icon name="instagram-logo" /></span>
-                <span className="grow"><b>Instagram DMs{ig?.account?.username ? ` · @${ig.account.username.replace(/^@/, "")}` : ""}</b>
-                  <small>{ig?.account ? (ig.account.live ? "Connected · live" : "Connecting…") : "Reply to Instagram messages from your inbox"}</small></span>
+                <span className="grow"><b>Instagram DMs &amp; comments{ig?.account?.username ? ` · @${ig.account.username.replace(/^@/, "")}` : ""}</b>
+                  <small>{ig?.account ? (ig.account.live ? `Connected · token valid until ${ig.account.expires_at ? d8(ig.account.expires_at) : "—"}` : "Connecting… (test mode)") : "Reply to Instagram DMs and comments from NextBiz One"}</small></span>
                 <span className={`st pill sm ${ig?.account?.live ? "ok" : ig?.account ? "warn" : "neutral"}`}>{ig?.account?.live ? "Connected" : ig?.account ? "Pending" : "Not connected"}</span>
               </div>
               <div className="ch"><span className="icon-tile orange lg"><Icon name="megaphone" /></span><span className="grow"><b>Meta ad account</b><small>Run click-to-WhatsApp ads</small></span><span className="demo">Demo</span></div>
             </div>
-            <div className="frow" data-testid="ig-connect-strip"><div><b>Connect Instagram</b><small>Meta login · your professional account is linked securely</small></div>
-              <div><button className="btn btn-soft btn-sm" data-testid="ig-oauth" onClick={() => { window.location.href = "/api/auth/instagram/start"; }}><Icon name="instagram-logo" />Login with Instagram</button></div></div>
+            {ig?.account?.live && (
+              <div className="frow"><div><b>Instagram status</b><small>Messages and comments reach NextBiz One through Meta webhooks</small></div>
+                <div className="col gap-6">
+                  <span className={`pill sm ${ig.account.webhook_subscribed ? "ok" : "warn"}`} style={{ alignSelf: "flex-start" }} data-testid="ig-webhook">{ig.account.webhook_subscribed ? "Receiving messages & comments" : "Not receiving events yet"}</span>
+                  {ig.account.last_error && <span className="hint err">{ig.account.last_error}</span>}
+                </div></div>
+            )}
+            <div className="frow" data-testid="ig-connect-strip"><div><b>{ig?.account?.live ? "Reconnect Instagram" : "Connect Instagram"}</b><small>Log in with the Instagram professional account you want to automate</small></div>
+              <div className="row wrap gap-6">
+                <button className="btn btn-soft btn-sm" data-testid="ig-oauth" onClick={() => { window.location.href = "/api/auth/instagram/start"; }}><Icon name="instagram-logo" />{ig?.account?.live ? "Reconnect" : "Login with Instagram"}</button>
+                {ig?.account && <button className="btn btn-ghost btn-sm" data-testid="ig-disconnect" onClick={async () => { await fetch("/api/instagram/connect", { method: "DELETE" }); setNote({ kind: "ok", text: "Instagram disconnected" }); await load(); }}>Disconnect</button>}
+              </div></div>
           </section>
 
           <section className="card sec" id="security">

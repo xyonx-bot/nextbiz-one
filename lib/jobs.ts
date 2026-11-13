@@ -108,4 +108,8 @@ export function startWorker() {
   ).catch(() => {});
   void armPoll();
   setInterval(() => void armPoll(), 600_000).unref();
+  // Instagram long-lived tokens last 60 days — refresh the ones expiring within 15 days, every 6h
+  const igRefresh = () => import("./instagram").then((m) => m.refreshIgTokens(15)).then((r) => { if (r.refreshed || r.failed) console.log(`[ig] token refresh: ${r.refreshed} refreshed, ${r.failed} failed`); }).catch(() => {});
+  void igRefresh();
+  setInterval(() => void igRefresh(), 6 * 3600_000).unref();
 }

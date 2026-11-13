@@ -12,14 +12,17 @@ import { avatarClass, fmtPhone, initials } from "@/lib/ui";
 type Conv = {
   id: string; wa_id: string; name: string | null; opt_in: boolean; tags: string[] | null;
   preview: string | null; last_direction: "in" | "out" | null; last_status: string | null; last_at: string | null;
-  unread: number; last_inbound_at: string | null;
+  unread: number; last_inbound_at: string | null; channel?: "wa" | "ig"; username?: string | null;
 };
+type IgThreadRow = { id: string; igsid: string; username: string | null; name: string | null; last_inbound_at: string | null; preview: string | null;
+  last_direction: "in" | "out" | null; last_status: string | null; last_at: string | null; unread: number };
 type Msg = { id: string; direction: "in" | "out"; body: string | null; status: string; type?: string; created_at: string };
 type Thread = {
   conversation: {
     id: string; contactId: string; waId: string; name: string | null; optIn: boolean; lastInboundAt: string | null; windowOpen: boolean;
     tags: string[]; company: string | null; location: string | null; interestedIn: string | null; budget: string | null;
     automationPaused: boolean; automationPausedAt: string | null; welcomeSentAt: string | null; contactCreatedAt: string | null;
+    channel?: "wa" | "ig"; username?: string | null;
   };
   messages: Msg[];
 };
@@ -61,7 +64,7 @@ const ago = (iso: string) => dur(Date.now() - new Date(iso).getTime());
 const MEDIA: Record<string, [string, string]> = { image: ["image", "Photo"], video: ["play", "Video"], audio: ["microphone", "Voice message"], document: ["file-pdf", "Document"], sticker: ["smiley", "Sticker"], location: ["map-pin", "Location"] };
 
 export function InboxClient() {
-  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [filter, setFilter] = useState<"all" | "unread" | "wa" | "ig">("all");
   const [q, setQ] = useState("");
   const [convs, setConvs] = useState<Conv[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -73,14 +76,26 @@ export function InboxClient() {
   const [sending, setSending] = useState(false);
   const [tpls, setTpls] = useState<Tpl[] | null>(null);
   const [copied, setCopied] = useState(false);
+  const [hasIg, setHasIg] = useState(false);
   const [, tick] = useState(0);
   const streamRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const loadList = useCallback(async () => {
-    const res = await fetch(`/api/conversations?unread=${filter === "unread" ? 1 : 0}`, { cache: "no-store" });
-    const data = (await res.json().catch(() => null)) as { conversations?: Conv[] } | null;
-    setConvs(data?.conversations ?? []);
+    const [wa, ig] = await Promise.all([
+      fetch(`/api/conversations?unread=${filter === "unread" ? 1 : 0}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null) as Promise<{ conversations?: Conv[] } | null>,
+      fetch("/api/instagram/threads", { cache: "no-store" }).then((r) => r.json()).catch(() => null) as Promise<{ threads?: IgThreadRow[] } | null>,
+    ]);
+    const waRows: Conv[] = (wa?.conversations ?? []).map((c) => ({ ...c, channel: "wa" }));
+    const igRows: Conv[] = (ig?.threads ?? []).map((t) => ({
+      id: `ig:${t.id}`, wa_id: t.igsid, name: t.name ?? (t.username ? `@${t.username}` : null), opt_in: false, tags: [], preview: t.preview,
+      last_direction: t.last_direction, last_status: t.last_status, last_at: t.last_at, unread: t.unread, last_inbound_at: t.last_inbound_at, channel: "ig", username: t.username,
+    }));
+    const all = [...waRows, ...igRows]
+      .filter((c) => (filter === "unread" ? c.unread > 0 : filter === "wa" ? c.channel === "wa" : filter === "ig" ? c.channel === "ig" : true))
+      .sort((a, b) => new Date(b.last_at ?? b.last_inbound_at ?? 0).getTime() - new Date(a.last_at ?? a.last_inbound_at ?? 0).getTime());
+    setHasIg(igRows.length > 0);
+    setConvs(all);
   }, [filter]);
 
   /** Open a thread. `markRead` only when a person actually chose it — the desktop auto-open just previews
@@ -89,12 +104,27 @@ export function InboxClient() {
     setSelected(id);
     if (focusThread) setViewThread(true);
     setSendErr("");
-    const res = await fetch(`/api/conversations/${id}`, { cache: "no-store" });
-    const data = (await res.json().catch(() => null)) as Thread | null;
+    const isIg = id.startsWith("ig:"), raw = isIg ? id.slice(3) : id;
+    let data: Thread | null = null;
+    if (isIg) {
+      const d = (await fetch(`/api/instagram/threads/${raw}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null)) as
+        { thread?: { id: string; igsid: string; username: string | null; name: string | null; lastInboundAt: string | null; windowOpen: boolean; automationPaused: boolean; automationPausedAt: string | null; createdAt: string };
+          messages?: { id: string; direction: "in" | "out"; body: string | null; status: string; created_at: string }[] } | null;
+      if (d?.thread) data = {
+        conversation: { id, contactId: "", waId: d.thread.igsid, name: d.thread.name ?? (d.thread.username ? `@${d.thread.username}` : null), optIn: false,
+          lastInboundAt: d.thread.lastInboundAt, windowOpen: d.thread.windowOpen, tags: [], company: null, location: null, interestedIn: null, budget: null,
+          automationPaused: d.thread.automationPaused, automationPausedAt: d.thread.automationPausedAt, welcomeSentAt: null, contactCreatedAt: d.thread.createdAt,
+          channel: "ig", username: d.thread.username },
+        messages: (d.messages ?? []).map((m) => ({ ...m, type: "text" })),
+      };
+    } else {
+      data = (await fetch(`/api/conversations/${id}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null)) as Thread | null;
+      if (data?.conversation) data.conversation.channel = "wa";
+    }
     if (data?.conversation) {
       setThread(data);
       if (markRead) {
-        await fetch(`/api/conversations/${id}/read`, { method: "POST" }).catch(() => {});
+        await fetch(isIg ? `/api/instagram/threads/${raw}/read` : `/api/conversations/${id}/read`, { method: "POST" }).catch(() => {});
         void loadList();
       }
     }
@@ -113,9 +143,10 @@ export function InboxClient() {
   useEffect(() => { const s = streamRef.current; if (s) requestAnimationFrame(() => { s.scrollTop = s.scrollHeight; }); }, [thread?.messages.length, thread?.conversation.id, tpls]);
 
   const sel = thread?.conversation;
+  const isIg = sel?.channel === "ig";
   const win = windowInfo(sel?.lastInboundAt ?? null);
   useEffect(() => {
-    if (sel && win.state === "closed" && tpls === null) {
+    if (sel && sel.channel !== "ig" && win.state === "closed" && tpls === null) {
       fetch("/api/templates", { cache: "no-store" }).then((r) => r.json()).then((d) => setTpls((d?.templates ?? []).filter((t: Tpl) => /approved/i.test(t.status)))).catch(() => setTpls([]));
     }
   }, [sel, win.state, tpls]);
@@ -131,7 +162,7 @@ export function InboxClient() {
     if (!selected || !draft.trim() || sending) return;
     setSending(true); setSendErr("");
     try {
-      const res = await fetch(`/api/conversations/${selected}/messages`, {
+      const res = await fetch(selected.startsWith("ig:") ? `/api/instagram/threads/${selected.slice(3)}/messages` : `/api/conversations/${selected}/messages`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: draft }),
       });
       const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
@@ -190,6 +221,10 @@ export function InboxClient() {
             <div className="chips">
               <button className={`chip${filter === "all" ? " on" : ""}`} onClick={() => setFilter("all")}>All {filter === "all" && convs && <span className="n">{convs.length}</span>}</button>
               <button className={`chip${filter === "unread" ? " on" : ""}`} onClick={() => setFilter("unread")}>Unread {filter === "all" && unreadTotal > 0 && <span className="n">{unreadTotal}</span>}</button>
+              {(hasIg || filter === "ig") && <>
+                <button className={`chip${filter === "wa" ? " on" : ""}`} onClick={() => setFilter("wa")} data-testid="filter-wa"><Icon name="whatsapp-logo" />WhatsApp</button>
+                <button className={`chip${filter === "ig" ? " on" : ""}`} onClick={() => setFilter("ig")} data-testid="filter-ig"><Icon name="instagram-logo" />Instagram</button>
+              </>}
             </div>
             <label className="search"><Icon name="magnifying-glass" size="sm" /><input data-testid="inbox-search" placeholder="Search name, number or message" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search conversations" /></label>
           </div>
@@ -205,9 +240,9 @@ export function InboxClient() {
                   return (
                     <div key={c.id} className={`cv${c.unread > 0 ? " unread" : ""}${selected === c.id ? " on" : ""}`} data-testid="crow" tabIndex={0}
                       onClick={() => void open(c.id)} onKeyDown={(e) => e.key === "Enter" && void open(c.id)}>
-                      <span className={`av sm ${avatarClass(c.wa_id)}`}>{initials(c.name, c.wa_id)}<span className="src wa"><Icon name="whatsapp-logo" /></span></span>
+                      <span className={`av sm ${avatarClass(c.wa_id)}`}>{initials(c.name?.replace(/^@/, "") ?? null, c.wa_id)}{c.channel === "ig" ? <span className="src ig"><Icon name="instagram-logo" /></span> : <span className="src wa"><Icon name="whatsapp-logo" /></span>}</span>
                       <div className="body">
-                        <div className="l1"><span className="nm">{c.name ?? fmtPhone(c.wa_id)}</span>
+                        <div className="l1"><span className="nm">{c.name ?? (c.channel === "ig" ? "Instagram user" : fmtPhone(c.wa_id))}</span>
                           {w.state === "soon" && <span className="wtag soon" title="Reply window closing soon"><Icon name="hourglass" />{dur(w.left)}</span>}
                           {w.state === "closed" && <span className="wlock" title="24-hour reply window closed — templates only" aria-label="Reply window closed"><Icon name="lock" /></span>}
                           <span className="tm">{listTime(c.last_at ?? c.last_inbound_at)}</span></div>
@@ -237,12 +272,12 @@ export function InboxClient() {
             <>
               <header className="thead">
                 <button className="btn btn-ghost btn-icon back" onClick={() => setViewThread(false)} aria-label="Back to conversations" data-testid="thread-back"><Icon name="arrow-left" /></button>
-                <span className={`av ${avatarClass(sel.waId)}`}>{initials(sel.name, sel.waId)}<span className="src wa"><Icon name="whatsapp-logo" /></span></span>
+                <span className={`av ${avatarClass(sel.waId)}`}>{initials(sel.name?.replace(/^@/, "") ?? null, sel.waId)}{isIg ? <span className="src ig"><Icon name="instagram-logo" /></span> : <span className="src wa"><Icon name="whatsapp-logo" /></span>}</span>
                 <div className="who">
-                  <b><span className="trunc">{sel.name ?? fmtPhone(sel.waId)}</span></b>
-                  <small><span className="num">{fmtPhone(sel.waId)}</span>{sel.tags[0] && <><span className="hide-s">·</span><span className="tag green hide-s">{sel.tags[0]}</span></>}</small>
+                  <b><span className="trunc">{sel.name ?? (isIg ? "Instagram user" : fmtPhone(sel.waId))}</span></b>
+                  <small><span className="num">{isIg ? (sel.username ? `@${sel.username} · Instagram` : "Instagram DM") : fmtPhone(sel.waId)}</span>{sel.tags[0] && <><span className="hide-s">·</span><span className="tag green hide-s">{sel.tags[0]}</span></>}</small>
                 </div>
-                <span className="winchip" title="WhatsApp allows free-form replies for 24 hours after the customer's last message" style={{ ["--p" as string]: `${win.pct}%` }}>
+                <span className="winchip" title={`${isIg ? "Instagram" : "WhatsApp"} allows replies for 24 hours after the customer's last message`} style={{ ["--p" as string]: `${win.pct}%` }}>
                   <span className="ring" /><Icon name="lock" size="xs" className="lock" />
                   <span>{win.state === "closed" ? "Window closed" : `${dur(win.left)} left`}</span>{win.state !== "closed" && <span className="txt-l" style={{ fontWeight: 600, opacity: .8 }}>to reply</span>}
                 </span>
@@ -270,6 +305,12 @@ export function InboxClient() {
                       <button type="submit" className="btn btn-primary send" style={{ marginLeft: "auto" }} disabled={sending || !draft.trim()} data-testid="send-btn"><Icon name="paper-plane-right" />{sending ? "Sending…" : "Send"}</button>
                     </div>
                   </form>
+                ) : isIg ? (
+                  <div className="closed-box blocked" data-testid="window-closed">
+                    <div className="top"><span className="icon-tile sm neutral"><Icon name="lock" /></span>
+                      <span className="grow"><b>The 24-hour reply window is closed</b>
+                        <p>Instagram only allows replies within 24 hours of the customer&apos;s last message. When they write again, you can reply here.</p></span></div>
+                  </div>
                 ) : (
                   <div className="closed-box blocked" data-testid="window-closed">
                     <div className="top"><span className="icon-tile sm neutral"><Icon name="lock" /></span>
@@ -300,27 +341,37 @@ export function InboxClient() {
               <>
                 <div className="dsec ident">
                   <span className={`av xl ${avatarClass(sel.waId)}`}>{initials(sel.name, sel.waId)}</span>
-                  <div><h3>{sel.name ?? "Unnamed contact"}</h3><div className="ph">{fmtPhone(sel.waId)}</div></div>
+                  <div><h3>{sel.name ?? "Unnamed contact"}</h3><div className="ph">{isIg ? (sel.username ? `@${sel.username}` : "Instagram") : fmtPhone(sel.waId)}</div></div>
+                  {isIg ? (
+                    <div className="qa" style={{ gridTemplateColumns: "1fr" }}>
+                      {sel.username && <a href={`https://www.instagram.com/${encodeURIComponent(sel.username)}`} target="_blank" rel="noreferrer" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: 54, borderRadius: 11, background: "var(--bg)", border: "1px solid var(--line)", fontSize: 10, fontWeight: 700, color: "var(--ink-2)" }}><Icon name="instagram-logo" />Open Instagram profile</a>}
+                    </div>
+                  ) : (
                   <div className="qa">
                     <button onClick={copyNumber}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy number"}</button>
                     <a href={`/contacts?id=${encodeURIComponent(sel.contactId)}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: 54, borderRadius: 11, background: "var(--bg)", border: "1px solid var(--line)", fontSize: 10, fontWeight: 700, color: "var(--ink-2)" }}><Icon name="identification-card" />Profile</a>
                     <a href={`/broadcasts?to=${encodeURIComponent(sel.contactId)}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: 54, borderRadius: 11, background: "var(--bg)", border: "1px solid var(--line)", fontSize: 10, fontWeight: 700, color: "var(--ink-2)" }}><Icon name="megaphone" />Template</a>
                   </div>
+                  )}
                 </div>
                 <div className="dsec">
                   <div className="wincard">
                     <div className="t"><Icon name="clock-countdown" size="sm" /><span style={{ margin: 0 }}>{win.state === "closed" ? "Reply window closed" : win.state === "soon" ? "Window closing soon" : "Reply window open"}</span><span>{win.state === "closed" ? "—" : dur(win.left)}</span></div>
                     <div className="meter"><span style={{ width: `${win.pct}%` }} /></div>
-                    <p>{win.state === "closed" ? "Send an approved template to restart. The window reopens when they reply." : "Free-form replies are allowed until the window closes. After that, only approved templates."}</p>
+                    <p>{isIg ? (win.state === "closed" ? "Instagram reopens the window when they message you again." : "You can reply until the window closes; Instagram has no templates to message after that.")
+                      : win.state === "closed" ? "Send an approved template to restart. The window reopens when they reply." : "Free-form replies are allowed until the window closes. After that, only approved templates."}</p>
                   </div>
                   <div className="setrow"><span className="icon-tile sm grape"><Icon name="lightning" /></span>
                     <span className="grow">Automation<small>{sel.automationPaused ? `Paused — you replied${sel.automationPausedAt ? ` ${ago(sel.automationPausedAt)} ago` : ""}` : "Active for this chat"}</small></span>
                     <span className={`pill sm ${sel.automationPaused ? "warn" : "ok"}`}>{sel.automationPaused ? "Paused" : "On"}</span></div>
                 </div>
-                {sel.tags.length > 0 && (
+                {!isIg && sel.tags.length > 0 && (
                   <div className="dsec"><div className="sh"><span className="eyebrow">Tags</span></div>
                     <div className="row wrap gap-6">{sel.tags.map((t) => <span key={t} className="tag green">{t}</span>)}</div></div>
                 )}
+                {isIg ? (
+                  <div className="dsec"><div className="note" style={{ fontSize: "10.5px" }}><Icon name="instagram-logo" size="sm" /><span>Instagram DM. Keyword replies marked for Instagram run here; your reply pauses them for this chat.</span></div></div>
+                ) : (
                 <div className="dsec">
                   <div className="sh"><span className="eyebrow">Details</span><a className="btn-link" href={`/contacts?id=${encodeURIComponent(sel.contactId)}`}>Edit</a></div>
                   <dl className="kv">
@@ -333,6 +384,7 @@ export function InboxClient() {
                   <div className={`note ${sel.optIn ? "ok" : ""}`} style={{ fontSize: "10.5px" }}><Icon name={sel.optIn ? "check-circle" : "info"} size="sm" />
                     <span>{sel.optIn ? "Can receive broadcasts." : "Won't receive broadcasts until they opt in (for example by replying START)."}</span></div>
                 </div>
+                )}
               </>
             ) : (
               <div className="empty"><p>Select a conversation to see contact details.</p></div>
