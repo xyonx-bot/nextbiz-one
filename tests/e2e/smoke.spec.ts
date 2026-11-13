@@ -39,11 +39,11 @@ test.describe("NBO S0", () => {
     await page.fill("#email", process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one");
     await page.fill("#password", process.env.OPERATOR_PASS ?? "operator-test-pass");
     await Promise.all([page.click("button[type=submit]"), page.waitForURL("**/")]);
-    // shell v4.3 frame: rail + header card; leaf page hides the panel
+    // shell v5 frame: rail + topbar; leaf page hides the module panel
     await expect(page.locator(".rail")).toBeVisible();
-    await expect(page.locator(".header-card")).toBeVisible();
+    await expect(page.locator(".topbar")).toBeVisible();
     await expect(page.locator("[data-testid=nav-panel]")).toHaveCount(0);
-    await expect(page.locator(".usr b")).toContainText(/.+/);
+    await expect(page.locator("[data-testid=account-btn]")).toContainText(/.+/);
   });
 
   test("webhook GET: echoes hub.challenge on valid verify token", async ({ request }) => {
@@ -106,7 +106,7 @@ test("S1 inbox: list + thread + composer (P1.6)", async ({ page }) => {
   await page.waitForSelector("[data-testid=thread-list]");
   // module page shows the panel with the chat tree; Inbox chip active
   expect(await page.locator("[data-testid=nav-panel]").count()).toBe(1);
-  await expect(page.locator(".schip.on").first()).toContainText("Inbox");
+  await expect(page.locator("[data-testid=nav-panel] .pi.on").first()).toContainText("Inbox");
   await page.fill("[data-testid=inbox-search]", "E2E Tester");
   await page.click(`[data-testid=crow]:has-text("E2E Tester")`);
   await page.waitForSelector("[data-testid=stream] .msg.in");
@@ -136,8 +136,8 @@ test("S1 dashboard + contacts (P1.5 + P1.7)", async ({ page }) => {
   await page.waitForSelector("[data-testid=krow]");
   expect(await page.locator("[data-testid=nav-panel]").count()).toBe(1);
   await page.click("[data-testid=krow]");
-  await page.waitForSelector(".kdetail .kd-head");
-  await expect(page.locator(".kdetail .nm")).toContainText(/.+/);
+  await expect(page.locator("[data-testid=contact-name]")).toContainText(/.+/);
+  await page.keyboard.press("Escape");
   await page.fill("[data-testid=contacts-search]", "zzzz-no-match");
   await page.waitForTimeout(300);
   expect(await page.locator("[data-testid=krow]")).toHaveCount(0);

@@ -1,7 +1,7 @@
+import { AuthLayout } from "@/components/AuthBrand";
 import { SignupForm } from "./SignupForm";
 
-/** P1.1 — Signup: account + access request in one. Gated until operator
- *  approves — the card then shows the pending state (auth wireframe). */
+/** P1.1 — Signup: account + access request in one. Gated until an operator approves. */
 export default function SignupPage() {
-  return <div className="authbg"><SignupForm /></div>;
+  return <AuthLayout><SignupForm /></AuthLayout>;
 }

@@ -1,18 +1,15 @@
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
-import { Shell } from "@/components/Shell";
+import { AppShell } from "@/components/AppShell";
+import { Icon } from "@/components/Icon";
 import { TemplatesClient } from "./TemplatesClient";
 
 export const dynamic = "force-dynamic";
 
-/** P1.8 Templates — list + editor, ported 1:1 from Mira's templates wireframe. */
-export default async function TemplatesPage() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  const user = await getSessionUser(token);
-  const initials = (user?.displayName ?? "NBO").split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase();
+export default async function TemplatesPage({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
+  const { new: isNew } = await searchParams;
   return (
-    <Shell active="templates" userInitials={initials} userName={user?.displayName ?? "Operator"}>
-      <TemplatesClient />
-    </Shell>
+    <AppShell active="templates" title="Templates" fixed
+      actions={<a className="btn btn-primary" href="/templates?new=1"><Icon name="plus" /><span className="lbl">New template</span></a>}>
+      <TemplatesClient startNew={isNew === "1"} />
+    </AppShell>
   );
 }

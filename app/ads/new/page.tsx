@@ -1,19 +1,12 @@
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
-import { Shell } from "@/components/Shell";
-import { AdsQA } from "@/components/AdsQA";
+import { AppShell } from "@/components/AppShell";
 import { NewCampaignClient } from "./NewCampaignClient";
 
 export const dynamic = "force-dynamic";
 
-/** P2.2 Ads guided creation — 7-step wizard, ported 1:1 from mira ads/create wireframe. */
-export default async function AdsNewPage() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  const user = await getSessionUser(token);
-  const initials = (user?.displayName ?? "NBO").split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase();
+export default function NewCampaignPage() {
   return (
-    <Shell active="ads-new" userInitials={initials} userName={user?.displayName ?? "Operator"} qa={<AdsQA />}>
+    <AppShell active="ads-new" title="Create campaign" actions={<a className="btn btn-ghost" href="/ads"><span className="lbl">Cancel</span></a>}>
       <NewCampaignClient />
-    </Shell>
+    </AppShell>
   );
 }

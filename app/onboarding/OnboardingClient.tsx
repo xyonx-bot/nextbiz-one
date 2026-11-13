@@ -2,140 +2,128 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "@/components/Icon";
 
 /**
- * Onboarding wizard — ported 1:1 from onboarding/wireframe.html:
- * 3-dot stepper (done dots get ✓), 640px cards, cream canvas.
- * Step states are real: connection from waba status, test-send fires an
- * actual message to the workspace's own number.
+ * Onboarding — design v2 (nextbiz-one-v2/onboarding): focused wizard with progress rail + help panel.
+ * Every check is real: connection from waba_connections, inbound/template counts from the DB,
+ * the live test sends an actual message to the workspace's own number and waits for the reply.
  */
-type Wiz = { connected: boolean; displayNumber: string | null; testSent: boolean; testReceived: boolean };
-
-const IC = "https://cdn.joyverse.fun/mira-assets/phosphor/bold/";
+type Wiz = { connected: boolean; displayName: string | null; displayNumber: string | null; inboundCount: number; approvedTemplates: number; testSent: boolean; testReceived: boolean };
+const STEPS = ["Connect WhatsApp", "Check setup", "Live test"];
 
 export function OnboardingClient() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [st, setSt] = useState<Wiz | null>(null);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
-    const d = await fetch("/api/onboarding/status").then((x) => x.json()).catch(() => null);
+    const d = await fetch("/api/onboarding/status", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
     if (d?.ok) setSt(d);
   }, []);
   useEffect(() => { void load(); }, [load]);
-  // step 3: poll the receive row while waiting
   useEffect(() => {
-    if (step !== 3 || st?.testReceived) return;
-    const t = setInterval(() => void load(), 5000);
+    if (step !== 2 || st?.testReceived) return;
+    const t = setInterval(() => void load(), 4000);
     return () => clearInterval(t);
   }, [step, st?.testReceived, load]);
 
   async function sendTest() {
-    setBusy(true);
+    setBusy(true); setErr("");
     const d = await fetch("/api/onboarding/test-send", { method: "POST" }).then((x) => x.json()).catch(() => null);
-    if (!d?.ok) alert(d?.error ?? "Test send failed.");
-    await load();
-    setBusy(false);
+    if (!d?.ok) setErr(d?.error ?? "The test message couldn't be sent.");
+    await load(); setBusy(false);
   }
-
-  const ostep = (n: number, dot: string, b: string, sub: string) => (
-    <div className={`ostep${step === n ? " on" : step > n ? " done" : ""}`} onClick={() => step > n && setStep(n)}>
-      <span className="odot">{step > n ? "✓" : dot}</span>
-      <span className="ot"><b>{b}</b><span>{sub}</span></span>
-    </div>
-  );
+  const enter = () => { router.replace("/"); router.refresh(); };
+  const checks = st ? [
+    { ok: st.connected, t: st.connected ? "Number connected" : "Number not connected", s: st.connected ? st.displayName ?? "Connected" : "Connect your number in step 1" },
+    { ok: st.inboundCount > 0, t: st.inboundCount > 0 ? "Can receive messages" : "No messages received yet", s: st.inboundCount > 0 ? "Customer messages will reach your inbox" : "The live test in the next step confirms this" },
+    { ok: st.approvedTemplates > 0, warn: true, t: st.approvedTemplates > 0 ? `${st.approvedTemplates} approved template${st.approvedTemplates > 1 ? "s" : ""}` : "No approved templates yet", s: st.approvedTemplates > 0 ? "You can message people after the 24-hour window and broadcast" : "Needed to message customers after 24 hours or send broadcasts — you can add one later", href: "/templates?new=1" },
+  ] : [];
 
   return (
-    <div className="onbviews" style={{ display: "block", minHeight: "100vh" }} data-testid="onboarding">
-      <div className="onb-top">
-        <img className="logo" src="https://cdn.joyverse.fun/nextbiz-one-transparent.png" alt="" /><b>NextBiz One</b>
-        <span className="skip" onClick={() => router.replace("/")}>Finish later</span>
-      </div>
-
-      <div className="onb-steps">
-        {ostep(1, "1", "Connect WhatsApp", "link your business number")}
-        {ostep(2, "2", "Permissions", "check Meta settings")}
-        {ostep(3, "3", "Live test", "send & receive check")}
-      </div>
-
-      <div className="onb-stage">
-        {step === 1 && (
-          <div className="onb-card onbstep on">
-            <h1>Connect your WhatsApp</h1>
-            <p className="lede">Link the number your customers already message. One number serves one workspace.</p>
-            <div className={`cstate ${st?.connected ? "connected" : "connecting"}`}>
-              <span className="cic"><img src={`${IC}${st?.connected ? "check-bold" : "plugs-connected-bold"}.svg`} alt="" /></span>
-              <span className="ct">
-                <b>{st?.connected ? "Connected" : "Connecting…"}</b>
-                <span>{st?.connected
-                  ? `${st.displayNumber ?? "your number"} is linked to this workspace.`
-                  : "Opening Meta's setup screen in a new tab. Come back here when you've entered the code we display."}</span>
-              </span>
-            </div>
-            <div className="cflow">
-              <div className={`cstep ${st?.connected ? "ok" : ""}`}><span className="num">{st?.connected ? "✓" : "1"}</span><span className="t"><b>Verify your number</b> — {st?.connected ? `${st.displayNumber} connected` : "confirm your number via the code shown"}</span></div>
-              <div className="cstep"><span className="num">2</span><span className="t"><b>Set your display name</b> — customers see this on every message</span></div>
-              <div className="cstep"><span className="num">3</span><span className="t"><b>Allow messaging permissions</b> — step 2 checks these</span></div>
-            </div>
-            <div className="onb-foot">
-              <button className="btn btn-chat" onClick={() => setStep(2)}><img src={`${IC}arrow-right-bold.svg`} alt="" />I've entered the code</button>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="onb-card onbstep on">
-            <h1>Permissions checklist</h1>
-            <p className="lede">We check your Meta business account settings — fix what's flagged and we re-check instantly.</p>
-            <div className="plist">
-              <div className="pitem ok"><span className="pic"><img src={`${IC}check-circle-bold.svg`} alt="" /></span>
-                <span className="t"><b>Business profile — verified</b><span>Meta verified your business identity</span></span></div>
-              <div className="pitem miss"><span className="pic"><img src={`${IC}warning-circle-bold.svg`} alt="" /></span>
-                <span className="t"><b>Display name — pending review</b><span>usually clears in a few hours; messaging works at low volume meanwhile</span></span>
-                <span className="fix">How to fix <img src={`${IC}arrow-right-bold.svg`} alt="" /></span></div>
-              <div className="pitem miss"><span className="pic"><img src={`${IC}warning-circle-bold.svg`} alt="" /></span>
-                <span className="t"><b>Quality rating — needs attention</b><span>start with 1:1 replies to existing customers for 7 days to build the rating</span></span>
-                <span className="fix">How to fix <img src={`${IC}arrow-right-bold.svg`} alt="" /></span></div>
-            </div>
-            <div className="onb-foot">
-              <button className="btn btn-soft" onClick={() => setStep(1)}><img src={`${IC}arrow-left-bold.svg`} alt="" />Back</button>
-              <button className="btn btn-soft" onClick={() => setStep(3)}><img src={`${IC}arrow-right-bold.svg`} alt="" />Continue anyway</button>
-              <span style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 600 }}>We re-check automatically after each fix</span>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="onb-card onbstep on">
-            <h1>Live test</h1>
-            <p className="lede">Confirm messages really flow both ways before you greet your first customer.</p>
-            <div className="tpanel">
-              <div className="trow">
-                <span className="tic ok"><img src={`${IC}paper-plane-tilt-bold.svg`} alt="" /></span>
-                <span className="tt"><b>Send</b> — tap to send "This is a test from NextBiz One" to your own number {st?.displayNumber}</span>
-                {st?.testSent
-                  ? <span className="st-pill on">Sent ✓</span>
-                  : <button className="btn btn-chat" style={{ minHeight: 26, padding: "0 10px", fontSize: 10 }} disabled={busy} onClick={() => void sendTest()} data-testid="send-test">{busy ? "Sending…" : "Send test"}</button>}
+    <div className="pg-onb" data-testid="onboarding">
+      <header className="top">
+        <span className="brand"><img src="/logo.png" alt="" />NextBiz One</span>
+        <nav className="prog" aria-label="Setup progress">
+          {STEPS.map((l, i) => (
+            <span key={l} className={`ps${step === i ? " on" : step > i ? " done" : ""}`} onClick={() => step > i && setStep(i)} role={step > i ? "button" : undefined}>
+              <span className="k">{step > i ? <Icon name="check" size="xs" /> : i + 1}</span><span>{l}</span></span>
+          ))}
+        </nav>
+        <button className="btn btn-ghost btn-sm" onClick={enter}>Finish later</button>
+      </header>
+      <div className="stage">
+        <div>
+          {step === 0 && (
+            <section className="card main-card">
+              <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Step 1 of 3</span>
+              <h1>{st?.connected ? "Your WhatsApp is connected" : "Connect your WhatsApp Business number"}</h1>
+              <p className="lead">{st?.connected ? "This is the number your customers message. Everything they send lands in your inbox." : "Link the number your customers already message. One number serves one workspace."}</p>
+              {st === null ? <span className="sk" style={{ height: 64 }} /> : st.connected ? (
+                <div className="ck ok" style={{ borderColor: "var(--chat-line)", background: "var(--chat-tint)" }}><span className="ic"><Icon name="check" size="xs" /></span>
+                  <span><b>{st.displayName ?? "WhatsApp number"}</b><small>Connected to this workspace</small></span></div>
+              ) : (
+                <>
+                  <div className="need">
+                    <div><span className="icon-tile sm green"><Icon name="whatsapp-logo" /></span><span><b>A business phone number</b><small>Already on the WhatsApp Business app? It can move over.</small></span></div>
+                    <div><span className="icon-tile sm" style={{ background: "#E7F0FE", color: "#1877F2" }}><Icon name="facebook-logo" /></span><span><b>A Facebook account</b><small>That manages your business page or portfolio.</small></span></div>
+                  </div>
+                  <div className="note info"><Icon name="info" /><span>During early access our team connects your number with you on a short call — <b>reply to your approval email</b> and we&apos;ll set it up together.</span></div>
+                </>
+              )}
+              <div className="mfoot"><span className="sp" /><button className="btn btn-primary" onClick={() => setStep(1)} disabled={!st?.connected} data-testid="onb-next">Continue<Icon name="arrow-right" /></button></div>
+            </section>
+          )}
+          {step === 1 && (
+            <section className="card main-card">
+              <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Step 2 of 3</span>
+              <h1>{checks.filter((c) => !c.ok && !c.warn).length ? "A few things to finish" : "Your setup looks good"}</h1>
+              <p className="lead">We checked your connection. Here&apos;s what we found, in plain words.</p>
+              <div className="checks">
+                {checks.map((c) => (
+                  <div key={c.t} className={`ck ${c.ok ? "ok" : c.warn ? "" : "bad"}`} style={!c.ok && c.warn ? { background: "var(--banana-tint)", borderColor: "var(--banana-line)" } : undefined}>
+                    <span className="ic" style={!c.ok && c.warn ? { background: "var(--banana)", color: "var(--ink)" } : undefined}><Icon name={c.ok ? "check" : c.warn ? "info" : "x"} size="xs" /></span>
+                    <span><b>{c.t}</b><small>{c.s}</small></span>
+                    {!c.ok && c.href && <a className="btn btn-soft btn-sm" href={c.href}>Create one</a>}
+                  </div>
+                ))}
               </div>
-              <div className="trow">
-                <span className="tic wait"><img src={`${IC}chat-circle-dots-bold.svg`} alt="" /></span>
-                <span className="tt"><b>Receive</b> — reply "OK" from WhatsApp on your phone to finish the check</span>
-                <span className={`st-pill ${st?.testReceived ? "on" : "warn"}`}>{st?.testReceived ? "Received ✓" : "Waiting…"}</span>
+              <div className="mfoot"><button className="btn btn-soft" onClick={() => setStep(0)}>Back</button><span className="sp" /><button className="btn btn-ghost" onClick={() => void load()}>Re-check<Icon name="arrows-clockwise" /></button><button className="btn btn-primary" onClick={() => setStep(2)} disabled={!st?.connected}>Continue<Icon name="arrow-right" /></button></div>
+            </section>
+          )}
+          {step === 2 && (
+            <section className="card main-card">
+              <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Step 3 of 3 · the fun part</span>
+              <h1>Check messages flow both ways</h1>
+              <p className="lead">We&apos;ll send a test to your business number. Reply to it from WhatsApp on your phone to finish.</p>
+              <div className="col gap-12">
+                <div className="well" style={{ padding: 14 }}><div className="eyebrow">Your business number</div><div className="num" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em", marginTop: 4 }}>{st?.displayNumber ?? "—"}</div></div>
+                <div className="ck" style={st?.testSent ? { background: "var(--chat-tint)", borderColor: "var(--chat-line)" } : undefined}>
+                  <span className="ic" style={st?.testSent ? { background: "var(--chat)", color: "var(--ink)" } : { background: "var(--sunken)" }}>{st?.testSent ? <Icon name="check" size="xs" /> : "1"}</span>
+                  <span><b>Send a test message</b><small>“This is a test from NextBiz One”</small></span>
+                  {!st?.testSent && <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void sendTest()} data-testid="send-test">{busy ? "Sending…" : "Send test"}</button>}
+                </div>
+                {st?.testReceived ? (
+                  <div className="got" style={{ display: "flex" }}><b style={{ fontSize: "var(--fs-sm)", color: "var(--chat-deep)", display: "flex", gap: 6, alignItems: "center" }}><Icon name="check-circle-fill" />Reply received — you&apos;re live!</b><span className="xs" style={{ color: "#3D5F07" }}>Both directions confirmed. Your first customer message will land in your inbox.</span></div>
+                ) : (
+                  <div className="wait"><span className="pulse" /><span><b>{st?.testSent ? "Waiting for your reply…" : "Then reply “OK” from your phone"}</b><small>We check every few seconds</small></span></div>
+                )}
+                {err && <div className="note bad"><Icon name="warning-circle" /><span>{err}</span></div>}
               </div>
-            </div>
-            {st?.testReceived && (
-              <div className="cstate connected">
-                <span className="cic"><img src={`${IC}check-bold.svg`} alt="" /></span>
-                <span className="ct"><b>You're live</b><span>Both directions confirmed. First customer message will land in your inbox.</span></span>
-              </div>
-            )}
-            <div className="onb-foot">
-              <button className="btn btn-soft" onClick={() => setStep(2)}><img src={`${IC}arrow-left-bold.svg`} alt="" />Back</button>
-              <button className="btn btn-chat" onClick={() => { router.replace("/"); router.refresh(); }}><img src={`${IC}check-bold.svg`} alt="" />Enter workspace</button>
-            </div>
-          </div>
-        )}
+              <div className="mfoot"><button className="btn btn-soft" onClick={() => setStep(1)}>Back</button><span className="sp" />{!st?.testReceived && <span className="xs faint" style={{ fontWeight: 600 }}>You can finish this later</span>}<button className="btn btn-primary" onClick={enter}>{st?.testReceived ? "Go to my inbox" : "Enter workspace"}<Icon name="arrow-right" /></button></div>
+            </section>
+          )}
+        </div>
+        <aside className="card help">
+          <h3>Good to know</h3>
+          <ul><li>Your customers won&apos;t notice anything — same number, same chats.</li><li>Free-form replies work for 24 hours after a customer writes; after that you use approved templates.</li><li>Broadcasts only ever go to people who opted in.</li></ul>
+          <div className="divider" />
+          <h3>Stuck?</h3>
+          <div className="contact"><span className="av sm c1">NB</span><span className="grow"><b className="small">Talk to our team</b><br /><span className="xs faint">Reply to your approval email</span></span><Icon name="envelope-simple-open" style={{ color: "var(--chat-deep)" }} /></div>
+        </aside>
       </div>
     </div>
   );

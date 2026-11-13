@@ -49,12 +49,16 @@ test.describe("S3 account funnel", () => {
     await loginOperator(page);
     await page.goto("/operator");
     await expect(page.locator(".op-shell")).toBeVisible();
+    await page.goto("/operator#requests");
     await expect(page.locator(".rq-row", { hasText: BIZ }).first()).toBeVisible();
 
     // approve the e2e request from the UI — the click is fire-and-forget,
     // so wait for the ledger's 'approved' entry for THIS business (commit proof)
-    const row = page.locator(".rq-row", { hasText: BIZ }).first();
-    await row.locator("[data-testid=approve]").click();
+    // open the request (detail pane), approve, then confirm in the audit log view
+    await page.locator(".rq-row", { hasText: BIZ }).first().click();
+    await page.locator("[data-testid=approve]").click();
+    await expect(page.locator("[role=status]")).toContainText("Approved", { timeout: 10000 });
+    await page.goto("/operator#audit");
     await expect(page.locator(".led-what", { hasText: BIZ }).filter({ hasText: "approved" }).first()).toBeVisible({ timeout: 10000 });
 
     // the gated user can now log in

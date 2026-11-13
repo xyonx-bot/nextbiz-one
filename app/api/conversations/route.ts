@@ -20,15 +20,17 @@ export async function GET(req: Request) {
 
   const { rows } = await getPool().query(
     `SELECT c.id, c.last_inbound_at, ct.wa_id, ct.name,
-            (SELECT body FROM messages m WHERE m.conversation_id = c.id
-              ORDER BY m.created_at DESC LIMIT 1) AS preview,
+            ct.opt_in, ct.tags,
+            lm.body AS preview, lm.direction AS last_direction, lm.status AS last_status, lm.created_at AS last_at,
             (SELECT count(*) FROM messages m
                WHERE m.conversation_id = c.id AND m.direction = 'in'
                  AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0))
             )::int AS unread
        FROM conversations c
        JOIN contacts ct ON ct.id = c.contact_id
-      ORDER BY c.last_inbound_at DESC NULLS LAST
+       LEFT JOIN LATERAL (SELECT body, direction, status, created_at FROM messages m
+                           WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) lm ON true
+      ORDER BY COALESCE(lm.created_at, c.last_inbound_at) DESC NULLS LAST
       LIMIT 200`,
   );
   const out = rows

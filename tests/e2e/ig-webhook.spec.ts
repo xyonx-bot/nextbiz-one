@@ -125,7 +125,7 @@ test.describe("IG access prep (r-nbo-ig-access-prep)", () => {
   test("settings connections: IG connect via API stores mock account (IG_LIVE=false)", async ({ page }) => {
     await login(page);
     await page.goto("/settings");
-    await page.locator(".si", { hasText: "Connections" }).click();
+    await page.locator(".si", { hasText: "Other channels" }).click();
     await expect(page.getByTestId("ig-acct")).toBeVisible();
     await expect(page.getByTestId("ig-acct").locator(".st")).toBeVisible();
     const conn = await page.request.post("/api/instagram/connect", {
@@ -135,7 +135,7 @@ test.describe("IG access prep (r-nbo-ig-access-prep)", () => {
     expect(connJ.ok).toBe(true);
     expect(connJ.mock).toBe(true);
     await page.reload();
-    await page.locator(".si", { hasText: "Connections" }).click();
+    await page.locator(".si", { hasText: "Other channels" }).click();
     await expect(page.getByTestId("ig-acct")).toContainText("@mock_business");
     await expect(page.getByTestId("ig-acct")).toContainText("Connecting…");
     const st = await page.request.get("/api/instagram/connect");

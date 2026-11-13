@@ -1,15 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { AuthBrand } from "../../components/AuthBrand";
+import { AuthBrand } from "@/components/AuthBrand";
+import { Icon } from "@/components/Icon";
 
-/**
- * The three status states — wireframe shows them stacked for review;
- * production renders exactly ONE per account (auth wireframe contract).
- * Markup ported 1:1 from the auth wireframe: .stcard.pending/approved/rejected
- * + .st-ic icon tile + locknote with lock icon, with the brand block (fix A)
- * above the card on every state.
- */
+/** One request-status state per account: pending · approved · rejected (design v2 auth). */
 export type ReqStatus = {
   status: "pending" | "approved" | "rejected";
   businessName: string;
@@ -17,54 +12,50 @@ export type ReqStatus = {
   rejectReason: string | null;
 };
 
-const IC = "https://cdn.joyverse.fun/mira-assets/phosphor/bold/";
-
 export function StatusCard({ st }: { st: ReqStatus }) {
   const router = useRouter();
-  const received = new Date(st.received).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const received = new Date(st.received).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
   if (st.status === "pending") {
     return (
-      <div className="authwrap">
+      <div className="apanel">
         <AuthBrand />
         <div className="stcard pending" data-testid="st-pending">
-          <span className="st-ic"><img src={`${IC}hourglass-bold.svg`} alt="" /></span>
-          <h2>Request pending</h2>
-          <p>We received your request on <b>{received}</b>. We'll email you the moment it's reviewed — usually within one business day.</p>
-          <div className="locknote"><img src={`${IC}lock-bold.svg`} alt="" />Workspace stays locked until approval. Nothing to set up yet.</div>
+          <span className="st-ic status-art" style={{ background: "var(--banana-tint)", color: "var(--banana-deep)" }}><Icon name="hourglass" /></span>
+          <h2 className="center">You&apos;re on the list</h2>
+          <p className="sub center">We&apos;ll email you as soon as your workspace is ready — usually within one business day.</p>
+          <div className="tline">
+            <div className="done"><span className="dot"><Icon name="check" size="xs" /></span><span><b>Request received</b><small>{received}</small></span></div>
+            <div className="cur"><span className="dot"><Icon name="clock" size="xs" /></span><span><b>Review by our team</b><small>Usually within 24 hours</small></span></div>
+            <div><span className="dot">3</span><span><b>Connect WhatsApp &amp; go live</b><small>About 5 minutes</small></span></div>
+          </div>
+          <div className="locknote"><Icon name="lock" size="sm" />Your workspace stays locked until approval — nothing to set up yet.</div>
         </div>
       </div>
     );
   }
-
   if (st.status === "approved") {
     return (
-      <div className="authwrap">
+      <div className="apanel">
         <AuthBrand />
         <div className="stcard approved" data-testid="st-approved">
-          <span className="st-ic"><img src={`${IC}check-bold.svg`} alt="" /></span>
-          <h2>Approved — welcome aboard</h2>
-          <p>Your workspace is ready. Connect your WhatsApp number to start messaging customers.</p>
-          <button className="btn btn-chat abtn" onClick={() => { router.replace("/"); router.refresh(); }}>
-            <img src={`${IC}arrow-right-bold.svg`} alt="" />Enter workspace →
-          </button>
+          <span className="st-ic status-art" style={{ background: "var(--chat-tint)", color: "var(--chat-deep)" }}><Icon name="seal-check" /></span>
+          <h2 className="center">You&apos;re in! 🎉</h2>
+          <p className="sub center">Your workspace is ready. Next: connect your WhatsApp number.</p>
+          <button className="btn btn-primary btn-lg btn-full" onClick={() => { router.replace("/"); router.refresh(); }}>Enter workspace<Icon name="arrow-right" /></button>
         </div>
       </div>
     );
   }
-
   return (
-    <div className="authwrap">
+    <div className="apanel">
       <AuthBrand />
       <div className="stcard rejected" data-testid="st-rejected">
-        <span className="st-ic"><img src={`${IC}x-bold.svg`} alt="" /></span>
-        <h2>Not approved yet</h2>
-        <p>We can't open messaging for <b>&ldquo;{st.rejectReason ?? "outside supported use cases"}&rdquo;</b> — it falls outside our supported use cases in early access. Reply to the review email if you think this is a mistake, or adjust your described use and re-request.</p>
-        <div className="alinks" style={{ justifyContent: "center" }}>
-          <span className="addlink">Contact support</span>
-          <span style={{ width: 12 }} />
-          <a className="addlink" href="/request-access" style={{ color: "var(--chat-deep)" }}>Edit request & re-submit</a>
-        </div>
+        <span className="st-ic status-art" style={{ background: "var(--sunken)", color: "var(--ink-2)" }}><Icon name="envelope-simple-open" /></span>
+        <h2 className="center">Not quite yet</h2>
+        <p className="sub center">We can&apos;t open messaging for this request right now.</p>
+        <div className="note"><Icon name="info" /><span><b>Reason:</b> {st.rejectReason ?? "this use case is outside what we support in early access"}. Reply to the review email if you think this is a mistake.</span></div>
+        <a className="btn btn-soft btn-lg btn-full" href="/request-access">Update my request</a>
       </div>
     </div>
   );
