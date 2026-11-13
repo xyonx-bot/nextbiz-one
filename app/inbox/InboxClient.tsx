@@ -205,19 +205,18 @@ export function InboxClient() {
                   return (
                     <div key={c.id} className={`cv${c.unread > 0 ? " unread" : ""}${selected === c.id ? " on" : ""}`} data-testid="crow" tabIndex={0}
                       onClick={() => void open(c.id)} onKeyDown={(e) => e.key === "Enter" && void open(c.id)}>
-                      <span className={`av ${avatarClass(c.wa_id)}`}>{initials(c.name, c.wa_id)}<span className="src wa"><Icon name="whatsapp-logo" /></span></span>
+                      <span className={`av sm ${avatarClass(c.wa_id)}`}>{initials(c.name, c.wa_id)}<span className="src wa"><Icon name="whatsapp-logo" /></span></span>
                       <div className="body">
-                        <div className="l1"><span className="nm">{c.name ?? fmtPhone(c.wa_id)}</span><span className="tm">{listTime(c.last_at ?? c.last_inbound_at)}</span></div>
+                        <div className="l1"><span className="nm">{c.name ?? fmtPhone(c.wa_id)}</span>
+                          {w.state === "soon" && <span className="wtag soon" title="Reply window closing soon"><Icon name="hourglass" />{dur(w.left)}</span>}
+                          {w.state === "closed" && <span className="wlock" title="24-hour reply window closed — templates only" aria-label="Reply window closed"><Icon name="lock" /></span>}
+                          <span className="tm">{listTime(c.last_at ?? c.last_inbound_at)}</span></div>
                         <div className="l2">
                           <span className="pv">{c.last_direction === "out" && <span className="you"><Icon name={c.last_status === "sent" ? "check" : "checks"} className={c.last_status === "read" ? "read" : ""} />You: </span>}{c.preview ?? "—"}</span>
                           {c.unread > 0 && <span className="badge">{c.unread}</span>}
                         </div>
-                        {(w.state !== "open" || (c.tags?.length ?? 0) > 0) && (
-                          <div className="l3">
-                            {w.state === "soon" && <span className="wtag soon"><Icon name="hourglass" />{dur(w.left)} left</span>}
-                            {w.state === "closed" && <span className="wtag closed"><Icon name="lock" />Window closed</span>}
-                            {(c.tags ?? []).slice(0, 2).map((t) => <span key={t} className="tag green">{t}</span>)}
-                          </div>
+                        {(c.tags?.length ?? 0) > 0 && (
+                          <div className="l3">{(c.tags ?? []).slice(0, 2).map((t) => <span key={t} className="tag green">{t}</span>)}</div>
                         )}
                       </div>
                     </div>
