@@ -63,10 +63,16 @@ export async function maybeAutoReply(
     const lower = text.toLowerCase();
     const rules = await p.query(
       `SELECT id, name, keywords, reply, send_once FROM keyword_rules
-        WHERE workspace_id = $1 AND enabled ORDER BY created_at`, [wsId]);
+        WHERE workspace_id = $1 AND enabled AND on_whatsapp ORDER BY created_at`, [wsId]);
     for (const r of rules.rows) {
       const hit = (r.keywords as string[]).some((k) => k && k.trim() && lower.includes(k.trim().toLowerCase()));
       if (!hit) continue;
+      if (r.send_once) {
+        // "send at most once per conversation" — was stored but never enforced
+        const prior = await p.query(
+          `SELECT 1 FROM automation_log WHERE contact_id = $1 AND rule_id = $2 AND status = 'sent' LIMIT 1`, [contactId, r.id]);
+        if (prior.rows.length) { await log(p, wsId, contactId, "keyword", r.id, `rule "${r.name}" already answered this chat`, "skipped"); return; }
+      }
       const s = await sendText(waId, r.reply);
       await p.query(
         `UPDATE keyword_rules SET fired_count = fired_count + 1, last_fired_at = now() WHERE id = $1`, [r.id]);

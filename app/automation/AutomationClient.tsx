@@ -8,11 +8,16 @@ import { Icon } from "@/components/Icon";
  * test console · business hours + away message · saved answers (FAQ) · hand-off explainer.
  * v1 locks kept: contains-match keywords only, no AI, automation pauses per chat after a human reply.
  */
-type Rule = { id: string; name: string; keywords: string[]; reply: string; enabled: boolean; send_once: boolean; fired_count: number; last_fired_at: string | null };
+type Rule = { id: string; name: string; keywords: string[]; reply: string; enabled: boolean; send_once: boolean; fired_count: number; last_fired_at: string | null;
+  on_whatsapp: boolean; on_instagram_dm: boolean; on_instagram_comment: boolean; comment_public_reply: string | null };
 type Settings = { welcome_enabled: boolean; welcome_text: string; away_enabled: boolean; away_text: string | null; business_hours: Record<string, [string, string]> } | null;
 type Faq = { id: string; question: string; answer: string };
 type LogRow = { type: string; status: string; created_at: string; rule_id: string | null };
-type Draft = { id?: string; name: string; keywords: string[]; reply: string; enabled: boolean; sendOnce: boolean };
+type Draft = { id?: string; name: string; keywords: string[]; reply: string; enabled: boolean; sendOnce: boolean;
+  onWhatsapp: boolean; onInstagramDm: boolean; onInstagramComment: boolean; commentPublicReply: string };
+const NEW_DRAFT = (over: Partial<Draft> = {}): Draft => ({ name: "", keywords: [], reply: "", enabled: true, sendOnce: true, onWhatsapp: true, onInstagramDm: false, onInstagramComment: false, commentPublicReply: "", ...over });
+const toDraft = (r: Rule): Draft => ({ id: r.id, name: r.name, keywords: r.keywords, reply: r.reply, enabled: r.enabled, sendOnce: r.send_once,
+  onWhatsapp: r.on_whatsapp ?? true, onInstagramDm: !!r.on_instagram_dm, onInstagramComment: !!r.on_instagram_comment, commentPublicReply: r.comment_public_reply ?? "" });
 
 const DAYS: [string, string][] = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
 const TILES = ["green", "banana", "grape", "pink", "orange"];
@@ -54,13 +59,12 @@ export function AutomationClient() {
     if (!draft) return;
     const kws = [...draft.keywords, ...(kwInput.trim() ? [kwInput.trim()] : [])];
     if (!draft.name.trim() || kws.length === 0 || !draft.reply.trim()) { flash(false, "Add a name, at least one keyword and a reply."); return; }
-    setBusy(true);
     let d;
-    if (draft.id) d = await json("PATCH", `/api/automation/rules/${draft.id}`, { name: draft.name, keywords: kws, reply: draft.reply, enabled: draft.enabled, sendOnce: draft.sendOnce });
-    else {
-      d = await json("POST", "/api/automation/rules", { name: draft.name, keywords: kws, reply: draft.reply });
-      if (d?.ok && d.rule && (!draft.enabled || !draft.sendOnce)) await json("PATCH", `/api/automation/rules/${d.rule.id}`, { enabled: draft.enabled, sendOnce: draft.sendOnce });
-    }
+    if (!draft.onWhatsapp && !draft.onInstagramDm && !draft.onInstagramComment) { flash(false, "Pick at least one place this reply should run."); return; }
+    const ch = { onWhatsapp: draft.onWhatsapp, onInstagramDm: draft.onInstagramDm, onInstagramComment: draft.onInstagramComment, commentPublicReply: draft.onInstagramComment ? draft.commentPublicReply.trim() || null : null };
+    setBusy(true);
+    if (draft.id) d = await json("PATCH", `/api/automation/rules/${draft.id}`, { name: draft.name, keywords: kws, reply: draft.reply, enabled: draft.enabled, sendOnce: draft.sendOnce, ...ch });
+    else d = await json("POST", "/api/automation/rules", { name: draft.name, keywords: kws, reply: draft.reply, enabled: draft.enabled, sendOnce: draft.sendOnce, ...ch });
     setBusy(false);
     flash(!!d?.ok, d?.ok ? "Keyword reply saved" : d?.error ?? "Couldn't save");
     if (d?.ok) { setDraft(null); setKwInput(""); await load(); }
@@ -98,7 +102,7 @@ export function AutomationClient() {
       <div className="page" data-testid="automation">
         <div className="note info" style={{ background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "var(--shadow-1)", color: "var(--ink-2)", padding: "12px 14px" }}>
           <span className="icon-tile sm grape"><Icon name="hand" /></span>
-          <span style={{ flex: 1 }}><b>Automation steps aside when you reply.</b> The moment you answer a chat yourself, auto-replies pause for that conversation — customers never get a bot reply in the middle of your conversation.</span>
+          <span style={{ flex: 1 }}><b>Automation steps aside when you reply.</b> On WhatsApp and Instagram, the moment you answer a chat yourself, auto-replies pause for that conversation — customers never get a bot reply in the middle of your conversation.</span>
         </div>
         <div className="cols">
           <div className="stackc">
@@ -124,22 +128,25 @@ export function AutomationClient() {
                 <div className="seg">{(["all", "on", "off"] as const).map((t) => <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "all" ? "All" : t === "on" ? "On" : "Off"} {t === "all" ? rules?.length ?? 0 : (rules ?? []).filter((r) => (t === "on") === r.enabled).length}</button>)}</div></div>
               {rules && rules.length === 0 ? (
                 <div className="empty"><div className="art"><Icon name="lightning" /></div><h3>Answer common questions instantly</h3><p>Reply automatically when a message contains words like “price”, “timing” or “address”.</p>
-                  <div className="acts"><button className="btn btn-primary" onClick={() => setDraft({ name: "Price inquiries", keywords: ["price", "cost", "rate"], reply: "", enabled: true, sendOnce: true })}><Icon name="plus" />Add keyword reply</button></div></div>
+                  <div className="acts"><button className="btn btn-primary" onClick={() => setDraft(NEW_DRAFT({ name: "Price inquiries", keywords: ["price", "cost", "rate"] }))}><Icon name="plus" />Add keyword reply</button></div></div>
               ) : (
                 <>
                   <div className="khead"><span /><span>When message contains</span><span>Reply</span><span style={{ textAlign: "right" }}>Fired</span><span /></div>
                   <div className="kw dtable">
                     {shown.map((r, i) => (
-                      <div key={r.id} className={`kr${r.enabled ? "" : " off"}${draft?.id === r.id ? " on" : ""}`} onClick={() => setDraft({ id: r.id, name: r.name, keywords: r.keywords, reply: r.reply, enabled: r.enabled, sendOnce: r.send_once })} role="button" tabIndex={0}>
+                      <div key={r.id} className={`kr${r.enabled ? "" : " off"}${draft?.id === r.id ? " on" : ""}`} onClick={() => setDraft(toDraft(r))} role="button" tabIndex={0}>
                         <span className={`icon-tile sm ${TILES[i % TILES.length]}`}><Icon name="lightning" /></span>
-                        <span className="nm"><b>{r.name}</b><span className="row gap-4">{r.keywords.slice(0, 2).map((k) => <span key={k} className="tag">{k}</span>)}{r.keywords.length > 2 && <span className="tag">+{r.keywords.length - 2}</span>}</span></span>
+                        <span className="nm"><b className="row gap-4" style={{ display: "flex" }}>{r.name}
+                          {r.on_whatsapp !== false && <Icon name="whatsapp-logo" size="xs" style={{ color: "#1E8E3E" }} title="WhatsApp" />}
+                          {r.on_instagram_dm && <Icon name="instagram-logo" size="xs" style={{ color: "var(--social-deep)" }} title="Instagram DMs" />}
+                          {r.on_instagram_comment && <Icon name="chat-text" size="xs" style={{ color: "var(--social-deep)" }} title="Instagram comments" />}</b><span className="row gap-4">{r.keywords.slice(0, 2).map((k) => <span key={k} className="tag">{k}</span>)}{r.keywords.length > 2 && <span className="tag">+{r.keywords.length - 2}</span>}</span></span>
                         <span className="rp">{r.reply}</span>
                         <span className="hits">{r.fired_count}<small>times</small></span>
                         <button className={`tog${r.enabled ? " on" : ""}`} role="switch" aria-checked={r.enabled} aria-label={`${r.name} on/off`} onClick={(e) => { e.stopPropagation(); void toggleRule(r); }} />
                       </div>
                     ))}
                   </div>
-                  <div className="card-f"><span className="xs faint grow" style={{ fontWeight: 600 }}>First match wins · not case-sensitive</span><button className="btn btn-soft btn-sm" onClick={() => setDraft({ name: "", keywords: [], reply: "", enabled: true, sendOnce: true })} data-testid="add-rule"><Icon name="plus" />Add keyword reply</button></div>
+                  <div className="card-f"><span className="xs faint grow" style={{ fontWeight: 600 }}>First match wins · not case-sensitive</span><button className="btn btn-soft btn-sm" onClick={() => setDraft(NEW_DRAFT())} data-testid="add-rule"><Icon name="plus" />Add keyword reply</button></div>
                 </>
               )}
             </section>
@@ -234,6 +241,17 @@ export function AutomationClient() {
                     onKeyDown={(e) => { if ((e.key === "Enter" || e.key === ",") && kwInput.trim()) { e.preventDefault(); if (!draft.keywords.includes(kwInput.trim().toLowerCase())) setDraft({ ...draft, keywords: [...draft.keywords, kwInput.trim().toLowerCase()] }); setKwInput(""); } }} /></div>
                 <span className="hint">Not case-sensitive. Tip: add Hinglish spellings your customers use (e.g. “kitna”).</span></div>
               <div className="field"><label htmlFor="rule-reply">Reply with</label><textarea id="rule-reply" className="textarea" rows={4} value={draft.reply} onChange={(e) => setDraft({ ...draft, reply: e.target.value.slice(0, 1024) })} placeholder="Our packages start at ₹9,999 — want me to walk you through the options?" /><span className="hint" style={{ display: "flex", justifyContent: "space-between" }}><span>Sent only while the 24-hour reply window is open</span><span>{draft.reply.length} / 1024</span></span></div>
+              <div className="field"><label>Run on</label>
+                <div className="col gap-6">
+                  <div className="hrow"><span className="icon-tile sm green"><Icon name="whatsapp-logo" /></span><span className="grow">WhatsApp messages</span><button className={`tog${draft.onWhatsapp ? " on" : ""}`} role="switch" aria-checked={draft.onWhatsapp} aria-label="WhatsApp messages" onClick={() => setDraft({ ...draft, onWhatsapp: !draft.onWhatsapp })} data-testid="ch-wa" /></div>
+                  <div className="hrow"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span className="grow">Instagram DMs</span><button className={`tog${draft.onInstagramDm ? " on" : ""}`} role="switch" aria-checked={draft.onInstagramDm} aria-label="Instagram DMs" onClick={() => setDraft({ ...draft, onInstagramDm: !draft.onInstagramDm })} data-testid="ch-ig-dm" /></div>
+                  <div className="hrow"><span className="icon-tile sm pink"><Icon name="chat-text" /></span><span className="grow">Instagram comments<small>Replies privately by DM to the person who commented</small></span><button className={`tog${draft.onInstagramComment ? " on" : ""}`} role="switch" aria-checked={draft.onInstagramComment} aria-label="Instagram comments" onClick={() => setDraft({ ...draft, onInstagramComment: !draft.onInstagramComment })} data-testid="ch-ig-comment" /></div>
+                </div></div>
+              {draft.onInstagramComment && (
+                <div className="field"><label htmlFor="rule-public">Public reply under the comment <span className="opt">optional</span></label>
+                  <input id="rule-public" className="input" value={draft.commentPublicReply} onChange={(e) => setDraft({ ...draft, commentPublicReply: e.target.value.slice(0, 300) })} placeholder="Sent you a DM with the details 💬" data-testid="rule-public-reply" />
+                  <span className="hint">Everyone can see this. Keep it short — the details go in the DM.</span></div>
+              )}
               <div className="hrow"><span className="grow">Send at most once per conversation<small>Avoids repeating the same answer</small></span><button className={`tog${draft.sendOnce ? " on" : ""}`} role="switch" aria-checked={draft.sendOnce} aria-label="Send once per conversation" onClick={() => setDraft({ ...draft, sendOnce: !draft.sendOnce })} /></div>
               {draft.id && <div className="note"><Icon name="chart-bar" /><span>Fired <b>{(rules ?? []).find((r) => r.id === draft.id)?.fired_count ?? 0} times</b>{(rules ?? []).find((r) => r.id === draft.id)?.last_fired_at ? ` · last ${new Date((rules ?? []).find((r) => r.id === draft.id)!.last_fired_at!).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}.</span></div>}
             </div>

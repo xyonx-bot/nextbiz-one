@@ -19,7 +19,7 @@ async function login(page: import("@playwright/test").Page) {
   await Promise.all([page.click("button[type=submit]"), page.waitForURL("**/")]);
 }
 
-test.describe("IG business login OAuth", () => {
+test.describe("Instagram Login OAuth", () => {
   test("start requires session (unauth -> /login), auth -> 302 to Meta dialog with our redirect_uri", async ({ page, request }) => {
     const anon = await request.get("/api/auth/instagram/start", { maxRedirects: 0 });
     expect([302, 307]).toContain(anon.status());
@@ -29,17 +29,11 @@ test.describe("IG business login OAuth", () => {
     const res = await page.request.get("/api/auth/instagram/start", { maxRedirects: 0 });
     expect([302, 307]).toContain(res.status());
     const loc = res.headers()["location"] ?? "";
-    expect(loc.startsWith("https://www.facebook.com/v21.0/dialog/oauth?")).toBe(true);
+    expect(loc.startsWith("https://www.instagram.com/oauth/authorize?")).toBe(true);
     const q = new URL(loc).searchParams;
     expect(q.get("response_type")).toBe("code");
-    // unified config mode: config_id present, raw scope must be absent (Meta rejects it);
-    // legacy mode (no config): raw scope present.
-    if (q.get("config_id")) {
-      expect(q.get("scope")).toBeNull();
-      expect(q.get("override_default_response_type")).toBe("true");
-    } else {
-      expect(q.get("scope")).toContain("instagram_business_manage_messages");
-    }
+    expect(q.get("scope")).toContain("instagram_business_manage_messages");
+    expect(q.get("scope")).toContain("instagram_business_manage_comments");
     // redirect_uri points back at THIS host's callback (origin-derived or PUBLIC_URL)
     expect(q.get("redirect_uri")).toMatch(/\/api\/auth\/instagram\/callback$/);
     expect(q.get("state")).toBeTruthy();

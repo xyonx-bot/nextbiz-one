@@ -48,9 +48,9 @@ export async function GET(req: Request) {
   const redirectUri = `${base}/api/auth/instagram/callback`;
   try {
     const { account } = await exchangeIgCode(code, redirectUri);
-    const res = NextResponse.redirect(`${base}/settings?ig=connected`);
+    const res = NextResponse.redirect(`${base}/settings?ig=connected#channels`);
     res.cookies.delete("ig_oauth_state");
-    console.log(`[ig] connected @${account.username ?? account.ig_user_id} via business login`);
+    console.log(`[ig] connected @${account.username ?? account.ig_user_id} via Instagram Login (webhooks ${account.webhook_subscribed ? "subscribed" : "NOT subscribed"})`);
     return res;
   } catch (e) {
     // 200, not 502: a 5xx status here is rendered by Cloudflare as a generic

@@ -1,114 +1,100 @@
-import { describe, expect, it, vi } from "vitest";
-import { igOAuthDialogUrl, IG_SCOPES } from "@/lib/instagram";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 
-describe("igOAuthDialogUrl (Instagram Business Login)", () => {
-  it("builds the Meta dialog URL with client_id, encoded redirect_uri, scopes, state", () => {
-    const u = igOAuthDialogUrl("https://one-beta.nextbizstudio.com/api/auth/instagram/callback", "st-123", "APPID");
-    expect(u.startsWith("https://www.facebook.com/v21.0/dialog/oauth?")).toBe(true);
-    const q = new URL(u).searchParams;
-    expect(q.get("client_id")).toBe("APPID");
-    expect(q.get("redirect_uri")).toBe("https://one-beta.nextbizstudio.com/api/auth/instagram/callback");
+const queries: { sql: string; params: unknown[] }[] = [];
+vi.mock("@/lib/db", () => ({
+  getPool: () => ({
+    query: async (sql: string, params: unknown[] = []) => {
+      queries.push({ sql, params });
+      if (/INSERT INTO workspaces/.test(sql)) return { rows: [{ id: "ws-1" }], rowCount: 1 };
+      if (/INSERT INTO ig_accounts/.test(sql)) return { rows: [{ id: "acct-1", ig_user_id: params[1], username: params[3], live: true, scopes: [], expires_at: params[8], updated_at: "now" }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+  }),
+}));
+
+import { igOAuthDialogUrl, IG_SCOPES, parseIgEvents, verifyIgSignature } from "@/lib/instagram";
+import { matchRule } from "@/lib/ig-automation";
+
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); queries.length = 0; });
+
+describe("igOAuthDialogUrl (Instagram Login)", () => {
+  it("builds the instagram.com authorize URL with client_id, redirect_uri, scopes, state", () => {
+    const url = new URL(igOAuthDialogUrl("https://one.example.com/api/auth/instagram/callback", "st8", "1234567890"));
+    expect(url.origin + url.pathname).toBe("https://www.instagram.com/oauth/authorize");
+    const q = url.searchParams;
+    expect(q.get("client_id")).toBe("1234567890");
+    expect(q.get("redirect_uri")).toBe("https://one.example.com/api/auth/instagram/callback");
     expect(q.get("response_type")).toBe("code");
-    expect(q.get("state")).toBe("st-123");
     expect(q.get("scope")?.split(",")).toEqual([...IG_SCOPES]);
-    expect(q.get("scope")).toContain("instagram_business_manage_messages");
-    expect(q.get("config_id")).toBeNull(); // optional — only with unified login config
-  });
-
-  it("includes config_id when the unified Instagram login config is provided", () => {
-    const u = igOAuthDialogUrl("https://one-beta.nextbizstudio.com/api/auth/instagram/callback", "st-9", "APPID", "1823777935713893");
-    const q = new URL(u).searchParams;
-    expect(q.get("config_id")).toBe("1823777935713893");
-    // With a config, raw scope must NOT be sent — Meta rejects
-    // "Invalid Scopes: instagram_business_*" otherwise. Permissions live in the config.
-    expect(q.get("scope")).toBeNull();
-    expect(q.get("override_default_response_type")).toBe("true");
-    expect(q.get("response_type")).toBe("code");
+    expect(q.get("state")).toBe("st8");
+    expect(q.get("config_id")).toBeNull();
   });
 });
 
-describe("exchangeIgCode guard", () => {
+describe("exchangeIgCode", () => {
   it("mock mode (IG_LIVE unset) refuses to call Graph", async () => {
     vi.stubEnv("IG_LIVE", "");
+    const fetchSpy = vi.fn(); vi.stubGlobal("fetch", fetchSpy);
     const { exchangeIgCode } = await import("@/lib/instagram");
-    await expect(exchangeIgCode("fake-code", "https://x/cb")).rejects.toThrow(/mock mode/);
-    vi.unstubAllEnvs();
-  });
-});
-
-describe("resolveMetaCreds", () => {
-  const REAL = "a1b2c3d4e5f60718293a4b5c6d7e8f90"; // 32 hex
-  it("skips a junk IG_APP_SECRET placeholder and uses the real app secret", async () => {
-    const { resolveMetaCreds } = await import("@/lib/instagram");
-    const r = resolveMetaCreds({
-      IG_APP_SECRET: "not-a-real-secret",
-      WHATSAPP_APP_SECRET: REAL,
-      IG_APP_ID: "1950786512230644",
-      META_APP_ID: "1950786512230644",
-    } as unknown as NodeJS.ProcessEnv);
-    expect(r.appSecret).toBe(REAL);
-    expect(r.appId).toBe("1950786512230644");
+    await expect(exchangeIgCode("code", "https://x/cb")).rejects.toThrow(/mock mode/);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("prefers a valid IG_APP_SECRET over the WhatsApp fallback", async () => {
-    const { resolveMetaCreds } = await import("@/lib/instagram");
-    const IG = "f0e1d2c3b4a5968778695a4b3c2d1e0f";
-    const r = resolveMetaCreds({ IG_APP_SECRET: IG, WHATSAPP_APP_SECRET: REAL } as unknown as NodeJS.ProcessEnv);
-    expect(r.appSecret).toBe(IG);
-  });
-
-  it("falls back to first candidate when none match the secret shape", async () => {
-    const { resolveMetaCreds } = await import("@/lib/instagram");
-    const r = resolveMetaCreds({ IG_APP_SECRET: "stub", WHATSAPP_APP_SECRET: "also-stub" } as unknown as NodeJS.ProcessEnv);
-    expect(r.appSecret).toBe("stub");
-  });
-});
-
-describe("resolveIgAccount (unified login)", () => {
-  function jsonRes(body: unknown, ok = true) {
-    return { ok, json: async () => body } as Response;
-  }
-
-  it("prefers the business portfolio's owned_instagram_accounts", async () => {
-    vi.stubEnv("META_BUSINESS_ID", "2865391483826091");
-    const fetchMock = vi.fn(async (url: string) => {
-      if (String(url).includes("owned_instagram_accounts")) {
-        return jsonRes({ owned_instagram_accounts: { data: [{ id: "17841400000000001", username: "nextbiz" }] } });
-      }
-      return jsonRes({ data: [] });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const { resolveIgAccount } = await import("@/lib/instagram");
-    await expect(resolveIgAccount("TOK")).resolves.toEqual({ id: "17841400000000001", username: "nextbiz" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain("2865391483826091");
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-  });
-
-  it("falls back to /me/accounts instagram_business_account", async () => {
-    vi.stubEnv("META_BUSINESS_ID", "");
+  it("live: short token → long-lived → /me user_id → stores account → subscribes webhooks", async () => {
+    vi.stubEnv("IG_LIVE", "true"); vi.stubEnv("IG_APP_ID", "1234567890"); vi.stubEnv("IG_APP_SECRET", "a".repeat(32));
+    const calls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (String(url).includes("/me/accounts")) {
-        return jsonRes({ data: [
-          { id: "p1", name: "NoPage" },
-          { id: "p2", name: "PageX", instagram_business_account: { id: "17841400000000002" } },
-        ] });
-      }
-      return jsonRes({});
+      calls.push(url);
+      const json = (o: unknown) => new Response(JSON.stringify(o), { status: 200 });
+      if (url.startsWith("https://api.instagram.com/oauth/access_token")) return json({ access_token: "short", user_id: 99, permissions: [...IG_SCOPES] });
+      if (url.includes("grant_type=ig_exchange_token")) return json({ access_token: "long", expires_in: 5184000 });
+      if (url.includes("/me?fields=user_id")) return json({ user_id: "17841400000000001", username: "testshop", name: "Test Shop" });
+      if (url.includes("/me/subscribed_apps")) return json({ success: true });
+      return new Response("{}", { status: 404 });
     }));
-    const { resolveIgAccount } = await import("@/lib/instagram");
-    await expect(resolveIgAccount("TOK")).resolves.toEqual({ id: "17841400000000002", username: "PageX" });
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
+    const { exchangeIgCode } = await import("@/lib/instagram");
+    const r = await exchangeIgCode("abc#_", "https://x/cb");
+    expect(r.mock).toBe(false);
+    expect(r.account.webhook_subscribed).toBe(true);
+    expect(calls[0]).toBe("https://api.instagram.com/oauth/access_token");
+    expect(calls.some((c) => c.includes("subscribed_fields=messages,comments"))).toBe(true);
+    const ins = queries.find((q) => /INSERT INTO ig_accounts/.test(q.sql))!;
+    expect(ins.params[1]).toBe("17841400000000001"); // webhook entry.id = IG professional account id
+    expect(ins.params[6]).toBe("long");
   });
+});
 
-  it("returns null id when nothing resolves", async () => {
-    vi.stubEnv("META_BUSINESS_ID", "");
-    vi.stubGlobal("fetch", vi.fn(async () => jsonRes({ data: [] })));
-    const { resolveIgAccount } = await import("@/lib/instagram");
-    await expect(resolveIgAccount("TOK")).resolves.toEqual({ id: null });
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
+describe("parseIgEvents", () => {
+  it("marks echoes (messages the business sent) and keeps the customer as recipient", () => {
+    const [e] = parseIgEvents({ entry: [{ id: "IG1", time: 1, messaging: [{ sender: { id: "IG1" }, recipient: { id: "CUST" }, message: { mid: "m1", text: "hi there", is_echo: true } }] }] });
+    expect(e.messages[0]).toMatchObject({ isEcho: true, senderId: "IG1", recipientId: "CUST", body: "hi there" });
+  });
+  it("reads comment media + parent ids", () => {
+    const [e] = parseIgEvents({ entry: [{ id: "IG1", changes: [{ field: "comments", value: { id: "c1", text: "price?", from: { id: "U1", username: "fan" }, media: { id: "M1" }, parent_id: "c0" } }] }] });
+    expect(e.comments[0]).toMatchObject({ commentId: "c1", fromId: "U1", mediaId: "M1", parentId: "c0", text: "price?" });
+  });
+  it("skips reads/reactions/deleted messages", () => {
+    const [e] = parseIgEvents({ entry: [{ id: "IG1", messaging: [{ sender: { id: "U" }, read: { mid: "x" } }, { sender: { id: "U" }, message: { mid: "d", is_deleted: true } }] }] });
+    expect(e.messages).toHaveLength(0);
+  });
+});
+
+describe("verifyIgSignature", () => {
+  it("accepts a payload signed with either the Instagram or the Meta app secret", () => {
+    vi.stubEnv("IG_APP_SECRET", "igsecret"); vi.stubEnv("META_APP_SECRET", "metasecret"); vi.stubEnv("WHATSAPP_APP_SECRET", "");
+    const body = '{"a":1}';
+    const sig = (k: string) => "sha256=" + createHmac("sha256", k).update(body).digest("hex");
+    expect(verifyIgSignature(body, sig("igsecret"))).toBe(true);
+    expect(verifyIgSignature(body, sig("metasecret"))).toBe(true);
+    expect(verifyIgSignature(body, sig("wrong"))).toBe(false);
+  });
+});
+
+describe("matchRule", () => {
+  it("first rule whose keyword appears (case-insensitive) wins", () => {
+    const rules = [{ id: "1", keywords: ["price", "cost"] }, { id: "2", keywords: ["PRICE list"] }];
+    expect(matchRule(rules, "What's the Price?")?.id).toBe("1");
+    expect(matchRule(rules, "hello")).toBeNull();
   });
 });

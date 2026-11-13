@@ -16,13 +16,18 @@ export async function PATCH(req: Request, ctx: Ctx) {
   if (cur.rows.length === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
   const r = cur.rows[0];
   await p.query(
-    `UPDATE keyword_rules SET name=$2, keywords=$3, reply=$4, enabled=$5, send_once=$6, updated_at=now() WHERE id=$1`,
+    `UPDATE keyword_rules SET name=$2, keywords=$3, reply=$4, enabled=$5, send_once=$6,
+       on_whatsapp=$7, on_instagram_dm=$8, on_instagram_comment=$9, comment_public_reply=$10, updated_at=now() WHERE id=$1`,
     [id,
      typeof body.name === "string" ? body.name : r.name,
      Array.isArray(body.keywords) ? body.keywords : r.keywords,
      typeof body.reply === "string" ? body.reply : r.reply,
      typeof body.enabled === "boolean" ? body.enabled : r.enabled,
-     typeof body.sendOnce === "boolean" ? body.sendOnce : r.send_once],
+     typeof body.sendOnce === "boolean" ? body.sendOnce : r.send_once,
+     typeof body.onWhatsapp === "boolean" ? body.onWhatsapp : r.on_whatsapp,
+     typeof body.onInstagramDm === "boolean" ? body.onInstagramDm : r.on_instagram_dm,
+     typeof body.onInstagramComment === "boolean" ? body.onInstagramComment : r.on_instagram_comment,
+     typeof body.commentPublicReply === "string" ? (body.commentPublicReply.trim().slice(0, 300) || null) : body.commentPublicReply === null ? null : r.comment_public_reply],
   );
   return NextResponse.json({ ok: true });
 }

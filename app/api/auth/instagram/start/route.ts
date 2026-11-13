@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSessionUser } from "@/lib/auth";
-import { igOAuthDialogUrl } from "@/lib/instagram";
+import { igAppCreds, igOAuthDialogUrl } from "@/lib/instagram";
 import { randomBytes } from "node:crypto";
 
 /** Public base for redirects (behind nginx req.url can be the internal one). */
@@ -20,13 +20,14 @@ export async function GET(req: Request) {
   const u = await getSessionUser(token);
   const base = publicBase(req);
   if (!u) return NextResponse.redirect(`${base}/login`);
-  const appId = process.env.IG_APP_ID || process.env.META_APP_ID;
-  if (!appId) {
-    return NextResponse.redirect(`${base}/settings?ig=err-noappid`);
+  const { appId } = igAppCreds();
+  if (!/^\d{6,}$/.test(appId)) {
+    // placeholder / missing Instagram app id → don't send people to an Instagram error page
+    return NextResponse.redirect(`${base}/settings?ig=err-noappid#channels`);
   }
   const redirectUri = `${base}/api/auth/instagram/callback`;
   const state = randomBytes(16).toString("hex");
-  const res = NextResponse.redirect(igOAuthDialogUrl(redirectUri, state, appId, process.env.IG_CONFIG_ID || undefined));
+  const res = NextResponse.redirect(igOAuthDialogUrl(redirectUri, state, appId));
   res.cookies.set("ig_oauth_state", state, {
     httpOnly: true, sameSite: "lax", secure: true, path: "/", maxAge: 1800,
   });
