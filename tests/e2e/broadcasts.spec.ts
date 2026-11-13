@@ -108,10 +108,10 @@ test.describe("S2 broadcasts", () => {
     await page.goto("/broadcasts");
     const panel = page.locator("[data-testid=nav-panel]");
     await expect(panel).toBeVisible();
-    expect(await panel.locator(".schip", { hasText: "Broadcasts" }).count()).toBe(1);
-    expect(await panel.locator(".schip", { hasText: "Templates" }).count()).toBe(1);
-    expect(await panel.locator(".schip", { hasText: "Automation" }).count()).toBe(1);
-    expect(await panel.locator(".schip", { hasText: "Inbox" }).count()).toBe(1);
+    expect(await panel.locator(".pi", { hasText: "Broadcasts" }).count()).toBe(1);
+    expect(await panel.locator(".pi", { hasText: "Templates" }).count()).toBe(1);
+    expect(await panel.locator(".pi", { hasText: "Automation" }).count()).toBe(1);
+    expect(await panel.locator(".pi", { hasText: "Inbox" }).count()).toBe(1);
   });
 
   test("composer full flow: pick contacts → template selected state → preview count → schedule step", async ({ page, request }) => {

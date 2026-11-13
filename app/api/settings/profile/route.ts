@@ -25,9 +25,11 @@ export async function PUT(req: Request) {
   const b = Up.safeParse(await req.json().catch(() => null));
   if (!b.success) return NextResponse.json({ error: "Invalid profile" }, { status: 400 });
   const p = getPool();
-  await p.query(
-    `UPDATE workspaces SET name = COALESCE($2, name), about = COALESCE($3, about) WHERE name = 'NextBiz One'`,
-    [null, b.data.businessName ?? null, b.data.about ?? null],
-  );
+  // The workspace row's name is the v1 single-workspace key ('NextBiz One') that every route looks up by —
+  // never rename it. The business name customers see comes from the WhatsApp connection (Meta-managed).
+  if (b.data.businessName !== undefined && b.data.about === undefined) {
+    return NextResponse.json({ error: "The business name comes from your WhatsApp profile and is changed in Meta." }, { status: 400 });
+  }
+  await p.query(`UPDATE workspaces SET about = $1 WHERE name = 'NextBiz One'`, [b.data.about ?? null]);
   return NextResponse.json({ ok: true });
 }

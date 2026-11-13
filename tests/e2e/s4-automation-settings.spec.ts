@@ -122,12 +122,12 @@ test.describe("S4 automation + settings", () => {
     );
     await page.goto("/settings");
     await page.locator(".si", { hasText: "Security" }).click();
-    const rowsBefore = await page.locator(".frow", { hasText: "Other session" }).count();
+    const rowsBefore = await page.locator("[data-testid=session-row]", { hasText: "Other session" }).count();
     expect(rowsBefore).toBeGreaterThan(0);
-    await page.locator(".frow", { hasText: "Other session" }).first()
+    await page.locator("[data-testid=session-row]", { hasText: "Other session" }).first()
       .locator("button", { hasText: "Revoke" }).click();
     await expect(page.locator("[data-testid=settings]")).toContainText("Session revoked", { timeout: 10000 });
-    await expect(page.locator(".frow", { hasText: "Other session" })).toHaveCount(rowsBefore - 1);
+    await expect(page.locator("[data-testid=session-row]", { hasText: "Other session" })).toHaveCount(rowsBefore - 1);
   });
 });
 

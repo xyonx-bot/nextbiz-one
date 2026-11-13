@@ -2,322 +2,121 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "@/components/Icon";
 
 /**
- * P2.2 guided campaign creation — 7-step wizard, ported 1:1 from
- * ~/workspaces/mira/prototypes/nextbiz-one/ads/create/wireframe.html.
- * Steps: 1 basics (name+objective) · 2 audience · 3 budget & schedule ·
- * 4 creative & copy · 5 destination · 6 review · 7 submit.
- * Per-step validation: name required, objective picked, budget > 0,
- * destination picked (PLAN §5). Live ad preview + counters in the right rail.
- * Mock-badged; submit:true → in_review (Meta review shape), else draft.
+ * NextBiz Ads · Create — design v2 (nextbiz-one-v2/ads-create): four plain questions on one page with a live
+ * ad preview. Saves a mock draft or submits it to (mock) review — demo-badged until an ad account is connected.
+ * Validation (PLAN §5): name, objective, destination required; budget ₹1–₹1,00,000/day; copy within Meta limits.
  */
-const P = "https://cdn.joyverse.fun/mira-assets/phosphor/bold";
-
-const OBJECTIVES = [
-  { v: "OUTCOME_ENGAGEMENT", label: "WhatsApp messages", sub: "Drive conversations in chat" },
-  { v: "OUTCOME_TRAFFIC", label: "Website visits", sub: "Send people to your site" },
-  { v: "OUTCOME_LEADS", label: "Lead signups", sub: "Collect signups and enquiries" },
-  { v: "OUTCOME_SALES", label: "Catalog sales", sub: "Sell products from your catalog" },
-  { v: "OUTCOME_AWARENESS", label: "Brand awareness", sub: "Get your name seen" },
-] as const;
-
-const STEPS = [
-  { t: "Campaign basics", s: "Name + objective" },
-  { t: "Audience", s: "Who sees it" },
-  { t: "Budget & schedule", s: "₹/day + dates" },
-  { t: "Creative & copy", s: "Headline + body" },
-  { t: "Destination", s: "WhatsApp / website" },
-  { t: "Review", s: "Preview + check" },
-  { t: "Submit", s: "Draft or review" },
+const GOALS: [string, string, string, string][] = [
+  ["OUTCOME_ENGAGEMENT", "Message me on WhatsApp", "Ad opens a chat with your number. Lands in your inbox.", "whatsapp-logo"],
+  ["OUTCOME_TRAFFIC", "Visit my website", "Send people to a page on your site.", "globe"],
+  ["OUTCOME_LEADS", "Collect leads", "People fill a short form inside Instagram/Facebook.", "identification-card"],
+  ["OUTCOME_AWARENESS", "Get more reach", "Show your brand to as many people as possible.", "users"],
 ];
-
-type Form = {
-  name: string;
-  objective: string;
-  audience: string;
-  daily_budget: string;
-  start: string;
-  stop: string;
-  startNow: boolean;
-  headline: string;
-  body: string;
-  destination: string;
-};
-
-const EMPTY: Form = {
-  name: "", objective: "", audience: "", daily_budget: "",
-  start: "", stop: "", startNow: true, headline: "", body: "", destination: "",
-};
+const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 
 export function NewCampaignClient() {
   const router = useRouter();
-  const [step, setStep] = useState(0); // 0-based
-  const [f, setF] = useState<Form>(EMPTY);
+  const [name, setName] = useState("");
+  const [objective, setObjective] = useState("OUTCOME_ENGAGEMENT");
+  const [destination, setDestination] = useState<"whatsapp" | "website">("whatsapp");
+  const [audience, setAudience] = useState("");
+  const [budget, setBudget] = useState(1500);
+  const [start, setStart] = useState("");
+  const [stop, setStop] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [body, setBody] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const set = <K extends keyof Form>(k: K, v: Form[K]) => {
-    setF((p) => ({ ...p, [k]: v }));
-    setErr("");
-  };
+  const problem = !name.trim() ? "Give your campaign a name" : budget <= 0 ? "Enter a budget above ₹0" : budget > 100000 ? "Daily budget max is ₹1,00,000"
+    : stop && start && new Date(stop) <= new Date(start) ? "End date must be after the start date" : headline.length > 40 ? "Headline is over 40 characters" : body.length > 125 ? "Primary text is over 125 characters" : "";
 
-  /** Required-field validation shared by Continue and draft/submit. */
-  function validateRequired(): string {
-    if (!f.name.trim()) return "Give the campaign a name";
-    if (!f.objective) return "Pick an objective";
-    const b = Number(f.daily_budget);
-    if (!f.daily_budget || isNaN(b) || b <= 0) return "Enter a budget above ₹0";
-    if (b > 100000) return "Daily budget max is ₹1,00,000";
-    if (!f.destination) return "Pick a destination";
-    return "";
-  }
-
-  /** Per-step validation for Continue (PLAN §5: name, objective, budget>0, destination). */
-  function stepError(): string {
-    if (step === 0) {
-      if (!f.name.trim()) return "Give the campaign a name";
-      if (!f.objective) return "Pick an objective";
-    }
-    if (step === 2) {
-      const b = Number(f.daily_budget);
-      if (!f.daily_budget || isNaN(b) || b <= 0) return "Enter a budget above ₹0";
-      if (b > 100000) return "Daily budget max is ₹1,00,000";
-      if (!f.startNow && f.start && f.stop && new Date(f.stop) <= new Date(f.start)) return "Stop must be after start";
-    }
-    if (step === 4 && !f.destination) return "Pick a destination";
-    return "";
-  }
-
-  function next() {
-    const e = stepError();
-    if (e) return setErr(e);
-    setStep((s) => Math.min(6, s + 1));
-  }
-
-  async function submit(submitForReview: boolean) {
-    const e = validateRequired() || stepError();
-    if (e) return setErr(e);
-    setBusy(true);
-    setErr("");
-    const r = await fetch("/api/ads/campaigns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: f.name.trim(),
-        objective: f.objective,
-        daily_budget: Number(f.daily_budget),
-        destination: f.destination,
-        start_time: !f.startNow && f.start ? new Date(f.start).toISOString() : null,
-        stop_time: !f.startNow && f.stop ? new Date(f.stop).toISOString() : null,
-        creative_headline: f.headline.trim() || null,
-        creative_body: f.body.trim() || null,
-        audience: f.audience.trim() || null,
-        submit: submitForReview,
-      }),
+  async function save(submit: boolean) {
+    if (problem) { setErr(problem); return; }
+    setBusy(true); setErr("");
+    const res = await fetch("/api/ads/campaigns", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim(), objective, daily_budget: Math.round(budget), destination, audience: audience || null, creative_headline: headline || null, creative_body: body || null,
+        start_time: start ? new Date(start).toISOString() : null, stop_time: stop ? new Date(stop).toISOString() : null, submit }),
     });
+    const d = await res.json().catch(() => null);
     setBusy(false);
-    if (!r.ok) {
-      const d = (await r.json().catch(() => null)) as { error?: string } | null;
-      return setErr(d?.error ?? "Could not save the campaign — try again.");
-    }
-    router.push(submitForReview ? "/ads?status=IN_REVIEW" : "/ads?status=DRAFT");
+    if (!res.ok || !d?.ok) { setErr(d?.error ?? "Couldn't save the campaign."); return; }
+    router.push(submit ? "/ads?status=IN_REVIEW" : "/ads?status=DRAFT");
   }
-
-  const objLabel = OBJECTIVES.find((o) => o.v === f.objective)?.label ?? "—";
-  const ctaLabel = f.destination === "website" ? "Visit website" : "Message us";
 
   return (
-    <div className="wzone" data-testid="ads-wizard">
-      {/* stepper */}
-      <aside className="steps card" aria-label="Steps">
-        {STEPS.map((s, i) => (
-          <div key={i} className={`step${i < step ? " done" : ""}${i === step ? " cur" : ""}`}>
-            <span className="num">{i < step ? <img src={`${P}/check-bold.svg`} alt="" /> : i + 1}</span>
-            <div className="t"><b>{s.t}</b><span>{s.s}</span></div>
-          </div>
-        ))}
-      </aside>
-
-      {/* form */}
-      <section className="wform card" aria-label="Step form">
-        <div className="wf-head">
-          <span className="crumb">Step {step + 1} of 7</span>
-          <b>{STEPS[step].t}</b>
-          <span className="badge-mock">Demo data</span>
-        </div>
-        <div className="wf-body">
-          {step === 0 && (
-            <>
-              <div className="frow single">
-                <div className="field">
-                  <div className="lb">Campaign name <em>· 1–80 chars</em></div>
-                  <input className={`inp${err && !f.name.trim() ? " err" : ""}`} value={f.name} maxLength={80}
-                    onChange={(e) => set("name", e.target.value)} placeholder="e.g. Diwali Sale Push" aria-label="Campaign name" data-testid="f-name" />
-                  <div className="hint">Shown in the campaigns list and in ad labels.</div>
-                </div>
-              </div>
-              <div className="field">
-                <div className="lb">Objective</div>
-                {OBJECTIVES.map((o) => (
-                  <div key={o.v} className={`optrow${f.objective === o.v ? " on" : ""}`} onClick={() => set("objective", o.v)} data-testid={`obj-${o.v}`}>
-                    <span className="rad" />
-                    <div className="t"><b>{o.label}</b><span>{o.sub}</span></div>
+    <div className="pg-ads-create">
+      <div className="cw" data-testid="ads-wizard">
+        <div className="form">
+          <section className="card">
+            <div className="sec-h"><span className="k">1</span><span className="grow"><b>What do you want people to do?</b><small>We&apos;ll set up Meta&apos;s targeting for this goal.</small></span><span className="demo">Demo</span></div>
+            <div className="sec-b">
+              <div className="field"><label htmlFor="f-name">Campaign name <span className="opt">only you see this</span></label><input id="f-name" className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 80))} placeholder="Diwali offer — Kolkata" data-testid="f-name" /></div>
+              <div className="goals" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+                {GOALS.map(([k, t, s, ic]) => (
+                  <div key={k} className={`goal${objective === k ? " on" : ""}`} onClick={() => { setObjective(k); setDestination(k === "OUTCOME_TRAFFIC" ? "website" : "whatsapp"); }} role="radio" aria-checked={objective === k} tabIndex={0} data-testid={`obj-${k}`}>
+                    <span className={`icon-tile ${objective === k ? "orange" : "neutral"}`}><Icon name={ic} /></span><b>{t}</b><small>{s}</small>
+                    {k === "OUTCOME_ENGAGEMENT" && <span className="pill ads sm nodot rec">Best for you</span>}
                   </div>
                 ))}
               </div>
-            </>
-          )}
-
-          {step === 1 && (
-            <div className="frow single">
-              <div className="field">
-                <div className="lb">Audience <em>· optional · up to 200 chars</em></div>
-                <textarea className="inp" style={{ minHeight: 110, resize: "vertical" }} value={f.audience} maxLength={200}
-                  onChange={(e) => set("audience", e.target.value)} placeholder="e.g. Existing customers, 18–45, Kolkata · past 30 days" aria-label="Audience" data-testid="f-audience" />
-                <div className="hint">Describe who should see this campaign — segment text only in the demo.</div>
-              </div>
+              <div className="field"><label>Where should people land?</label>
+                <div className="seg" style={{ alignSelf: "flex-start" }}>
+                  <button type="button" className={destination === "whatsapp" ? "on" : ""} onClick={() => setDestination("whatsapp")} data-testid="dest-whatsapp">WhatsApp chat</button>
+                  <button type="button" className={destination === "website" ? "on" : ""} onClick={() => setDestination("website")} data-testid="dest-website">Website</button></div></div>
             </div>
-          )}
-
-          {step === 2 && (
-            <>
-              <div className="frow single">
-                <div className="field">
-                  <div className="lb">Daily budget <em>· INR · 0–100,000</em></div>
-                  <div className="inpwrap" style={err && Number(f.daily_budget) <= 0 ? { borderColor: "var(--danger)" } : undefined}>
-                    <span className="cur">₹</span>
-                    <input value={f.daily_budget} inputMode="numeric" onChange={(e) => set("daily_budget", e.target.value.replace(/[^0-9]/g, ""))} placeholder="800" aria-label="Daily budget" data-testid="f-budget" />
-                  </div>
-                  <div className={`hint${err && Number(f.daily_budget) <= 0 ? " err" : ""}`}>Spent per day across all ad sets. <b>Must be above ₹0 to continue</b> — error state: red border + &ldquo;Enter a budget above ₹0&rdquo; under the field.</div>
-                </div>
-              </div>
-              <div className="frow">
-                <div className="field">
-                  <div className="lb">Start</div>
-                  <div className={`inpwrap${f.startNow ? " dis" : ""}`}>
-                    <input type="datetime-local" disabled={f.startNow} value={f.start} placeholder="e.g. 2026-11-01 09:00" aria-label="Start" onChange={(e) => set("start", e.target.value)} data-testid="f-start" />
-                  </div>
-                </div>
-                <div className="field">
-                  <div className="lb">Stop <em>· optional</em></div>
-                  <div className={`inpwrap${f.startNow ? " dis" : ""}`}>
-                    <input type="datetime-local" disabled={f.startNow} value={f.stop} placeholder="e.g. 2026-11-30 23:59" aria-label="Stop" onChange={(e) => set("stop", e.target.value)} data-testid="f-stop" />
-                  </div>
-                </div>
-              </div>
-              <div className="tglrow">
-                <button className={`tgl${f.startNow ? " on" : ""}`} onClick={() => set("startNow", !f.startNow)} aria-label="Start immediately" data-testid="tgl-startnow" />
-                <span className="t">Start immediately — leave dates empty</span>
-              </div>
-              <div className="hint">When off, both datetime fields enable and accept ISO values; stop must be after start (validation error under Stop otherwise).</div>
-            </>
-          )}
-
-          {step === 3 && (
-            <>
-              <div className="frow single">
-                <div className="field">
-                  <div className="lb">Ad headline <em>· up to 120 chars</em></div>
-                  <input className="inp" value={f.headline} maxLength={120} onChange={(e) => set("headline", e.target.value)} placeholder="e.g. Diwali festive offers — up to 40% off" aria-label="Ad headline" data-testid="f-headline" />
-                </div>
-              </div>
-              <div className="frow single">
-                <div className="field">
-                  <div className="lb">Ad body <em>· up to 600 chars</em></div>
-                  <textarea className="inp" style={{ minHeight: 130, resize: "vertical" }} value={f.body} maxLength={600}
-                    onChange={(e) => set("body", e.target.value)} placeholder="Flat 40% off all website packages this week. Tap to chat and we will send your custom quote." aria-label="Ad body" data-testid="f-body" />
-                </div>
-              </div>
-            </>
-          )}
-
-          {step === 4 && (
-            <div className="field">
-              <div className="lb">Destination</div>
-              <div className={`optrow${f.destination === "whatsapp" ? " on" : ""}`} onClick={() => set("destination", "whatsapp")} data-testid="dest-whatsapp">
-                <span className="rad" />
-                <div className="t"><b>WhatsApp</b><span>Ad opens a chat with your business number</span></div>
-              </div>
-              <div className={`optrow${f.destination === "website" ? " on" : ""}`} onClick={() => set("destination", "website")} data-testid="dest-website">
-                <span className="rad" />
-                <div className="t"><b>Website</b><span>Ad links out to your site</span></div>
-              </div>
+          </section>
+          <section className="card">
+            <div className="sec-h"><span className="k">2</span><span className="grow"><b>Who should see it?</b><small>Start broad — Meta finds the right people.</small></span></div>
+            <div className="sec-b"><div className="field"><label htmlFor="f-audience">Describe your audience <span className="opt">optional</span></label>
+              <input id="f-audience" className="input" value={audience} onChange={(e) => setAudience(e.target.value.slice(0, 200))} placeholder="Kolkata + 25 km, age 24–55, small business owners" data-testid="f-audience" />
+              <span className="hint" data-testid="cnt-audience">{audience.length} / 200</span></div></div>
+          </section>
+          <section className="card">
+            <div className="sec-h"><span className="k">3</span><span className="grow"><b>Budget &amp; schedule</b><small>You can pause or change this any time.</small></span></div>
+            <div className="sec-b">
+              <div className="range"><label className="label" htmlFor="f-budget">Daily budget</label><span className="bigbud">{inr(budget)}<small className="faint" style={{ fontSize: "var(--fs-md)", fontWeight: 700 }}> / day</small></span>
+                <input id="f-budget" type="range" min={100} max={20000} step={100} value={Math.min(budget, 20000)} onChange={(e) => setBudget(Number(e.target.value))} aria-label="Daily budget" />
+                <input className="input" type="number" min={0} max={100000} value={budget} onChange={(e) => setBudget(Number(e.target.value))} style={{ maxWidth: 160 }} aria-label="Daily budget in rupees" data-testid="f-budget" /></div>
+              <div className="est"><div><span>Monthly at most</span><b>{inr(budget * 30)}</b></div><div><span>Estimated chats / day</span><b>{Math.round(budget / 39)}–{Math.round(budget / 24)}</b></div></div>
+              <div className="g2"><div className="field"><label htmlFor="f-start">Start</label><input id="f-start" className="input" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /><span className="hint">Leave empty to start right after approval</span></div>
+                <div className="field"><label htmlFor="f-stop">End <span className="opt">optional</span></label><input id="f-stop" className="input" type="datetime-local" value={stop} onChange={(e) => setStop(e.target.value)} /></div></div>
             </div>
-          )}
-
-          {step === 5 && (
-            <div className="frow single">
-              <div className="field">
-                <div className="lb">Review</div>
-                <div className="mgrid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 18px" }}>
-                  <div className="m"><div className="k">Name</div><div className="v">{f.name || "—"}</div></div>
-                  <div className="m"><div className="k">Objective</div><div className="v">{objLabel}</div></div>
-                  <div className="m"><div className="k">Audience</div><div className="v">{f.audience || "Everyone"}</div></div>
-                  <div className="m"><div className="k">Daily budget</div><div className="v">₹{f.daily_budget || "0"} / day</div></div>
-                  <div className="m"><div className="k">Schedule</div><div className="v">{f.startNow ? "Starts immediately" : `${f.start || "—"} → ${f.stop || "ongoing"}`}</div></div>
-                  <div className="m"><div className="k">Destination</div><div className="v">{f.destination === "website" ? "Website" : f.destination === "whatsapp" ? "WhatsApp" : "—"}</div></div>
-                </div>
-                <div className="hint">The ad preview on the right is live — it reflects headline, body and destination as you typed them.</div>
-              </div>
+          </section>
+          <section className="card">
+            <div className="sec-h"><span className="k">4</span><span className="grow"><b>Your ad</b><small>A short, friendly message.</small></span></div>
+            <div className="sec-b">
+              <div className="field"><label htmlFor="f-headline">Headline</label><input id="f-headline" className="input" value={headline} onChange={(e) => setHeadline(e.target.value.slice(0, 120))} placeholder="Websites from ₹9,999" data-testid="f-headline" /><span className={`hint${headline.length > 40 ? " err" : ""}`} data-testid="cnt-headline">{headline.length} / 40</span></div>
+              <div className="field"><label htmlFor="f-body">Primary text</label><textarea id="f-body" className="textarea" rows={3} value={body} onChange={(e) => setBody(e.target.value.slice(0, 600))} placeholder="Need a website for your shop? Chat with us on WhatsApp for a free quote." data-testid="f-body" /><span className={`hint${body.length > 125 ? " err" : ""}`}>{body.length} / 125 — longer text gets cut off</span></div>
             </div>
-          )}
-
-          {step === 6 && (
-            <div className="frow single">
-              <div className="field">
-                <div className="lb">Submit</div>
-                <div className="hint">
-                  <b>Save as draft</b> keeps the campaign in Drafts — you can pause/resume it from the list.
-                  <br /><b>Submit for review</b> sends it to Meta review (mock: lands in &ldquo;Needs review&rdquo;) — Meta typically responds within a few hours.
-                </div>
-                {err && <div className="hint err" data-testid="wizard-error">{err}</div>}
-              </div>
-            </div>
-          )}
-
-          {step < 6 && err && <div className="hint err" data-testid="wizard-error">{err}</div>}
+          </section>
+          {err && <div className="note bad" data-testid="wizard-error"><Icon name="warning-circle" /><span>{err}</span></div>}
+          <div className="foot"><span className="xs faint grow" style={{ fontWeight: 600 }}>Demo — nothing is charged or published.</span>
+            <button className="btn btn-soft" disabled={busy} onClick={() => void save(false)} data-testid="wiz-draft">Save draft</button>
+            <button className="btn btn-primary" disabled={busy} onClick={() => void save(true)} data-testid="wiz-submit"><Icon name="paper-plane-tilt" />Submit for review</button></div>
         </div>
-        <div className="wf-foot">
-          <button className="btn btn-ghost btn-sm" onClick={() => step > 0 && setStep(step - 1)} disabled={step === 0} data-testid="wiz-back">
-            <img src={`${P}/arrow-left-bold.svg`} alt="" />Back
-          </button>
-          <span className="sp" />
-          <button className="btn btn-soft btn-sm" onClick={() => submit(false)} disabled={busy} data-testid="wiz-draft">
-            <img src={`${P}/files-bold.svg`} alt="" />{busy ? "Saving…" : "Save as draft"}
-          </button>
-          {step < 6 ? (
-            <button className="btn btn-ads btn-sm" onClick={next} data-testid="wiz-next">
-              Continue<img src={`${P}/caret-right-bold.svg`} alt="" />
-            </button>
-          ) : (
-            <button className="btn btn-ads btn-sm" onClick={() => submit(true)} disabled={busy} data-testid="wiz-submit">
-              <img src={`${P}/check-bold.svg`} alt="" />{busy ? "Submitting…" : "Submit for review"}
-            </button>
-          )}
-        </div>
-      </section>
-
-      {/* live ad preview */}
-      <aside className="aprev card" aria-label="Ad preview">
-        <div className="ap-head"><b>Ad preview</b><span>updates as you type</span></div>
-        <div className="ap-body">
-          <div className="adcard">
-            <div className="ah"><span className="av">AS</span><div className="n"><b>Acme Studio</b><span>Sponsored</span></div></div>
-            <div className="imgph"><img src={`${P}/image-square-bold.svg`} alt="" /></div>
-            <div className="ab">
-              <div className="hl" data-testid="pv-headline">{f.headline || "Your headline"}</div>
-              <div className="bd" data-testid="pv-body">{f.body || "Your ad copy goes here."}</div>
+        <aside className="side">
+          <section className="card">
+            <div className="card-h"><span className="h3">Preview</span><span className="xs faint" style={{ fontWeight: 600 }}>Instagram feed</span></div>
+            <div className="ad">
+              <div className="ad-h"><span className="av xs c2">Y</span><span className="grow"><b>your.business</b><small>Sponsored</small></span><Icon name="dots-three" size="sm" /></div>
+              <div className="ad-img"><b data-testid="pv-headline">{headline || "Your headline here"}</b></div>
+              <div className="ad-cta"><span>{destination === "whatsapp" ? "Chat with us" : "Learn more"}</span><span className="b" style={destination === "website" ? { background: "#1877F2" } : undefined}><Icon name={destination === "whatsapp" ? "whatsapp-logo" : "arrow-up-right"} size="sm" />{destination === "whatsapp" ? "Send message" : "Visit site"}</span></div>
+              <div className="ad-txt"><b>your.business</b> {body || "Your primary text appears here."}</div>
             </div>
-            <div className="cta"><img src={`${P}/${f.destination === "website" ? "globe" : "whatsapp-logo"}-bold.svg`} alt="" />{ctaLabel}</div>
-          </div>
-          <div className="counters">
-            <span>Headline <b data-testid="cnt-headline">{f.headline.length}/120</b></span>
-            <span>Body <b data-testid="cnt-body">{f.body.length}/600</b></span>
-            <span>Audience <b data-testid="cnt-audience">{f.audience.length}/200</b></span>
-          </div>
-        </div>
-      </aside>
+          </section>
+          <section className="card"><div className="card-h"><span className="h3">Before you submit</span></div>
+            <div className="chk">
+              <div><Icon name={name.trim() ? "check-circle-fill" : "warning"} style={{ color: name.trim() ? "var(--chat-deep)" : "var(--banana-deep)" }} />Campaign named</div>
+              <div><Icon name={headline && headline.length <= 40 ? "check-circle-fill" : "warning"} style={{ color: headline && headline.length <= 40 ? "var(--chat-deep)" : "var(--banana-deep)" }} />Headline within 40 characters</div>
+              <div><Icon name="warning" style={{ color: "var(--banana-deep)" }} />No ad account connected (demo)</div>
+            </div></section>
+        </aside>
+      </div>
     </div>
   );
 }

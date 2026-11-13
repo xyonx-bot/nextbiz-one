@@ -22,7 +22,7 @@ export async function GET() {
       `SELECT (SELECT count(*)::int FROM messages m JOIN conversations c ON c.id=m.conversation_id
                 JOIN contacts ct ON ct.id=c.contact_id
                 WHERE ct.wa_id=$1 AND m.direction='in' AND m.created_at > now() - interval '30 minutes') AS recv,
-              (SELECT max(created_at)::text FROM messages m JOIN conversations c ON c.id=m.conversation_id
+              (SELECT max(m.created_at)::text FROM messages m JOIN conversations c ON c.id=m.conversation_id
                 JOIN contacts ct ON ct.id=c.contact_id
                 WHERE ct.wa_id=$1 AND m.direction='out' AND m.created_at > now() - interval '30 minutes') AS sent`,
       [own],
@@ -30,8 +30,13 @@ export async function GET() {
     testReceived = (t.rows[0]?.recv ?? 0) > 0;
     testSentAt = t.rows[0]?.sent ?? null;
   }
+  const counts = (await p.query(
+    `SELECT (SELECT count(*)::int FROM messages WHERE direction = 'in') AS inbound,
+            (SELECT count(*)::int FROM templates WHERE lower(status) = 'approved') AS approved`,
+  )).rows[0];
   return NextResponse.json({
-    ok: true, connected,
+    ok: true, connected, displayName: w?.display_name ?? null,
+    inboundCount: counts?.inbound ?? 0, approvedTemplates: counts?.approved ?? 0,
     displayNumber: own ? `+${own.slice(0, 2)} ${own.slice(2, 7)}XXXXXX${own.slice(-2)}` : null,
     testSent: !!testSentAt, testReceived,
   });

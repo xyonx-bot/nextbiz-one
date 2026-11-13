@@ -5,11 +5,15 @@ import { getPool } from "@/lib/db";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// Meta Cloud API error codes, in plain words (https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes)
 const DECODE: Record<number, string> = {
-  131026: "not opted in",
-  131047: "re-engagement — 24h window closed",
-  131049: "number not on WhatsApp",
-  131027: "recipient not registered",
+  131026: "can't be delivered — not on WhatsApp or using an old app",
+  131047: "24-hour reply window closed — use a template",
+  131049: "paused by Meta — too many marketing messages to this person",
+  131050: "this person stopped marketing messages",
+  131051: "message type not supported",
+  131052: "media couldn't be downloaded",
+  131053: "media couldn't be uploaded",
 };
 
 /** GET — per-recipient report rows (+ rollups). ?format=csv streams a CSV. */

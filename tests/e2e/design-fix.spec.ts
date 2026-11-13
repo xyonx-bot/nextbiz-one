@@ -20,58 +20,65 @@ if (PROD_DB_URL.includes("one-db:5432") || PROD_DB_URL.includes("one.nextbizstud
   process.exit(0);
 }
 const EMAIL = `e2e_dfix_${Date.now()}@nbo.test`;
+const login = async (page: import("@playwright/test").Page) => {
+  await page.goto("/login");
+  await page.fill("#email", process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one");
+  await page.fill("#password", process.env.OPERATOR_PASS ?? "operator-test-pass");
+  await Promise.all([page.click("button[type=submit]"), page.waitForURL((u) => !u.pathname.startsWith("/login"))]);
+};
 
-test.describe("S3 design-fix (r-nbo-s3-design-fix)", () => {
+/**
+ * Design v2 guards (nextbiz-one-v2 package): brand block on every auth surface, Plus Jakarta Sans actually
+ * loaded (v1 silently fell back to system fonts), ink-on-fruit primary buttons, one 12px gutter in the shell,
+ * operator console has its own sidebar layout, no horizontal page overflow on phones.
+ */
+test.describe("design v2 guards", () => {
   test.describe.configure({ mode: "serial" });
 
   for (const path of ["/login", "/signup", "/request-access"]) {
-    test(`A: brand block above card on ${path}`, async ({ page }) => {
+    test(`brand block + logo above the form on ${path}`, async ({ page }) => {
       await page.goto(path);
       const brand = page.locator(".auth-brand");
       await expect(brand).toBeVisible();
       await expect(brand.locator("b")).toHaveText("NextBiz One");
-      await expect(brand.locator("img")).toHaveCSS("width", "30px");
-      await expect(page.locator(".auth-sub")).toHaveText(
-        "WhatsApp-first client platform for small businesses",
-      );
-      // brand strictly precedes the card in DOM order (above it visually)
+      expect(await brand.locator("img").evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
+      await expect(page.locator(".auth-sub")).toHaveText("WhatsApp-first client platform for small businesses");
       const ordered = await page.evaluate(() => {
-        const b = document.querySelector(".auth-brand")!;
-        const c = document.querySelector(".authcard")!;
-        return !!(b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING);
+        const b = document.querySelector(".auth-brand")!, c = document.querySelector(".authcard")!;
+        return !!(b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) || c.contains(b);
       });
       expect(ordered).toBe(true);
     });
   }
 
-  test("C: login CTA dark text on lime + copy 'Log In'", async ({ page }) => {
+  test("Plus Jakarta Sans is loaded (no system-font fallback)", async ({ page }) => {
     await page.goto("/login");
-    const cta = page.locator(".authwrap .btn-chat");
-    await expect(cta).toHaveText("Log In");
-    await expect(cta).toHaveCSS("color", "rgb(26, 29, 35)"); // --ink dark text
-    await expect(cta).toHaveCSS("background-color", "rgb(145, 200, 43)"); // lime fill
+    await page.evaluate(() => document.fonts.ready);
+    const ok = await page.evaluate(() => [...document.fonts].some((f) => /Jakarta/i.test(f.family) && f.status === "loaded"));
+    expect(ok).toBe(true);
   });
 
-  test("D: signup legal microcopy below CTA", async ({ page }) => {
+  test("login CTA: ink text on apple-green", async ({ page }) => {
+    await page.goto("/login");
+    const cta = page.locator("button[type=submit]");
+    await expect(cta).toHaveText("Log in");
+    await expect(cta).toHaveCSS("color", "rgb(26, 29, 35)");
+    expect(await cta.evaluate((b) => getComputedStyle(b).backgroundImage + getComputedStyle(b).backgroundColor)).toMatch(/145, 200, 43/);
+  });
+
+  test("signup links the privacy policy", async ({ page }) => {
     await page.goto("/signup");
-    const foot = page.locator(".afoot", { hasText: "By continuing you agree to the" });
-    await expect(foot).toBeVisible();
-    await expect(foot.locator("a", { hasText: "Terms" })).toBeVisible();
-    await expect(foot.locator("a", { hasText: "Privacy Policy" })).toBeVisible();
+    await expect(page.locator(".afoot a", { hasText: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
   });
 
-  test("E: request-access full subtitle + 'Email for updates' label", async ({ page }) => {
+  test("request-access subtitle + 'Email for updates' label", async ({ page }) => {
     await page.goto("/request-access");
-    await expect(page.locator(".lede")).toHaveText(
-      "Tell us about your business — we review in ~1 day",
-    );
+    await expect(page.locator(".lede")).toContainText("Tell us about your business");
     await expect(page.getByLabel("Email for updates")).toBeVisible();
   });
 
-  test("A: gated pending state keeps brand block + wireframe card classes", async ({ page, request }) => {
-    const su = await request.post("/api/auth/signup", {
-      data: { businessName: "Dfix Biz", email: EMAIL, password: "e2e-test-pass-123" },
-    });
+  test("gated login shows the pending status card with brand block", async ({ page, request }) => {
+    const su = await request.post("/api/auth/signup", { data: { businessName: "Dfix Biz", email: EMAIL, password: "e2e-test-pass-123" } });
     expect(su.status()).toBe(201);
     await page.goto("/login");
     await page.fill("#email", EMAIL);
@@ -79,40 +86,43 @@ test.describe("S3 design-fix (r-nbo-s3-design-fix)", () => {
     await page.click("button[type=submit]");
     const st = page.locator("[data-testid=st-pending]");
     await expect(st).toBeVisible();
-    // wireframe classes (was unstyled warn-card before the fix)
     await expect(st).toHaveClass(/stcard pending/);
     await expect(st.locator(".st-ic")).toBeVisible();
-    await expect(st.locator(".locknote img")).toBeVisible();
-    // brand block still above the status card
-    const ordered = await page.evaluate(() => {
-      const b = document.querySelector(".auth-brand")!;
-      const c = document.querySelector(".stcard")!;
-      return !!(b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING);
-    });
-    expect(ordered).toBe(true);
+    await expect(st.locator(".locknote")).toBeVisible();
+    await expect(page.locator(".auth-brand")).toBeVisible();
   });
 
-  test("B: operator spacing tokens (gap 14 / radius 18 / canvas margin 24 @1280)", async ({ page }) => {
+  test("shell: one 12px gutter between rail, panel and content @1440", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await login(page);
+    await page.goto("/inbox");
+    const r = await page.evaluate(() => {
+      const box = (s: string) => document.querySelector(s)!.getBoundingClientRect();
+      const rail = box(".rail"), panel = box(".panel"), top = box(".topbar");
+      return { railPanel: Math.round(panel.left - rail.right), panelMain: Math.round(top.left - panel.right), left: Math.round(rail.left), right: Math.round(innerWidth - top.right) };
+    });
+    expect(r).toEqual({ railPanel: 12, panelMain: 12, left: 12, right: 12 });
+  });
+
+  test("operator console: sidebar + main layout", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto("/login");
-    await page.fill("#email", process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one");
-    await page.fill("#password", process.env.OPERATOR_PASS ?? "operator-test-pass");
-    await Promise.all([page.click("button[type=submit]"), page.waitForURL("**/")]);
+    await login(page);
     await page.goto("/operator");
     await expect(page.locator(".op-shell")).toBeVisible();
-    // wireframe spacing: op-main flex column gap 14px + 12/12/26 padding
-    await expect(page.locator(".op-main")).toHaveCSS("gap", "14px");
-    await expect(page.locator(".op-main")).toHaveCSS("padding", "12px 12px 26px");
-    await expect(page.locator(".op-shell")).toHaveCSS("padding", "12px");
-    // op-card radius = v1.2 --r-lg 18px (mira measured 12-14 live before)
-    await expect(page.locator(".op-card").first()).toHaveCSS("border-radius", "18px");
-    // right canvas margin at 1280 = shell 12 + main 12 = 24px (mira's ~22px spec)
-    const margin = await page.evaluate(() => {
-      const card = document.querySelector(".op-card")!;
-      return window.innerWidth - card.getBoundingClientRect().right;
-    });
-    expect(margin).toBe(24);
+    const side = await page.locator(".op-shell").boundingBox(), main = await page.locator(".op-main").boundingBox();
+    expect(side!.x).toBeLessThan(main!.x);
+    expect(Math.round(main!.x - (side!.x + side!.width))).toBe(12);
   });
+
+  for (const path of ["/", "/inbox", "/contacts", "/templates", "/broadcasts", "/automation", "/settings", "/ads"]) {
+    test(`no horizontal overflow at 375px on ${path}`, async ({ page }) => {
+      await login(page);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto(path);
+      await page.waitForTimeout(800);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    });
+  }
 });
 
 test.afterAll(async () => {

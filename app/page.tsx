@@ -1,299 +1,230 @@
-import { cookies } from "next/headers";
-import { ensureDefaultWorkspace, getSessionUser } from "@/lib/auth";
+import { ensureDefaultWorkspace } from "@/lib/auth";
 import { getPool } from "@/lib/db";
 import { draftToCampaign, performance, seedCampaigns } from "@/lib/ads";
-import { Shell } from "@/components/Shell";
+import { getShellData } from "@/lib/shell";
+import { ShellClient } from "@/components/ShellClient";
+import { Icon } from "@/components/Icon";
+import { PairBars, Spark } from "@/components/Charts";
+import { avatarClass, initials } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
 /**
- * P1.5 Dashboard — ported 1:1 from Mira's dashboard wireframe (leaf page,
- * panel hidden): date-range chips, 4 clay stat cards with sparklines +
- * trend deltas, WhatsApp activity chart (CSS bar pairs + gridlines per the
- * wireframe build-note), connection health rows, quick actions, recent
- * conversations. LIVE counts from the real WABA.
+ * P1.5 Dashboard — design v2 (nextbiz-one-v2/dashboard). Leaf page. Leads with what needs attention,
+ * then KPIs, 14-day activity, recent chats, last broadcast funnel, automation, connection health.
+ * Fresh workspaces see a setup checklist instead of empty widgets. Everything here is live data
+ * except the NextBiz Ads teaser, which is badged as demo.
  */
-
-function spark(series: number[]) {
-  const max = Math.max(...series, 1);
-  return (
-    <div className="spark">
-      {series.map((n, i) => (
-        <i key={i} className={i === series.length - 1 ? "hi" : ""}
-           style={{ height: n > 0 ? `${Math.max(6, Math.round((n / max) * 100))}%` : "3px" }} />
-      ))}
-    </div>
-  );
-}
-
-function trend(cur: number, prev: number) {
-  if (prev === 0) {
-    if (cur === 0) return <div className="d">No activity yet</div>;
-    return <div className="d"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/trend-up-bold.svg" alt="" />First activity in the last 14d</div>;
-  }
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const keyOf = (d: unknown) => (d instanceof Date ? dayKey(d) : String(d).slice(0, 10));
+const n = (v: number) => v.toLocaleString("en-IN");
+function delta(cur: number, prev: number, unit = "vs prior 14 days") {
+  if (prev === 0) return cur === 0 ? <span className="foot">No activity yet</span> : <span className="foot"><span className="delta up"><Icon name="arrow-up-right" size="xs" />New</span>{unit}</span>;
   const pct = Math.round(((cur - prev) / prev) * 100);
-  const up = pct >= 0;
-  return (
-    <div className="d">
-      <img src={`https://cdn.joyverse.fun/mira-assets/phosphor/bold/trend-${up ? "up" : "down"}-bold.svg`} alt="" />
-      {up ? "+" : ""}{pct}% vs prior 14d
-    </div>
-  );
+  return <span className="foot"><span className={`delta ${pct >= 0 ? "up" : "down"}`}><Icon name="arrow-up-right" size="xs" style={pct < 0 ? { transform: "rotate(90deg)" } : undefined} />{Math.abs(pct)}%</span>{unit}</span>;
 }
-
-function dayKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function dayLabel(d: Date) {
-  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+function since(iso: string | Date | null) {
+  if (!iso) return "never";
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 1) return "just now"; if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60); if (h < 48) return `${h}h ago`;
+  return `${Math.floor(h / 24)} days ago`;
 }
 
 export default async function HomePage() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  const user = await getSessionUser(token);
-  const initials = (user?.displayName ?? "NBO").split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase();
   const p = getPool();
+  const [shell, wsId] = await Promise.all([getShellData(), ensureDefaultWorkspace()]);
+  const q = <T = Record<string, unknown>>(sql: string) => p.query(sql).then((r) => r.rows as T[]).catch(() => [] as T[]);
+  const [msgs14, msgTrend, convTrend, contacts30, contacts14, active24, unreadConvs, closing, rejected, approvedTpl, recents, lastBc, autoLog, autoSet, lastIn, anyIn, contactsTotal, adDrafts] = await Promise.all([
+    q<{ d: Date; direction: string; n: number }>(`SELECT date_trunc('day', created_at)::date AS d, direction, count(*)::int AS n FROM messages WHERE created_at > now() - interval '14 days' GROUP BY 1,2`),
+    q<{ cur: number; prev: number }>(`SELECT (SELECT count(*)::int FROM messages WHERE created_at > now() - interval '14 days') AS cur,
+            (SELECT count(*)::int FROM messages WHERE created_at > now() - interval '28 days' AND created_at <= now() - interval '14 days') AS prev`),
+    q<{ cur: number; prev: number }>(`SELECT (SELECT count(DISTINCT conversation_id)::int FROM messages WHERE created_at > now() - interval '14 days') AS cur,
+            (SELECT count(DISTINCT conversation_id)::int FROM messages WHERE created_at > now() - interval '28 days' AND created_at <= now() - interval '14 days') AS prev`),
+    q<{ cur: number; prev: number; opted: number }>(`SELECT (SELECT count(*)::int FROM contacts WHERE created_at > now() - interval '30 days') AS cur,
+            (SELECT count(*)::int FROM contacts WHERE created_at > now() - interval '60 days' AND created_at <= now() - interval '30 days') AS prev,
+            (SELECT count(*)::int FROM contacts WHERE opt_in) AS opted`),
+    q<{ d: Date; n: number }>(`SELECT date_trunc('day', created_at)::date AS d, count(*)::int AS n FROM contacts WHERE created_at > now() - interval '14 days' GROUP BY 1`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM conversations WHERE last_inbound_at > now() - interval '24 hours'`),
+    q<{ n: number; oldest: Date | null }>(`SELECT count(*)::int AS n, min(first_unread) AS oldest FROM (
+            SELECT c.id, min(m.created_at) AS first_unread FROM conversations c JOIN messages m ON m.conversation_id = c.id
+             WHERE m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0)) GROUP BY c.id) u`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM conversations c WHERE c.last_inbound_at BETWEEN now() - interval '24 hours' AND now() - interval '21 hours'
+            AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.direction = 'out' AND m.created_at > c.last_inbound_at)`),
+    q<{ name: string }>(`SELECT name FROM templates WHERE lower(status) = 'rejected' ORDER BY updated_at DESC`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM templates WHERE lower(status) = 'approved'`),
+    q<{ id: string; name: string | null; wa_id: string; body: string | null; created_at: Date; direction: string; unread: number }>(
+      `SELECT c.id, ct.name, ct.wa_id, lm.body, lm.created_at, lm.direction,
+              (SELECT count(*)::int FROM messages m WHERE m.conversation_id = c.id AND m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0))) AS unread
+         FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
+         JOIN LATERAL (SELECT body, created_at, direction FROM messages m WHERE m.conversation_id = c.id ORDER BY created_at DESC LIMIT 1) lm ON true
+        ORDER BY lm.created_at DESC LIMIT 5`),
+    q<{ id: string; name: string; sent_at: Date | null; created_at: Date; total: number; sent: number; delivered: number; read: number; failed: number; replied: number }>(
+      `SELECT b.id, b.name, b.sent_at, b.created_at,
+              count(br.id)::int AS total,
+              count(*) FILTER (WHERE br.status IN ('sent','delivered','read'))::int AS sent,
+              count(*) FILTER (WHERE br.status IN ('delivered','read'))::int AS delivered,
+              count(*) FILTER (WHERE br.status = 'read')::int AS read,
+              count(*) FILTER (WHERE br.status = 'failed')::int AS failed,
+              (SELECT count(DISTINCT c.contact_id)::int FROM messages m JOIN conversations c ON c.id = m.conversation_id
+                WHERE m.direction = 'in' AND b.sent_at IS NOT NULL AND m.created_at > b.sent_at
+                  AND c.contact_id IN (SELECT contact_id FROM broadcast_recipients WHERE broadcast_id = b.id)) AS replied
+         FROM broadcasts b LEFT JOIN broadcast_recipients br ON br.broadcast_id = b.id
+        WHERE b.sent_at IS NOT NULL GROUP BY b.id ORDER BY b.sent_at DESC LIMIT 1`),
+    q<{ type: string; n: number }>(`SELECT type, count(*)::int AS n FROM automation_log WHERE created_at > now() - interval '7 days' GROUP BY 1`),
+    q<{ welcome_enabled: boolean; away_enabled: boolean }>(`SELECT welcome_enabled, away_enabled FROM automation_settings LIMIT 1`),
+    q<{ at: Date | null }>(`SELECT max(created_at) AS at FROM messages WHERE direction = 'in'`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM messages WHERE direction = 'in'`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM contacts`),
+    q(`SELECT id, name, objective, status, daily_budget, start_time, stop_time, destination FROM ads_mock_campaigns ORDER BY created_at DESC`),
+  ]);
 
-  const [today, active, newContacts, unread, deliveries, msgs14, msgTrend, conv14, contacts14, deliv14, recents, conn, wsId, adDrafts] =
-    await Promise.all([
-      p.query(`SELECT count(*)::int AS n FROM messages WHERE created_at > now() - interval '1 day'`),
-      p.query(`SELECT count(*)::int AS n FROM conversations WHERE last_inbound_at > now() - interval '24 hours'`),
-      p.query(`SELECT count(*)::int AS n FROM contacts WHERE created_at > now() - interval '30 days'`),
-      p.query(`SELECT count(*)::int AS n FROM messages m JOIN conversations c ON c.id = m.conversation_id
-                WHERE m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0))`),
-      p.query(`SELECT count(*)::int AS n FROM broadcast_recipients br
-                WHERE br.status IN ('delivered','read')`),
-      p.query(`SELECT date_trunc('day', created_at)::date AS d, direction, count(*)::int AS n
-                 FROM messages WHERE created_at > now() - interval '14 days' GROUP BY 1,2`),
-      p.query(`SELECT
-                 (SELECT count(*)::int FROM messages WHERE created_at > now() - interval '14 days') AS cur,
-                 (SELECT count(*)::int FROM messages WHERE created_at > now() - interval '28 days'
-                    AND created_at <= now() - interval '14 days') AS prev`),
-      p.query(`SELECT date_trunc('day', m.created_at)::date AS d, count(DISTINCT m.conversation_id)::int AS n
-                 FROM messages m WHERE m.created_at > now() - interval '14 days' GROUP BY 1`),
-      p.query(`SELECT date_trunc('day', created_at)::date AS d, count(*)::int AS n
-                 FROM contacts WHERE created_at > now() - interval '14 days' GROUP BY 1`),
-      p.query(`SELECT date_trunc('day', br.sent_at)::date AS d, count(*)::int AS n
-                 FROM broadcast_recipients br
-                WHERE br.sent_at > now() - interval '14 days' AND br.status IN ('delivered','read','sent')
-                GROUP BY 1`),
-      p.query(`SELECT ct.name, ct.wa_id, m.body, m.created_at, m.direction
-                 FROM messages m
-                 JOIN conversations c ON c.id = m.conversation_id
-                 JOIN contacts ct ON ct.id = c.contact_id
-                ORDER BY m.created_at DESC LIMIT 5`),
-      p.query(`SELECT status, display_name FROM waba_connections LIMIT 1`),
-      ensureDefaultWorkspace(),
-      p.query(`SELECT id, name, objective, status, daily_budget, start_time, stop_time, destination
-               FROM ads_mock_campaigns ORDER BY created_at DESC`),
-    ]);
+  // 14-day series
+  const days: string[] = [], labels: string[] = [];
+  for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(dayKey(d)); labels.push(d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })); }
+  const series = (rows: { d: unknown; n: number }[]) => { const m = new Map(rows.map((r) => [keyOf(r.d), r.n])); return days.map((k) => m.get(k) ?? 0); };
+  const inS = series(msgs14.filter((r) => r.direction === "in")), outS = series(msgs14.filter((r) => r.direction === "out"));
+  const totS = inS.map((v, i) => v + outS[i]);
+  const contactS = series(contacts14);
 
-  const connStatus = conn.rows[0]?.status ?? "disconnected";
-  const connected = connStatus === "connected";
-  const connName = conn.rows[0]?.display_name ?? "WhatsApp Business Account";
-  const fmt = (d: Date) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  const connected = !!shell.wa?.connected;
+  const mt = msgTrend[0] ?? { cur: 0, prev: 0 }, ct = convTrend[0] ?? { cur: 0, prev: 0 }, c30 = contacts30[0] ?? { cur: 0, prev: 0, opted: 0 };
+  const un = unreadConvs[0] ?? { n: 0, oldest: null };
+  const setup = [
+    { done: connected, t: "Connect WhatsApp", s: connected ? shell.wa?.displayName ?? "Connected" : "Link your business number", href: "/onboarding" },
+    { done: (anyIn[0]?.n ?? 0) > 0, t: "Receive your first message", s: (anyIn[0]?.n ?? 0) > 0 ? "Messages are flowing" : "Send “Hi” from your phone to test", href: "/onboarding" },
+    { done: !!autoSet[0]?.welcome_enabled, t: "Turn on a welcome message", s: "Instant reply for every new customer · 1 min", href: "/automation" },
+    { done: (contactsTotal[0]?.n ?? 0) >= 10, t: "Add your contacts", s: "Customers are added automatically when they message you", href: "/contacts" },
+    { done: (approvedTpl[0]?.n ?? 0) > 0, t: "Get a template approved", s: "Needed to message customers after 24 hours", href: "/templates" },
+  ];
+  const setupDone = setup.filter((s) => s.done).length;
+  const attention = [
+    un.n > 0 && { href: "/inbox", tile: "green", icon: "tray", t: `${un.n} unread chat${un.n > 1 ? "s" : ""}`, s: `Oldest waiting ${since(un.oldest)}` },
+    (closing[0]?.n ?? 0) > 0 && { href: "/inbox", tile: "banana", icon: "hourglass", t: `${closing[0].n} window${closing[0].n > 1 ? "s" : ""} closing`, s: "Reply within 3h or use a template" },
+    rejected.length > 0 && { href: "/templates", tile: "red", icon: "warning-circle", t: `${rejected.length} template${rejected.length > 1 ? "s" : ""} rejected`, s: `${rejected[0].name} · fix & resubmit` },
+    !connected && { href: "/settings#whatsapp", tile: "grape", icon: "plugs-connected", t: "WhatsApp not connected", s: "Messages can't arrive until you reconnect" },
+  ].filter(Boolean) as { href: string; tile: string; icon: string; t: string; s: string }[];
 
-  // ── 14-day series builders ──
-  const days: string[] = [];
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(dayKey(d));
-  }
-  const pick = (rows: { d: string; n: number }[]) => {
-    const keyOf = (d: unknown) =>
-      d instanceof Date
-        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-        : String(d).slice(0, 10);
-    const m = new Map(rows.map((r) => [keyOf(r.d), r.n]));
-    return days.map((dk) => m.get(dk) ?? 0);
-  };
-  const inRows = msgs14.rows.filter((r) => r.direction === "in").map((r) => ({ d: r.d, n: r.n }));
-  const outRows = msgs14.rows.filter((r) => r.direction === "out").map((r) => ({ d: r.d, n: r.n }));
-  const inSeries = pick(inRows);
-  const outSeries = pick(outRows);
-  const convSeries = pick(conv14.rows.map((r) => ({ d: r.d, n: r.n })));
-  const contactSeries = pick(contacts14.rows.map((r) => ({ d: r.d, n: r.n })));
-  const delivSeries = pick(deliv14.rows.map((r) => ({ d: r.d, n: r.n })));
+  const bc = lastBc[0];
+  const pct = (a: number) => (bc && bc.total > 0 ? Math.round((a / bc.total) * 100) : 0);
+  const auto = Object.fromEntries(autoLog.map((r) => [r.type, r.n]));
+  const autoTotal = autoLog.reduce((s, r) => s + r.n, 0);
 
-  // ── ads mount (P2.3 dashboard block, range=7d, demo data) ──
-  const adsRep = performance(
-    [...adDrafts.rows.map(draftToCampaign), ...seedCampaigns(wsId)],
-    7, wsId,
-  );
-  const adsMax = Math.max(...adsRep.series.map((s) => s.spend), 1);
-  const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
-
-  // ── chart: bar pairs per day, gridlines at 25/50/75% of max (deduped) ──
-  const maxAll = Math.max(...inSeries.map((v, i) => v + outSeries[i]), 1);
-  const gridStep = maxAll < 10 ? 1 : 5;
-  const gridVals = [0.25, 0.5, 0.75]
-    .map((f) => Math.round((maxAll * f) / gridStep) * gridStep)
-    .filter((v, i, a) => v > 0 && a.indexOf(v) === i);
+  const adsRep = performance([...adDrafts.map((r) => draftToCampaign(r as never)), ...seedCampaigns(wsId)], 7, wsId);
+  const inr = (v: number) => "₹" + Math.round(v).toLocaleString("en-IN");
+  const hour = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" });
+  const greet = +hour < 12 ? "Good morning" : +hour < 17 ? "Good afternoon" : "Good evening";
+  const first = shell.userName.split(" ")[0].replace(/^./, (c) => c.toUpperCase());
 
   return (
-    <Shell active="dashboard" userInitials={initials} userName={user?.displayName ?? "Operator"} unread={unread.rows[0].n}>
-      <div className="content" data-testid="dashboard">
-        <div className="drange">
-          <span className="chip">7 days</span>
-          <span className="chip on">14 days</span>
-          <span className="chip">Custom…</span>
-          <span className="spacer" />
-          <span style={{ fontSize: "10px", color: "var(--ink-3)" }}>Live — real WhatsApp data</span>
-        </div>
+    <ShellClient active="dashboard" title="Dashboard" data={shell}
+      actions={<a className="btn btn-primary" href="/broadcasts?new=1"><Icon name="plus" /><span className="lbl">New broadcast</span></a>}>
+      <div className="pg-dash">
+        <div className="page" data-testid="dashboard">
+          <div className="pagehead">
+            <div className="t"><div className="h1">{greet}, {first}</div>
+              <p>{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Kolkata" })} · {attention.length ? "here's what needs you today." : "nothing urgent — you're all caught up."}</p></div>
+            <span className="pill neutral nodot">Last 14 days</span>
+          </div>
 
-        <div className="stats">
-          <div className="stat">
-            <div className="k"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/chat-circle-dots-bold.svg" alt="" />Messages (24h)</div>
-            <div className="v">{today.rows[0].n}</div>
-            {trend(msgTrend.rows[0].cur, msgTrend.rows[0].prev)}
-            {spark(inSeries)}
-          </div>
-          <div className="stat">
-            <div className="k"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/chats-circle-bold.svg" alt="" />Active conversations</div>
-            <div className="v">{active.rows[0].n}</div>
-            <div className="d"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/trend-up-bold.svg" alt="" />Inside the 24h window</div>
-            {spark(convSeries)}
-          </div>
-          <div className="stat">
-            <div className="k"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/users-bold.svg" alt="" />New contacts (30d)</div>
-            <div className="v">{newContacts.rows[0].n}</div>
-            <div className="d"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/trend-up-bold.svg" alt="" />Auto-created from WhatsApp</div>
-            {spark(contactSeries)}
-          </div>
-          <div className="stat">
-            <div className="k"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/megaphone-bold.svg" alt="" />Broadcast deliveries</div>
-            <div className="v">{deliveries.rows[0].n}</div>
-            <div className="d"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/trend-up-bold.svg" alt="" />Delivered + read</div>
-            {spark(delivSeries)}
-          </div>
-        </div>
-
-        {/* P2.3 mount block — dashboard Ads section, range=7d (from ads/performance wireframe) */}
-        <div className="mount" data-testid="ads-mount">
-          <div className="dashcard">
-            <div className="dh">
-              <b>Ads performance <span className="badge-mock">Demo data</span></b>
-              <span>last 7 days · INR</span>
-            </div>
-            <div className="ministats">
-              <div className="ms"><div className="k">Spend</div><div className="v">{inr(adsRep.totals.spend)}</div></div>
-              <div className="ms"><div className="k">Results</div><div className="v">{adsRep.totals.results.toLocaleString("en-IN")}</div></div>
-              <div className="ms"><div className="k">Clicks</div><div className="v">{adsRep.totals.clicks.toLocaleString("en-IN")}</div></div>
-              <div className="ms"><div className="k">Cost / result</div><div className="v">{adsRep.totals.cost_per_result > 0 ? inr(adsRep.totals.cost_per_result) : "—"}</div></div>
-            </div>
-            <div className="spark" aria-hidden="true">
-              {adsRep.series.map((s, i) => (
-                <i key={i} style={{ height: `${Math.max(6, Math.round((s.spend / adsMax) * 100))}%` }} />
-              ))}
-            </div>
-            <a className="dashlink" href="/ads/performance">View performance<img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/caret-right-bold.svg" alt="" /></a>
-          </div>
-        </div>
-
-        <div className="mid">
-          <div className="panel">
-            <div className="phead"><b>WhatsApp activity</b><div className="r" /></div>
-            <div className="chart-zone">
-              <div className="legend">
-                <span><i style={{ background: "var(--chat)" }} />Inbound</span>
-                <span><i style={{ background: "var(--chat-tint)", border: "1px solid #DCEFBB" }} />Outbound</span>
+          {setupDone < setup.length && (
+            <section className="card setup" style={{ display: "grid" }} data-testid="setup">
+              <div className="l">
+                <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Getting started</span>
+                <h2>{setupDone <= 2 ? "Let's get your first customer chat in." : "Almost set up — a few steps left."}</h2>
+                <p className="muted" style={{ fontSize: "var(--fs-sm)", maxWidth: 380 }}>Finish these and NextBiz One answers, organises and follows up on WhatsApp for you.</p>
+                <div className="prog"><div className="meter"><span style={{ width: `${(setupDone / setup.length) * 100}%` }} /></div>{setupDone} of {setup.length} done</div>
               </div>
-              <div className="chart" data-testid="chart">
-                {maxAll > 0 && gridVals.map((v) => (
-                  <div key={v} className="gl" style={{ bottom: `${(v / maxAll) * 100}%` }}><span>{v}</span></div>
+              <div className="steps">
+                {setup.map((s) => (
+                  <a key={s.t} className={`step${s.done ? " done" : ""}`} href={s.href}>
+                    <span className="ck">{s.done && <Icon name="check" size="xs" />}</span>
+                    <span className="grow"><b>{s.t}</b><small>{s.s}</small></span>
+                    {!s.done && <Icon name="caret-right" style={{ color: "var(--ink-4)" }} />}
+                  </a>
                 ))}
-                {days.map((dk, i) => (
-                  <div key={dk} className="wk" title={`${dayLabel(new Date(new Date().setDate(new Date().getDate() - (13 - i))))}: ${inSeries[i]} in · ${outSeries[i]} out`}>
-                    <div className="pair">
-                      <span className="in" style={{ height: inSeries[i] > 0 ? `${Math.max(3, Math.round((inSeries[i] / maxAll) * 100))}%` : "2px" }} />
-                      <span className="out" style={{ height: outSeries[i] > 0 ? `${Math.max(3, Math.round((outSeries[i] / maxAll) * 100))}%` : "2px" }} />
+              </div>
+            </section>
+          )}
+
+          {attention.length > 0 && (
+            <section className="attn" aria-label="Needs your attention">
+              {attention.map((a) => (
+                <a key={a.t} className="at" href={a.href}><span className={`icon-tile lg ${a.tile}`}><Icon name={a.icon} /></span><span className="grow"><b>{a.t}</b><small>{a.s}</small></span><Icon name="caret-right" size="sm" /></a>
+              ))}
+            </section>
+          )}
+
+          <section className="grid">
+            <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="chat-circle-dots" size="sm" />Messages</span><span className="val v">{n(mt.cur)}</span>{delta(mt.cur, mt.prev)}<div className="spark-wrap"><Spark data={totS} /></div></div></div>
+            <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="users-three" size="sm" />Conversations</span><span className="val v">{n(ct.cur)}</span>{delta(ct.cur, ct.prev)}<span className="foot">{active24[0]?.n ?? 0} active in the last 24h</span></div></div>
+            <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="user-plus" size="sm" />New contacts</span><span className="val v">{n(c30.cur)}</span>{delta(c30.cur, c30.prev, "vs prior 30 days")}<div className="spark-wrap"><Spark data={contactS} /></div></div></div>
+            <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="megaphone" size="sm" />Can receive broadcasts</span><span className="val v">{n(c30.opted)}</span><span className="foot">opted-in of {n(contactsTotal[0]?.n ?? 0)} contacts</span>
+              <div className="meter" style={{ marginTop: 10 }}><span style={{ width: `${(contactsTotal[0]?.n ?? 0) ? Math.round((c30.opted / contactsTotal[0].n) * 100) : 0}%` }} /></div></div></div>
+
+            <div className="card s8">
+              <div className="card-h"><span className="h3">WhatsApp activity</span><div className="legend"><span><i style={{ background: "var(--chat)" }} />Received</span><span><i style={{ background: "#C9C1B1" }} />Sent</span></div></div>
+              <div className="chart">{totS.some((v) => v > 0) ? <PairBars a={inS} b={outS} labels={labels} /> : (
+                <div className="zero-chart" style={{ display: "grid" }}><span><Icon name="chart-bar" size="xl" style={{ color: "var(--ink-4)" }} /><br />Your daily message volume shows up here<br />after the first conversations.</span></div>)}</div>
+            </div>
+            <div className="card s4">
+              <div className="card-h"><span className="h3">Recent chats</span><a className="btn-link" href="/inbox">Open inbox<Icon name="arrow-right" size="xs" /></a></div>
+              <div className="rc">
+                {recents.length === 0 && <div className="empty" style={{ padding: 20 }}><p>No conversations yet.</p></div>}
+                {recents.map((r) => (
+                  <a key={r.id} href="/inbox"><span className={`av ${avatarClass(r.wa_id)}`}>{initials(r.name, r.wa_id)}</span>
+                    <span className="grow trunc"><b>{r.name ?? `+${r.wa_id}`}</b><small className="trunc">{r.direction === "out" ? "You: " : ""}{r.body ?? "—"}</small></span>
+                    <span className="tm">{since(r.created_at)}{r.unread > 0 && <span className="badge">{r.unread}</span>}</span></a>
+                ))}
+              </div>
+            </div>
+
+            <div className="card s4 pair">
+              <div className="card-h"><span className="h3">Last broadcast</span>{bc && <span className="pill ok sm">Sent</span>}</div>
+              {bc ? (
+                <>
+                  <div className="card-b" style={{ paddingTop: 0 }}>
+                    <div className="row" style={{ marginBottom: 14 }}><span className="icon-tile sm"><Icon name="megaphone" /></span><span className="grow"><b style={{ fontSize: "var(--fs-sm)" }}>{bc.name}</b><br /><small className="faint xs" style={{ fontWeight: 600 }}>{bc.sent_at && new Date(bc.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · {bc.total} recipients</small></span></div>
+                    <div className="funnel">
+                      {([["Sent", bc.sent], ["Delivered", bc.delivered], ["Read", bc.read], ["Replied", bc.replied]] as const).map(([l, v]) => (
+                        <div key={l} className="fr"><span>{l}</span><div className="bar"><span style={{ width: `${Math.max(pct(v), v > 0 ? 6 : 0)}%` }}>{v}</span></div><span className="v">{pct(v)}%</span></div>
+                      ))}
                     </div>
                   </div>
-                ))}
-                <div className="xlab">
-                  <span>{dayLabel(new Date(new Date().setDate(new Date().getDate() - 13)))}</span>
-                  <span>{dayLabel(new Date(new Date().setDate(new Date().getDate() - 6)))}</span>
-                  <span>{dayLabel(new Date())}</span>
-                </div>
-                {maxAll === 0 && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--ink-3)", fontSize: "11px" }}>No messages yet — activity shows up here.</div>}
+                  <div className="card-f"><span className="xs faint grow" style={{ fontWeight: 600 }}>{bc.failed > 0 ? `${bc.failed} failed to deliver` : "No delivery failures"}</span><a className="btn-link" href="/broadcasts">Report</a></div>
+                </>
+              ) : (
+                <div className="empty" style={{ paddingTop: 8 }}><p>Send an approved template to your opted-in contacts — results show up here.</p><div className="acts"><a className="btn btn-soft btn-sm" href="/broadcasts?new=1">New broadcast</a></div></div>
+              )}
+            </div>
+            <div className="card s4 pair">
+              <div className="card-h"><span className="h3">Automation · 7 days</span><a className="btn-link" href="/automation">Manage</a></div>
+              <div className="card-b auto-rows" style={{ paddingTop: 0 }}>
+                <div className="ar"><span className="icon-tile sm green"><Icon name="hand" /></span><span><b>Welcome message</b><small>{autoSet[0]?.welcome_enabled ? "On" : "Off"} · greets new contacts</small></span><span className="v">{auto.welcome ?? 0}</span></div>
+                <div className="ar"><span className="icon-tile sm grape"><Icon name="lightning" /></span><span><b>Keyword replies</b><small>Answers common questions</small></span><span className="v">{(auto.keyword ?? 0) + (auto.rule ?? 0)}</span></div>
+                <div className="ar"><span className="icon-tile sm"><Icon name="clock" /></span><span><b>Away replies</b><small>{autoSet[0]?.away_enabled ? "On" : "Off"} · outside business hours</small></span><span className="v">{auto.away ?? 0}</span></div>
+                {autoTotal === 0 && <p className="xs faint" style={{ fontWeight: 600, paddingTop: 8 }}>No automatic replies sent this week.</p>}
               </div>
             </div>
-          </div>
+            <div className="card s4">
+              <div className="card-h"><span className="h3">Connection health</span><a className="btn-link" href="/settings#whatsapp">Settings</a></div>
+              <div className="card-b hl" style={{ paddingTop: 0 }}>
+                <div className="hrow"><span className={`icon-tile sm ${connected ? "green" : "banana"}`}><Icon name="whatsapp-logo" /></span><span className="grow"><b>WhatsApp number</b><small>{shell.wa?.displayName ?? "Not connected"}</small></span><span className={`pill sm ${connected ? "ok" : "warn"}`}>{connected ? "Live" : "Offline"}</span></div>
+                <div className="hrow"><span className="icon-tile sm green"><Icon name="plugs-connected" /></span><span className="grow"><b>Incoming messages</b><small>Last received {since(lastIn[0]?.at ?? null)}</small></span><span className={`pill sm ${lastIn[0]?.at ? "ok" : "neutral"}`}>{lastIn[0]?.at ? "Healthy" : "Waiting"}</span></div>
+                <div className="hrow"><span className="icon-tile sm grape"><Icon name="notebook" /></span><span className="grow"><b>Templates</b><small>{approvedTpl[0]?.n ?? 0} approved · {rejected.length} rejected</small></span><a className="btn btn-soft btn-sm" href="/templates">View</a></div>
+              </div>
+            </div>
 
-          <div className="panel">
-            <div className="phead"><b>Connection health</b><div className="r"><a className="lnk" href="/settings">Settings →</a></div></div>
-            <div className="hrow">
-              <div className="ic"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/plugs-connected-bold.svg" alt="" /></div>
-              <div className="t"><b>{connName}</b><span>{connected ? "Live connection" : "Not connected yet"}</span></div>
-              <span className={`${connected ? "st-ok" : "st-warn"}`}>{connected ? "Connected" : "Disconnected"}</span>
+            <div className="card ads s12">
+              <div className="card-h"><span className="icon-tile sm orange"><Icon name="megaphone" /></span><span className="h3">NextBiz Ads <span className="demo" style={{ marginLeft: 6, verticalAlign: 1 }}>Demo data</span></span><a className="btn-link" style={{ color: "var(--ads-deep)" }} href="/ads/performance">View performance<Icon name="arrow-right" size="xs" /></a></div>
+              <div className="card-b row wrap gap-16" style={{ paddingTop: 0 }}>
+                <div className="nums grow" style={{ minWidth: 280 }}><div><span>Spend · 7d</span><b>{inr(adsRep.totals.spend)}</b></div><div><span>Results</span><b>{n(adsRep.totals.results)}</b></div><div><span>Cost / result</span><b>{inr(adsRep.totals.cost_per_result)}</b></div></div>
+                <p className="small muted" style={{ maxWidth: 360 }}>Click-to-WhatsApp ads land straight in your inbox. Connect an ad account to replace this demo data with your real campaigns.</p>
+              </div>
             </div>
-            <div className="hrow">
-              <div className="ic"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/lightning-bold.svg" alt="" /></div>
-              <div className="t"><b>Webhook endpoint</b><span>Inbound messages received live</span></div>
-              <span className={`${connected ? "st-ok" : "st-warn"}`}>{connected ? "Active" : "Idle"}</span>
-            </div>
-            <div className="hrow">
-              <div className="ic warn"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/warning-circle-bold.svg" alt="" /></div>
-              <div className="t"><b>Access token</b><span>Auto-renews on activity</span></div>
-              <span className={`${connected ? "st-ok" : "st-warn"}`}>{connected ? "Active" : "Missing"}</span>
-              {!connected && <a className="btn btn-soft" href="/onboarding">Connect</a>}
-            </div>
-          </div>
-        </div>
-
-        <div className="bottom">
-          <div className="panel">
-            <div className="phead"><b>Recent conversations</b><div className="r"><a className="lnk" href="/inbox">Open inbox →</a></div></div>
-            <div className="krows" style={{ padding: "6px 8px" }}>
-              {recents.rows.length === 0 && (
-                <div style={{ padding: "14px", color: "var(--ink-3)", fontSize: "11px" }}>No messages yet.</div>
-              )}
-              {recents.rows.map((r, i) => (
-                <div key={i} className="krow">
-                  <div className="av av-36" style={{ background: ["var(--chat)", "var(--ads)", "var(--social)", "var(--info)", "#7C6A46"][i % 5] }}>
-                    {(r.name ?? "+" + r.wa_id).replace(/[^a-zA-Z0-9 ]/g, "").trim().split(/\s+/).map((s: string) => s[0]).join("").slice(0, 2).toUpperCase() || "?"}
-                  </div>
-                  <div className="t">
-                    <div className="r1"><b>{r.name ?? "+" + r.wa_id}</b><span className="num">{fmt(r.created_at)}</span></div>
-                    <div className="r2"><span className="tags"><span className="mini cust">{r.direction === "in" ? "← " : "→ "}{(r.body ?? "").slice(0, 42)}</span></span></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="phead"><b>Quick actions</b></div>
-            <div className="qgrid">
-              <a href="/broadcasts" style={{ display: "contents" }}>
-                <div className="qa2">
-                  <div className="ic"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/megaphone-bold.svg" alt="" style={{ color: "var(--ads-deep)", background: "var(--ads-tint)", borderRadius: 8, padding: 3, width: 21, height: 21 }} /></div>
-                  <div className="t"><b>New Broadcast</b><span>Send a template to a segment</span></div>
-                </div>
-              </a>
-              <a href="/templates" style={{ display: "contents" }}>
-                <div className="qa2">
-                  <div className="ic"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/notebook-bold.svg" alt="" style={{ color: "var(--chat-deep)", background: "var(--chat-tint)", borderRadius: 8, padding: 3, width: 21, height: 21 }} /></div>
-                  <div className="t"><b>New Template</b><span>Draft &amp; submit for approval</span></div>
-                </div>
-              </a>
-              <a href="/contacts" style={{ display: "contents" }}>
-                <div className="qa2">
-                  <div className="ic"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/user-plus-bold.svg" alt="" style={{ color: "var(--info)", background: "var(--info-tint)", borderRadius: 8, padding: 3, width: 21, height: 21 }} /></div>
-                  <div className="t"><b>Add Contact</b><span>Browse the contact book</span></div>
-                </div>
-              </a>
-              <a href="/automation" style={{ display: "contents" }}>
-                <div className="qa2">
-                  <div className="ic"><img src="https://cdn.joyverse.fun/mira-assets/phosphor/bold/lightning-bold.svg" alt="" style={{ color: "var(--grape-deep)", background: "var(--grape-tint)", borderRadius: 8, padding: 3, width: 21, height: 21 }} /></div>
-                  <div className="t"><b>Automations</b><span>Review rules &amp; replies</span></div>
-                </div>
-              </a>
-            </div>
-          </div>
+          </section>
         </div>
       </div>
-    </Shell>
+    </ShellClient>
   );
 }

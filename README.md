@@ -2,9 +2,11 @@
 
 WhatsApp-first client messaging platform. **Single-tier Next.js 15 + docker
 Postgres 16** (NBS-mirror stack, locked Oct 18 — see Nina's project dir
-technical-plan.md). Design source of truth: Mira's package
-`~/workspaces/mira/prototypes/nextbiz-one/` (design-sheet.html is LAW;
-wireframe-match rule applies — missing wireframe = STOP + request via nina).
+technical-plan.md). Design source of truth: **design v2** package
+`~/workspaces/mira/prototypes/nextbiz-one-v2/` (shared/tokens.css + shell.css +
+one index.html per screen). Supersedes the v1 package in `nextbiz-one/`.
+App styles: `app/styles/{tokens,shell,pages}.css` (pages scoped `.pg-<page>`);
+icons: `components/Icon.tsx` sprite; shell: `components/ShellClient.tsx`.
 
 ## S0 (current)
 Foundation: auth gate (operator bootstrap via env), WhatsApp webhook

@@ -1,273 +1,247 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Icon } from "@/components/Icon";
 
 /**
- * Automation — ported 1:1 from automation/wireframe.html: a-main (a-left ~60%
- * + inspector ~40%), welcome 3-band card, keyword dtable with tab/search/sort
- * chrome, bottom hours + FAQ row. Contains-match only, no regex/AI (v1 lock).
+ * Automation — design v2 (nextbiz-one-v2/automation). Welcome message · keyword replies (+ editor drawer) ·
+ * test console · business hours + away message · saved answers (FAQ) · hand-off explainer.
+ * v1 locks kept: contains-match keywords only, no AI, automation pauses per chat after a human reply.
  */
-type Rule = {
-  id: string; name: string; keywords: string[]; reply: string;
-  enabled: boolean; send_once: boolean; fired_count: number; last_fired_at: string | null;
-};
-type Settings = {
-  welcome_enabled: boolean; welcome_text: string;
-  away_enabled: boolean; away_text: string | null;
-  business_hours: Record<string, [string, string]>;
-} | null;
+type Rule = { id: string; name: string; keywords: string[]; reply: string; enabled: boolean; send_once: boolean; fired_count: number; last_fired_at: string | null };
+type Settings = { welcome_enabled: boolean; welcome_text: string; away_enabled: boolean; away_text: string | null; business_hours: Record<string, [string, string]> } | null;
 type Faq = { id: string; question: string; answer: string };
-type LogRow = { type: string; detail: string | null; status: string; created_at: string; rule_id: string | null; first_name: string | null; wa_id: string | null };
+type LogRow = { type: string; status: string; created_at: string; rule_id: string | null };
+type Draft = { id?: string; name: string; keywords: string[]; reply: string; enabled: boolean; sendOnce: boolean };
 
-const IC = "https://cdn.joyverse.fun/mira-assets/phosphor/bold/";
-const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-const dayShort = (d: string) => ({ mon: "Mo", tue: "Tu", wed: "We", thu: "Th", fri: "Fr", sat: "Sa", sun: "Su" } as Record<string, string>)[d] ?? d;
+const DAYS: [string, string][] = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
+const TILES = ["green", "banana", "grape", "pink", "orange"];
+const toH = (t: string) => { const [h, m] = t.split(":").map(Number); return h + (m || 0) / 60; };
+const fmtH = (t: string) => { const [h, m] = t.split(":").map(Number); const ap = h >= 12 ? "p" : "a"; const hh = h % 12 || 12; return `${hh}${m ? ":" + String(m).padStart(2, "0") : ""}${ap}`; };
+const json = (method: string, url: string, b?: unknown) => fetch(url, { method, headers: { "Content-Type": "application/json" }, body: b === undefined ? undefined : JSON.stringify(b) }).then((r) => r.json().catch(() => null));
 
 export function AutomationClient() {
   const [settings, setSettings] = useState<Settings>(null);
-  const [rules, setRules] = useState<Rule[]>([]);
+  const [rules, setRules] = useState<Rule[] | null>(null);
   const [faq, setFaq] = useState<Faq[]>([]);
   const [log, setLog] = useState<LogRow[]>([]);
-  const [tab, setTab] = useState<"all" | "active" | "inactive">("all");
-  const [q, setQ] = useState("");
-  const [sel, setSel] = useState<Rule | null>(null);
+  const [tab, setTab] = useState<"all" | "on" | "off">("all");
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [kwInput, setKwInput] = useState("");
+  const [welcomeEdit, setWelcomeEdit] = useState<string | null>(null);
+  const [hoursEdit, setHoursEdit] = useState<{ hours: Record<string, [string, string]>; away: string } | null>(null);
   const [testText, setTestText] = useState("");
-  const [testRes, setTestRes] = useState("");
-  const [note, setNote] = useState("");
+  const [testRes, setTestRes] = useState<{ matched: boolean; rule: string | null; keyword: string | null } | null>(null);
+  const [faqDraft, setFaqDraft] = useState<{ q: string; a: string } | null>(null);
+  const [note, setNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const d = await fetch("/api/automation").then((x) => x.json()).catch(() => null);
-    if (d?.ok) {
-      setSettings(d.settings); setRules(d.rules ?? []); setFaq(d.faq ?? []); setLog(d.log ?? []);
-    }
+    const d = await fetch("/api/automation", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
+    if (d?.ok) { setSettings(d.settings); setRules(d.rules ?? []); setFaq(d.faq ?? []); setLog(d.log ?? []); }
+    else setRules([]);
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (note) { const t = setTimeout(() => setNote(null), 3500); return () => clearTimeout(t); } }, [note]);
+  useEffect(() => { const k = (e: KeyboardEvent) => e.key === "Escape" && setDraft(null); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
 
-  const shown = rules.filter((r) =>
-    (tab === "all" || (tab === "active" ? r.enabled : !r.enabled)) &&
-    (!q || r.name.toLowerCase().includes(q.toLowerCase()) || r.keywords.some((k) => k.toLowerCase().includes(q.toLowerCase()))));
-  const selFresh = sel ? rules.find((r) => r.id === sel.id) ?? sel : null;
-
-  async function saveRule(r: Partial<Rule> & { id?: string }) {
-    const isNew = !r.id;
-    const res = await fetch(isNew ? "/api/automation/rules" : `/api/automation/rules/${r.id}`, {
-      method: isNew ? "POST" : "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isNew
-        ? { name: r.name ?? "New rule", keywords: r.keywords ?? ["keyword"], reply: r.reply ?? "Reply text" }
-        : r),
-    });
-    const d = await res.json().catch(() => null);
-    setNote(d?.ok ? "Saved ✓" : (d?.error ?? "Save failed"));
-    if (d?.ok) { await load(); if (isNew && d.rule) setSel(d.rule); }
+  const flash = (ok: boolean, text: string) => setNote({ kind: ok ? "ok" : "bad", text });
+  async function putSettings(b: Record<string, unknown>, ok = "Saved") {
+    setBusy(true); const d = await json("PUT", "/api/automation/settings", b); setBusy(false);
+    flash(!!d?.ok, d?.ok ? ok : d?.error ?? "Couldn't save"); if (d?.ok) await load(); return !!d?.ok;
   }
-
-  async function testRule() {
+  async function saveRule() {
+    if (!draft) return;
+    const kws = [...draft.keywords, ...(kwInput.trim() ? [kwInput.trim()] : [])];
+    if (!draft.name.trim() || kws.length === 0 || !draft.reply.trim()) { flash(false, "Add a name, at least one keyword and a reply."); return; }
+    setBusy(true);
+    let d;
+    if (draft.id) d = await json("PATCH", `/api/automation/rules/${draft.id}`, { name: draft.name, keywords: kws, reply: draft.reply, enabled: draft.enabled, sendOnce: draft.sendOnce });
+    else {
+      d = await json("POST", "/api/automation/rules", { name: draft.name, keywords: kws, reply: draft.reply });
+      if (d?.ok && d.rule && (!draft.enabled || !draft.sendOnce)) await json("PATCH", `/api/automation/rules/${d.rule.id}`, { enabled: draft.enabled, sendOnce: draft.sendOnce });
+    }
+    setBusy(false);
+    flash(!!d?.ok, d?.ok ? "Keyword reply saved" : d?.error ?? "Couldn't save");
+    if (d?.ok) { setDraft(null); setKwInput(""); await load(); }
+  }
+  async function deleteRule() {
+    if (!draft?.id) return;
+    setBusy(true); const d = await json("DELETE", `/api/automation/rules/${draft.id}`); setBusy(false);
+    flash(!!d?.ok, d?.ok ? "Keyword reply deleted" : "Couldn't delete"); if (d?.ok) { setDraft(null); await load(); }
+  }
+  async function toggleRule(r: Rule) { await json("PATCH", `/api/automation/rules/${r.id}`, { enabled: !r.enabled }); await load(); }
+  async function runTest() {
     if (!testText.trim()) return;
-    const d = await fetch("/api/automation/rules/test", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: testText }),
-    }).then((x) => x.json()).catch(() => null);
-    setTestRes(d?.matched ? `→ Matches "${d.keyword}" · rule "${d.rule}" would fire` : "→ No rule matches this text");
+    const d = await json("POST", "/api/automation/rules/test", { text: testText });
+    setTestRes(d ? { matched: !!d.matched, rule: d.rule, keyword: d.keyword } : null);
   }
+  async function addFaq() {
+    if (!faqDraft) return;
+    const d = await json("POST", "/api/automation/faq", { question: faqDraft.q, answer: faqDraft.a });
+    flash(!!d?.ok, d?.ok ? "Saved answer added" : d?.error ?? "Add a question (3+ characters) and an answer"); if (d?.ok) { setFaqDraft(null); await load(); }
+  }
+  async function delFaq(id: string) { await json("DELETE", `/api/automation/faq/${id}`); await load(); }
+
+  const shown = (rules ?? []).filter((r) => tab === "all" || (tab === "on" ? r.enabled : !r.enabled));
+  const hours = settings?.business_hours ?? {};
+  const welcomeCount = log.filter((l) => l.type === "welcome").length;
+  const nowIst = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const todayKey = DAYS[(nowIst.getDay() + 6) % 7][0];
+  const nowH = nowIst.getHours() + nowIst.getMinutes() / 60;
+  const openNow = !!hours[todayKey] && nowH >= toH(hours[todayKey][0]) && nowH < toH(hours[todayKey][1]);
+  const ruleOf = (id: string) => (rules ?? []).find((r) => r.id === id);
+  const matched = testRes?.matched && testRes.rule ? (rules ?? []).find((r) => r.name === testRes.rule) : null;
 
   return (
-    <div className="a-main" data-testid="automation">
-      <div className="a-left">
-        {/* WELCOME — 3-band card */}
-        <section className="awelc">
-          <div className="aw-head">
-            <span className="dt-ic chat"><img src={`${IC}chat-circle-bold.svg`} alt="" /></span>
-            <div className="t"><b>Welcome message</b><span>Sent automatically on a new contact's first message — once per conversation.</span></div>
-            <span className="st-pill on">{settings?.welcome_enabled ? "Active" : "Off"}</span>
-            <button className="btn btn-soft" style={{ minHeight: 24, padding: "0 8px", fontSize: 9.5 }}
-                    onClick={() => void fetch("/api/automation/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ welcomeEnabled: !(settings?.welcome_enabled ?? true) }) }).then(() => load())}>
-              {settings?.welcome_enabled ? "Turn off" : "Turn on"}</button>
-          </div>
-          <div className="aw-body">
-            <div className="thread wchat">
-              <div className="xbub in">Hi, I need a website for my bakery <small>10:24</small></div>
-              <div className="xbub out">{settings?.welcome_text ?? "Hi! Thanks for reaching out — we usually reply within a day."}<small>10:24 ✓✓</small></div>
-            </div>
-          </div>
-          <div className="aw-stats">
-            <span className="aw-stat"><img src={`${IC}lightning-bold.svg`} alt="" />Trigger · first message</span>
-            <span className="aw-stat"><img src={`${IC}chart-bar-bold.svg`} alt="" /><b>{log.filter((l) => l.type === "welcome").length}</b> total</span>
-            <span className="aw-stat ok"><img src={`${IC}check-bold.svg`} alt="" /><b>{log.filter((l) => l.type === "welcome" && l.status === "sent").length}</b> sent</span>
-            <span className="aw-edit" onClick={() => {
-              const t = prompt("Welcome message (max 1024 chars):", settings?.welcome_text ?? "") ?? "";
-              if (t) void fetch("/api/automation/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ welcomeText: t.slice(0, 1024) }) }).then(() => load());
-            }}>Edit message <img src={`${IC}arrow-right-bold.svg`} alt="" /></span>
-          </div>
-        </section>
+    <div className="pg-automation">
+      <div className="page" data-testid="automation">
+        <div className="note info" style={{ background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "var(--shadow-1)", color: "var(--ink-2)", padding: "12px 14px" }}>
+          <span className="icon-tile sm grape"><Icon name="hand" /></span>
+          <span style={{ flex: 1 }}><b>Automation steps aside when you reply.</b> The moment you answer a chat yourself, auto-replies pause for that conversation — customers never get a bot reply in the middle of your conversation.</span>
+        </div>
+        <div className="cols">
+          <div className="stackc">
+            <section className="card">
+              <div className="rule-h"><span className="icon-tile green"><Icon name="hand" /></span>
+                <span className="grow"><b>Welcome message</b><small>Sent once, the first time someone messages you</small></span>
+                <button className={`tog${settings?.welcome_enabled ? " on" : ""}`} role="switch" aria-checked={!!settings?.welcome_enabled} aria-label="Welcome message" onClick={() => void putSettings({ welcomeEnabled: !settings?.welcome_enabled }, settings?.welcome_enabled ? "Welcome message off" : "Welcome message on")} data-testid="welcome-toggle" /></div>
+              {welcomeEdit === null ? (
+                <div className="convo"><div className="b-in">Hi, I need a website for my bakery</div>
+                  <div className="b-out"><span className="tag-auto"><Icon name="lightning" size="xs" />Auto-reply</span>{settings?.welcome_text ?? "Hi! Thanks for reaching out — we usually reply within a day."}</div></div>
+              ) : (
+                <div style={{ padding: "0 var(--pad)" }}><textarea className="textarea" rows={4} value={welcomeEdit} onChange={(e) => setWelcomeEdit(e.target.value.slice(0, 1024))} aria-label="Welcome message text" autoFocus /><span className="hint">{welcomeEdit.length} / 1024</span></div>
+              )}
+              <div className="rstats"><span><b>{welcomeCount}</b> sent recently</span><span>{settings?.welcome_enabled ? "On" : "Off"}</span><span className="sp" />
+                {welcomeEdit === null
+                  ? <button className="btn btn-soft btn-sm" onClick={() => setWelcomeEdit(settings?.welcome_text ?? "")}><Icon name="pencil-simple" />Edit message</button>
+                  : <><button className="btn btn-ghost btn-sm" onClick={() => setWelcomeEdit(null)}>Cancel</button><button className="btn btn-primary btn-sm" disabled={busy || !welcomeEdit.trim()} onClick={async () => { if (await putSettings({ welcomeText: welcomeEdit }, "Welcome message saved")) setWelcomeEdit(null); }}>Save</button></>}
+              </div>
+            </section>
 
-        {/* KEYWORD RULES */}
-        <section className="a-table">
-          <div className="dt-tabs">
-            <span className={`dt-tab${tab === "all" ? " on" : ""}`} onClick={() => setTab("all")}>All rules <span className="tn">{rules.length}</span></span>
-            <span className={`dt-tab${tab === "active" ? " on" : ""}`} onClick={() => setTab("active")}>Active <span className="tn">{rules.filter((r) => r.enabled).length}</span></span>
-            <span className={`dt-tab${tab === "inactive" ? " on" : ""}`} onClick={() => setTab("inactive")}>Inactive <span className="tn">{rules.filter((r) => !r.enabled).length}</span></span>
-            <span className="dt-search"><img src={`${IC}magnifying-glass-bold.svg`} alt="" />
-              <input placeholder="Search rules…" value={q} onChange={(e) => setQ(e.target.value)}
-                     style={{ border: 0, outline: 0, background: "transparent", fontSize: 10.5, flex: 1, color: "var(--ink)" }} /></span>
-          </div>
-          <div className="dtable">
-            <div className="dtr dth">
-              <span className="dt-c-rule">Rule</span><span className="dt-c-trig">Example trigger</span>
-              <span className="dt-c-rsp">Reply preview</span><span className="dt-c-use">Usage</span>
-              <span className="dt-c-st">Status</span><span />
-            </div>
-            {shown.map((r) => (
-              <div key={r.id} className={`dtr${selFresh?.id === r.id ? " dtsel" : ""}${r.enabled ? "" : " off-rule"}`}
-                   style={r.enabled ? undefined : { opacity: 0.6 }}
-                   onClick={() => setSel(r)}>
-                <span className="dt-c-rule"><span className="dt-chk" /><span className="dt-rulecell">
-                  <span className="r1"><b>{r.name}</b></span>
-                  <span className="chips">{r.keywords.slice(0, 2).map((k, i) => <span className="kch" key={i}>{k}</span>)}{r.keywords.length > 2 && <span className="kch more">+{r.keywords.length - 2}</span>}</span>
-                </span></span>
-                <span className="dt-c-trig">“{r.keywords[0]}…”</span>
-                <span className="dt-c-rsp">{r.reply.slice(0, 60)}{r.reply.length > 60 ? "…" : ""}</span>
-                <span className="dt-c-use"><b>{r.fired_count}</b><small> total</small></span>
-                <span className="dt-c-st"><span className={`tgl${r.enabled ? " on" : ""}`}
-                      onClick={(e) => { e.stopPropagation(); void saveRule({ id: r.id, enabled: !r.enabled }); }} /></span>
-                <span className="dt-dots"><img src={`${IC}dots-three-bold.svg`} alt=""
-                      onClick={(e) => { e.stopPropagation(); if (confirm(`Delete rule "${r.name}"?`)) { void fetch(`/api/automation/rules/${r.id}`, { method: "DELETE" }).then(() => { if (selFresh?.id === r.id) setSel(null); void load(); }); } }} /></span>
-              </div>
-            ))}
-            <div className="empty-add" style={{ cursor: "pointer" }} onClick={() => void saveRule({ name: `New rule ${rules.length + 1}`, keywords: ["example"], reply: "Thanks for reaching out! Someone from our team will reply here shortly." })}>
-              + Add keyword rule
-            </div>
-          </div>
-        </section>
+            <section className="card">
+              <div className="card-h"><span className="h3">Keyword replies</span>
+                <div className="seg">{(["all", "on", "off"] as const).map((t) => <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "all" ? "All" : t === "on" ? "On" : "Off"} {t === "all" ? rules?.length ?? 0 : (rules ?? []).filter((r) => (t === "on") === r.enabled).length}</button>)}</div></div>
+              {rules && rules.length === 0 ? (
+                <div className="empty"><div className="art"><Icon name="lightning" /></div><h3>Answer common questions instantly</h3><p>Reply automatically when a message contains words like “price”, “timing” or “address”.</p>
+                  <div className="acts"><button className="btn btn-primary" onClick={() => setDraft({ name: "Price inquiries", keywords: ["price", "cost", "rate"], reply: "", enabled: true, sendOnce: true })}><Icon name="plus" />Add keyword reply</button></div></div>
+              ) : (
+                <>
+                  <div className="khead"><span /><span>When message contains</span><span>Reply</span><span style={{ textAlign: "right" }}>Fired</span><span /></div>
+                  <div className="kw dtable">
+                    {shown.map((r, i) => (
+                      <div key={r.id} className={`kr${r.enabled ? "" : " off"}${draft?.id === r.id ? " on" : ""}`} onClick={() => setDraft({ id: r.id, name: r.name, keywords: r.keywords, reply: r.reply, enabled: r.enabled, sendOnce: r.send_once })} role="button" tabIndex={0}>
+                        <span className={`icon-tile sm ${TILES[i % TILES.length]}`}><Icon name="lightning" /></span>
+                        <span className="nm"><b>{r.name}</b><span className="row gap-4">{r.keywords.slice(0, 2).map((k) => <span key={k} className="tag">{k}</span>)}{r.keywords.length > 2 && <span className="tag">+{r.keywords.length - 2}</span>}</span></span>
+                        <span className="rp">{r.reply}</span>
+                        <span className="hits">{r.fired_count}<small>times</small></span>
+                        <button className={`tog${r.enabled ? " on" : ""}`} role="switch" aria-checked={r.enabled} aria-label={`${r.name} on/off`} onClick={(e) => { e.stopPropagation(); void toggleRule(r); }} />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="card-f"><span className="xs faint grow" style={{ fontWeight: 600 }}>First match wins · not case-sensitive</span><button className="btn btn-soft btn-sm" onClick={() => setDraft({ name: "", keywords: [], reply: "", enabled: true, sendOnce: true })} data-testid="add-rule"><Icon name="plus" />Add keyword reply</button></div>
+                </>
+              )}
+            </section>
 
-        {/* HOURS + FAQ bottom row */}
-        <div className="mcol">
-          <section className="a-hrs">
-            <div className="h-head">
-              <img src={`${IC}clock-user-bold.svg`} alt="" /><b>Business hours</b>
-              <span className={`tgl${settings?.away_enabled ? " on" : ""}`}
-                    onClick={() => void fetch("/api/automation/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ awayEnabled: !(settings?.away_enabled ?? false) }) }).then(() => load())} />
-            </div>
-            <div className="days">
-              {DAYS.map((d) => {
-                const open = !!settings?.business_hours?.[d];
-                return (
-                  <span key={d} className={`dcell${open ? " on" : ""}`}
-                        title={open ? settings.business_hours[d].join("–") : "Closed"}
-                        onClick={() => {
-                          const hrs = { ...(settings?.business_hours ?? {}) };
-                          if (hrs[d]) delete hrs[d]; else hrs[d] = ["09:00", "18:00"];
-                          void fetch("/api/automation/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ businessHours: hrs }) }).then(() => load());
-                        }}>{dayShort(d)}</span>
-                );
-              })}
-            </div>
-            {settings?.away_enabled && (
-              <div className="away-line">
-                <img src={`${IC}moon-bold.svg`} alt="" />
-                <span>Away · after hours — “{settings.away_text ?? "We're closed right now — we'll reply in the morning."}”</span>
-                <span className="addlink" onClick={() => {
-                  const t = prompt("Away message:", settings?.away_text ?? "") ?? "";
-                  if (t) void fetch("/api/automation/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ awayText: t.slice(0, 1024) }) }).then(() => load());
-                }}>edit</span>
+            <section className="card">
+              <div className="card-h"><span className="h3">Saved answers</span><span className="pill neutral sm nodot">Suggested, not auto-sent</span><button className="btn btn-soft btn-sm" onClick={() => setFaqDraft({ q: "", a: "" })}><Icon name="plus" />Add</button></div>
+              <div className="card-b col gap-6" style={{ paddingTop: 0 }}>
+                {faq.length === 0 && !faqDraft && <p className="xs faint" style={{ fontWeight: 600 }}>Save answers to questions you get often — reuse them when replying.</p>}
+                {faq.map((f) => (
+                  <div key={f.id} className="well" style={{ padding: "10px 12px", display: "flex", gap: 10, alignItems: "flex-start" }}><span className="grow"><b className="small">{f.question}</b><div className="xs muted" style={{ marginTop: 2 }}>{f.answer}</div></span><button className="btn btn-ghost btn-icon btn-sm" onClick={() => void delFaq(f.id)} aria-label="Delete saved answer"><Icon name="trash" /></button></div>
+                ))}
+                {faqDraft && (
+                  <div className="col gap-6"><input className="input" placeholder="Question — e.g. Do you deliver?" value={faqDraft.q} onChange={(e) => setFaqDraft({ ...faqDraft, q: e.target.value })} aria-label="Question" />
+                    <textarea className="textarea" rows={2} placeholder="Answer" value={faqDraft.a} onChange={(e) => setFaqDraft({ ...faqDraft, a: e.target.value })} aria-label="Answer" />
+                    <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn btn-ghost btn-sm" onClick={() => setFaqDraft(null)}>Cancel</button><button className="btn btn-primary btn-sm" onClick={() => void addFaq()}>Save answer</button></div></div>
+                )}
               </div>
-            )}
-          </section>
-          <section className="a-hn">
-            <div className="h-head">
-              <img src={`${IC}question-bold.svg`} alt="" /><b>FAQ auto-replies</b>
-              <span className="chip" style={{ fontSize: 8.5, padding: "1px 7px" }}>suggested only</span>
-            </div>
-            {faq.map((f) => (
-              <div className="frow-s" key={f.id}>
-                <span className="fq">{f.question}</span>
-                <span className="fa">{f.answer.slice(0, 40)}…</span>
-                <span className="addlink" onClick={() => void fetch(`/api/automation/faq/${f.id}`, { method: "DELETE" }).then(() => load())}>remove</span>
+            </section>
+          </div>
+
+          <div className="stackc side">
+            <section className="card">
+              <div className="rule-h"><span className="icon-tile grape"><Icon name="flask" /></span><span className="grow"><b>Test your replies</b><small>Type what a customer might say. Nothing is sent.</small></span></div>
+              <form className="test" onSubmit={(e) => { e.preventDefault(); void runTest(); }}>
+                <div className="row gap-6"><input className="input" value={testText} onChange={(e) => setTestText(e.target.value)} placeholder="what's the price for a 5 page site?" aria-label="Test message" data-testid="rule-test-input" /><button className="btn btn-dark" disabled={!testText.trim()}>Test</button></div>
+                {testRes && (
+                  <div className="result" data-testid="rule-test-result">
+                    {testRes.matched ? <><span className="h"><Icon name="check-circle-fill" size="sm" />Matches “{testRes.rule}” · keyword “{testRes.keyword}”</span>{matched && <div className="b-out" style={{ maxWidth: "100%", alignSelf: "stretch" }}>{matched.reply}</div>}</>
+                      : <><span className="h" style={{ color: "var(--ink-2)" }}><Icon name="info" size="sm" />No keyword matched</span><span className="xs muted">The message waits in your inbox for you to reply.</span></>}
+                  </div>
+                )}
+              </form>
+            </section>
+
+            <section className="card">
+              <div className="rule-h"><span className="icon-tile"><Icon name="clock" /></span><span className="grow"><b>Business hours</b><small>Outside these hours, send an away message</small></span>
+                <button className={`tog${settings?.away_enabled ? " on" : ""}`} role="switch" aria-checked={!!settings?.away_enabled} aria-label="Away message" onClick={() => void putSettings({ awayEnabled: !settings?.away_enabled }, settings?.away_enabled ? "Away message off" : "Away message on")} /></div>
+              {hoursEdit === null ? (
+                <>
+                  <div className="hours">
+                    {DAYS.map(([k, l]) => { const h = hours[k]; return (
+                      <div key={k} className={`hr${h ? "" : " closed"}`}><span>{l}</span><div className="track">{h && <span style={{ left: `${(toH(h[0]) / 24) * 100}%`, width: `${((toH(h[1]) - toH(h[0])) / 24) * 100}%` }}>{fmtH(h[0])}–{fmtH(h[1])}</span>}{k === todayKey && <i className="now" style={{ left: `${(nowH / 24) * 100}%` }} />}</div></div>); })}
+                  </div>
+                  <div className="ticks"><span /><div><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div></div>
+                  <div style={{ padding: "12px var(--pad) var(--pad)" }}>
+                    <div className="well" style={{ padding: "10px 12px", fontSize: "var(--fs-sm)", lineHeight: 1.5 }}><b style={{ fontSize: "var(--fs-xs)" }}>Away message</b><br />{settings?.away_text || <span className="faint">Not set yet</span>}</div>
+                    <div className="row" style={{ marginTop: 10 }}><span className="xs faint grow" style={{ fontWeight: 600 }}>India time · now {Object.keys(hours).length ? (openNow ? <b style={{ color: "var(--chat-deep)" }}>open</b> : <b>closed</b>) : "no hours set"}</span>
+                      <button className="btn btn-soft btn-sm" onClick={() => setHoursEdit({ hours: { ...hours }, away: settings?.away_text ?? "" })}>Edit hours</button></div>
+                  </div>
+                </>
+              ) : (
+                <div className="col gap-6" style={{ padding: "0 var(--pad) var(--pad)" }}>
+                  {DAYS.map(([k, l]) => { const h = hoursEdit.hours[k]; return (
+                    <div key={k} className="row gap-6"><button className={`tog${h ? " on" : ""}`} role="switch" aria-checked={!!h} aria-label={`${l} open`} onClick={() => { const n = { ...hoursEdit.hours }; if (h) delete n[k]; else n[k] = ["10:00", "19:00"]; setHoursEdit({ ...hoursEdit, hours: n }); }} />
+                      <span className="small" style={{ width: 34, fontWeight: 700 }}>{l}</span>
+                      {h ? <><input type="time" className="input" style={{ height: 32 }} value={h[0]} onChange={(e) => setHoursEdit({ ...hoursEdit, hours: { ...hoursEdit.hours, [k]: [e.target.value, h[1]] } })} aria-label={`${l} opens`} /><span className="faint">–</span><input type="time" className="input" style={{ height: 32 }} value={h[1]} onChange={(e) => setHoursEdit({ ...hoursEdit, hours: { ...hoursEdit.hours, [k]: [h[0], e.target.value] } })} aria-label={`${l} closes`} /></> : <span className="xs faint" style={{ fontWeight: 600 }}>Closed</span>}</div>); })}
+                  <label className="label" style={{ marginTop: 6 }} htmlFor="away-text">Away message</label>
+                  <textarea id="away-text" className="textarea" rows={3} value={hoursEdit.away} onChange={(e) => setHoursEdit({ ...hoursEdit, away: e.target.value.slice(0, 1024) })} placeholder="Thanks for messaging! We're closed right now — we'll reply first thing in the morning." />
+                  <div className="row" style={{ justifyContent: "flex-end" }}><button className="btn btn-ghost btn-sm" onClick={() => setHoursEdit(null)}>Cancel</button>
+                    <button className="btn btn-primary btn-sm" disabled={busy} onClick={async () => { if (await putSettings({ businessHours: hoursEdit.hours, awayText: hoursEdit.away || null }, "Business hours saved")) setHoursEdit(null); }}>Save hours</button></div>
+                </div>
+              )}
+            </section>
+
+            <section className="card">
+              <div className="rule-h"><span className="icon-tile banana"><Icon name="clock-countdown" /></span><span className="grow"><b>Recent automatic replies</b><small>What automation sent lately</small></span></div>
+              <div className="handoff">
+                {log.length === 0 && <p className="xs faint" style={{ fontWeight: 600 }}>Nothing sent automatically yet.</p>}
+                {log.slice(0, 6).map((l, i) => (
+                  <div key={i} className="hrow"><span className={`icon-tile sm ${l.type === "welcome" ? "green" : l.type === "away" ? "neutral" : "grape"}`}><Icon name={l.type === "welcome" ? "hand" : l.type === "away" ? "clock" : "lightning"} /></span>
+                    <span className="grow">{l.type === "welcome" ? "Welcome message" : l.type === "away" ? "Away message" : ruleOf(l.rule_id ?? "")?.name ?? "Keyword reply"}<small>{new Date(l.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small></span>
+                    <span className={`pill sm ${l.status === "sent" ? "ok" : l.status === "failed" ? "bad" : "neutral"}`}>{l.status}</span></div>
+                ))}
               </div>
-            ))}
-            <div className="empty-add" style={{ cursor: "pointer" }} onClick={() => {
-              const question = prompt("FAQ question:");
-              const answer = question ? prompt("Answer:") : null;
-              if (question && answer) void fetch("/api/automation/faq", { method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ question, answer }) }).then(() => load());
-            }}>+ Add FAQ pair</div>
-            <div className="hint" style={{ fontSize: 9.5, color: "var(--ink-3)", marginTop: 8 }}>
-              Human handoff — reply manually and automation pauses for that chat.
-            </div>
-          </section>
+            </section>
+          </div>
         </div>
       </div>
 
-      {/* INSPECTOR */}
-      <aside className={`insp${selFresh ? "" : " empty"}`} aria-label="Rule inspector">
-        {!selFresh ? (
-          <div className="insp-body" style={{ display: "grid", placeItems: "center", color: "var(--ink-3)", fontSize: 11 }}>
-            Pick a rule to edit — or add one from the table.
-          </div>
-        ) : (
+      <div className={`scrim${draft ? " open" : ""}`} onClick={() => setDraft(null)} />
+      <aside className={`drawer${draft ? " open" : ""}`} aria-label="Keyword reply" aria-hidden={!draft}>
+        {draft && (
           <>
-            <div className="insp-head">
-              <b>{selFresh.name}</b>
-              <span className="st-pill on">{selFresh.enabled ? "Active" : "Paused"}</span>
-              <span className="tgl on" onClick={(e) => { e.stopPropagation(); void saveRule({ id: selFresh.id, enabled: !selFresh.enabled }); }} />
+            <div className="dh"><span className="icon-tile lg grape"><Icon name="lightning" /></span><div className="grow"><h2>{draft.id ? draft.name || "Keyword reply" : "New keyword reply"}</h2><div className="small muted" style={{ fontWeight: 600 }}>{draft.enabled ? "On" : "Off"}</div></div>
+              <button className={`tog${draft.enabled ? " on" : ""}`} style={{ marginTop: 6 }} role="switch" aria-checked={draft.enabled} aria-label="Rule on/off" onClick={() => setDraft({ ...draft, enabled: !draft.enabled })} />
+              <button className="btn btn-ghost btn-icon" onClick={() => setDraft(null)} aria-label="Close"><Icon name="x" /></button></div>
+            <div className="db">
+              <div className="field"><label htmlFor="rule-name">Name <span className="opt">only you see this</span></label><input id="rule-name" className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Price inquiries" /></div>
+              <div className="field"><label>When the message contains any of</label>
+                <div className="kwbox">{draft.keywords.map((k) => <span key={k} className="tag">{k} <span className="x" role="button" aria-label={`Remove ${k}`} onClick={() => setDraft({ ...draft, keywords: draft.keywords.filter((x) => x !== k) })}>✕</span></span>)}
+                  <input value={kwInput} onChange={(e) => setKwInput(e.target.value)} placeholder="Type a keyword, press Enter" aria-label="Add keyword"
+                    onKeyDown={(e) => { if ((e.key === "Enter" || e.key === ",") && kwInput.trim()) { e.preventDefault(); if (!draft.keywords.includes(kwInput.trim().toLowerCase())) setDraft({ ...draft, keywords: [...draft.keywords, kwInput.trim().toLowerCase()] }); setKwInput(""); } }} /></div>
+                <span className="hint">Not case-sensitive. Tip: add Hinglish spellings your customers use (e.g. “kitna”).</span></div>
+              <div className="field"><label htmlFor="rule-reply">Reply with</label><textarea id="rule-reply" className="textarea" rows={4} value={draft.reply} onChange={(e) => setDraft({ ...draft, reply: e.target.value.slice(0, 1024) })} placeholder="Our packages start at ₹9,999 — want me to walk you through the options?" /><span className="hint" style={{ display: "flex", justifyContent: "space-between" }}><span>Sent only while the 24-hour reply window is open</span><span>{draft.reply.length} / 1024</span></span></div>
+              <div className="hrow"><span className="grow">Send at most once per conversation<small>Avoids repeating the same answer</small></span><button className={`tog${draft.sendOnce ? " on" : ""}`} role="switch" aria-checked={draft.sendOnce} aria-label="Send once per conversation" onClick={() => setDraft({ ...draft, sendOnce: !draft.sendOnce })} /></div>
+              {draft.id && <div className="note"><Icon name="chart-bar" /><span>Fired <b>{(rules ?? []).find((r) => r.id === draft.id)?.fired_count ?? 0} times</b>{(rules ?? []).find((r) => r.id === draft.id)?.last_fired_at ? ` · last ${new Date((rules ?? []).find((r) => r.id === draft.id)!.last_fired_at!).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}.</span></div>}
             </div>
-            <div className="insp-body">
-              <div className="insp-sec">
-                <div className="insp-lb">Keywords <em>· contains match, case-insensitive</em></div>
-                <div className="kch-edit">
-                  {selFresh.keywords.map((k, i) => (
-                    <span className="kch" key={i} onClick={() => {
-                      const rest = selFresh.keywords.filter((_, j) => j !== i);
-                      if (rest.length > 0) void saveRule({ id: selFresh.id, keywords: rest });
-                    }}>{k} <b>×</b></span>
-                  ))}
-                  <span className="kch-add" onClick={() => {
-                    const k = prompt("Add keyword:")?.trim();
-                    if (k) void saveRule({ id: selFresh.id, keywords: [...selFresh.keywords, k] });
-                  }}>+ Add</span>
-                </div>
-              </div>
-              <div className="insp-sec">
-                <div className="insp-lb">Reply message</div>
-                <div className="insp-reply">
-                  <textarea defaultValue={selFresh.reply} key={selFresh.id + selFresh.reply}
-                            onBlur={(e) => { if (e.target.value !== selFresh.reply) void saveRule({ id: selFresh.id, reply: e.target.value }); }}
-                            style={{ width: "100%", minHeight: 72, border: 0, outline: 0, background: "transparent", fontSize: 11.5, color: "var(--ink)", resize: "vertical" }} />
-                  <small>{selFresh.reply.length}/1024</small>
-                </div>
-              </div>
-              <div className="insp-sec">
-                <div className="insp-lb">Match behavior</div>
-                <div className="beh-row"><span>Send once per conversation</span><span className={`tgl${selFresh.send_once ? " on" : ""}`} onClick={() => void saveRule({ id: selFresh.id, send_once: !selFresh.send_once } as Partial<Rule>)} /></div>
-              </div>
-              <div className="insp-sec">
-                <div className="isp-stats">
-                  <div><b>{selFresh.fired_count}</b><span>fired</span></div>
-                  <div><b>{log.filter((l) => l.rule_id === selFresh.id && l.status === "sent").length}</b><span>sent</span></div>
-                  <div><b>{log.filter((l) => l.rule_id === selFresh.id && l.type === "paused").length}</b><span>paused</span></div>
-                  <div><b>{log.filter((l) => l.rule_id === selFresh.id && l.status === "failed").length}</b><span>errors</span></div>
-                </div>
-              </div>
-              <div className="insp-sec">
-                <div className="insp-lb">Test rule <em>· simulate, doesn't send</em></div>
-                <div className="test-in">
-                  <input placeholder="“what's the price for a 5-page site?”" value={testText}
-                         onChange={(e) => setTestText(e.target.value)}
-                         style={{ border: 0, outline: 0, background: "transparent", fontSize: 11, flex: 1, color: "var(--ink)" }} />
-                  <button className="btn btn-chat" style={{ minHeight: 24, padding: "0 9px", fontSize: 9.5 }} onClick={() => void testRule()}>Test</button>
-                </div>
-                {testRes && <div className="test-res">{testRes}</div>}
-              </div>
-            </div>
+            <div className="card-f">{draft.id && <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void deleteRule()}><Icon name="trash" />Delete</button>}<span className="sp" /><button className="btn btn-soft" onClick={() => setDraft(null)}>Cancel</button><button className="btn btn-primary" disabled={busy} onClick={() => void saveRule()} data-testid="rule-save">Save reply</button></div>
           </>
         )}
       </aside>
-      {note && <div style={{ position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)", background: "var(--card)", border: "1px solid var(--line)", borderRadius: 999, padding: "7px 14px", fontSize: 11, zIndex: 60 }}>{note}</div>}
+      {note && <div role="status" style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "var(--surface)", border: `1px solid ${note.kind === "ok" ? "var(--chat-line)" : "var(--danger-line)"}`, color: note.kind === "ok" ? "var(--chat-deep)" : "var(--danger-deep)", boxShadow: "var(--shadow-2)", borderRadius: 999, padding: "9px 16px", fontSize: 12, fontWeight: 700, zIndex: 95 }}>{note.text}</div>}
     </div>
   );
 }

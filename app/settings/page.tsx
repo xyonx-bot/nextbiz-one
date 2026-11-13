@@ -1,18 +1,14 @@
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
-import { Shell } from "@/components/Shell";
+import { getShellData } from "@/lib/shell";
+import { ShellClient } from "@/components/ShellClient";
 import { SettingsClient } from "./SettingsClient";
 
 export const dynamic = "force-dynamic";
 
-/** P0 Settings — leaf page (rail-level, no side panel). */
 export default async function SettingsPage() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  const user = await getSessionUser(token);
-  const initials = (user?.displayName ?? "NBO").split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase();
+  const shell = await getShellData();
   return (
-    <Shell active="settings" userInitials={initials} userName={user?.displayName ?? "Operator"}>
-      <SettingsClient email={user?.email ?? ""} />
-    </Shell>
+    <ShellClient active="settings" title="Settings" data={shell}>
+      <SettingsClient email={shell.user?.email ?? ""} displayName={shell.userName} />
+    </ShellClient>
   );
 }
