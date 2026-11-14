@@ -12,8 +12,12 @@ import { avatarClass } from "@/lib/ui";
 type Req = { id: string; business_name: string; use_description: string; email: string; created_at: string };
 type Ws = { id: string; name: string; revoked: boolean; created_at: string; contact_count: number; user_count: number };
 type Entry = { actor_email: string; action: string; target: string; reason: string | null; created_at: string };
-type View = "overview" | "requests" | "workspaces" | "audit";
-const TITLES: Record<View, string> = { overview: "Overview", requests: "Access requests", workspaces: "Workspaces", audit: "Audit log" };
+type View = "overview" | "requests" | "workspaces" | "audit" | "ai";
+const TITLES: Record<View, string> = { overview: "Overview", requests: "Access requests", workspaces: "Workspaces", audit: "Audit log", ai: "NextBiz AI" };
+type AiModel = { id: string; name: string; free: boolean; inPerM: number; outPerM: number; ctx: number };
+type AiCfg = { enabled: boolean; assistantModel: string; quickModel: string; fallbackModel: string; dailyLimit: number };
+type AiData = { keyPresent: boolean; config: AiCfg; models: AiModel[]; usage: { today: { calls: number; cost: number; failed: number }; month: { calls: number; cost: number; tokens: number }; byWorkspace: { name: string; calls: number; cost: number; last: string }[] } };
+const usd = (n: number) => (n === 0 ? "$0" : n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
 const ACTION: Record<string, [string, string, string]> = {
   approved: ["green", "check", "Approved"], rejected: ["neutral", "x", "Rejected"], revoked: ["red", "prohibit", "Revoked"],
   restored: ["green", "arrows-clockwise", "Restored"], request_received: ["orange", "envelope-simple-open", "New request"],
@@ -40,6 +44,21 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const [env, setEnv] = useState("Production");
+  const [ai, setAi] = useState<AiData | null>(null);
+  const [aiDraft, setAiDraft] = useState<AiCfg | null>(null);
+  const loadAi = useCallback(async () => {
+    const d = await fetch("/api/operator/ai", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
+    if (d?.ok) { setAi(d); setAiDraft(d.config); }
+  }, []);
+  useEffect(() => { if (view === "ai") void loadAi(); }, [view, loadAi]);
+  async function saveAi() {
+    if (!aiDraft) return;
+    setBusy(true);
+    const d = await fetch("/api/operator/ai", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(aiDraft) }).then((x) => x.json()).catch(() => null);
+    setBusy(false);
+    setNote(d?.ok ? { kind: "ok", text: "AI settings saved — new requests use them right away" } : { kind: "bad", text: d?.error ?? "Couldn't save AI settings" });
+    if (d?.ok) await loadAi();
+  }
   useEffect(() => { const h = window.location.hostname; setEnv(h.includes("beta") ? "Beta" : /localhost|127\.0\.0\.1/.test(h) ? "Local" : "Production"); }, []);
 
   const load = useCallback(async () => {
@@ -96,6 +115,7 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
           <a className={`ni${view === "workspaces" ? " on" : ""}`} onClick={() => go("workspaces")}><Icon name="buildings" />Workspaces<span className="badge soft">{live.length}</span></a>
           <span className="grp eyebrow">Records</span>
           <a className={`ni${view === "audit" ? " on" : ""}`} onClick={() => go("audit")}><Icon name="list-checks" />Audit log</a>
+          <a className={`ni${view === "ai" ? " on" : ""}`} onClick={() => go("ai")} data-testid="op-ai"><Icon name="sparkle" />NextBiz AI</a>
         </nav>
         <div className="side-foot">
           <a className="ni" href="/"><Icon name="arrow-left" />Back to app</a>
@@ -199,6 +219,48 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
               </div>
               <div className="note"><Icon name="shield-check" /><span>Operators see workspace metadata and totals only. Message content, contact names and customer numbers are never shown here.</span></div>
             </section>
+          )}
+
+          {view === "ai" && (
+            <div className="op-ai" data-testid="op-ai-view">
+              {!ai || !aiDraft ? <span className="sk" style={{ display: "block", height: 220 }} /> : (
+                <>
+                  <div className="ai-kpis">
+                    <div className="card"><span>Status</span><b className={aiDraft.enabled && ai.keyPresent ? "good" : "bad"}>{!ai.keyPresent ? "No API key" : aiDraft.enabled ? "On" : "Off"}</b><small>OpenRouter</small></div>
+                    <div className="card"><span>Today</span><b>{ai.usage.today.calls}</b><small>{usd(ai.usage.today.cost)} · {ai.usage.today.failed} failed</small></div>
+                    <div className="card"><span>Last 30 days</span><b>{ai.usage.month.calls}</b><small>{usd(ai.usage.month.cost)} · {Number(ai.usage.month.tokens).toLocaleString("en-IN")} tokens</small></div>
+                  </div>
+                  <section className="card">
+                    <div className="card-h"><span className="h3">Settings</span><span className="sp" />
+                      <label className="row gap-6 small" style={{ fontWeight: 700 }}>AI on<button type="button" className={`tog${aiDraft.enabled ? " on" : ""}`} role="switch" aria-checked={aiDraft.enabled} onClick={() => setAiDraft({ ...aiDraft, enabled: !aiDraft.enabled })} data-testid="op-ai-enabled" /></label></div>
+                    <div className="ai-form">
+                      {([["assistantModel", "Assistant model", "The chat assistant — reads data, proposes actions. Needs good tool use."], ["quickModel", "Quick model", "Reply suggestions and “fill the campaign form”. Fast and cheap is fine."], ["fallbackModel", "Fallback model (optional)", "Used only when the main model fails or is rate-limited — e.g. a paid model behind a free one."]] as const).map(([k, l, h]) => {
+                        const m = ai.models.find((x) => x.id === aiDraft[k]);
+                        return (
+                          <div key={k} className="field"><label htmlFor={`m-${k}`}>{l}</label>
+                            <input id={`m-${k}`} className="input mono" list="ai-models" value={aiDraft[k]} placeholder={k === "fallbackModel" ? "none" : "provider/model"} onChange={(e) => setAiDraft({ ...aiDraft, [k]: e.target.value.trim() })} data-testid={`op-${k}`} />
+                            <span className="hint">{h}{m ? ` · ${m.free ? "free" : `$${m.inPerM}/M in · $${m.outPerM}/M out`} · ${Math.round(m.ctx / 1000)}K context` : aiDraft[k] ? " · not found in the catalogue" : ""}</span>
+                            {m?.free && <span className="hint warnh">Free models are rate-limited and may use prompts for training — customer chats pass through them. Use a paid model for production clients.</span>}
+                          </div>
+                        );
+                      })}
+                      <datalist id="ai-models">{ai.models.map((m) => <option key={m.id} value={m.id}>{`${m.name}${m.free ? " — free" : ` — $${m.inPerM}/$${m.outPerM} per M`}`}</option>)}</datalist>
+                      <div className="field"><label htmlFor="m-limit">Daily limit per workspace</label><input id="m-limit" className="input" type="number" min={0} max={100000} value={aiDraft.dailyLimit} onChange={(e) => setAiDraft({ ...aiDraft, dailyLimit: Number(e.target.value) })} style={{ maxWidth: 160 }} />
+                        <span className="hint">AI requests per workspace per day (each chat turn, suggestion or form fill counts once). 0 blocks AI for everyone.</span></div>
+                    </div>
+                    <div className="card-f"><span className="xs faint grow" style={{ fontWeight: 600 }}>{ai.models.length} tool-calling models available on OpenRouter</span><button className="btn btn-soft" onClick={() => setAiDraft(ai.config)}>Reset</button><button className="btn btn-primary" disabled={busy} onClick={() => void saveAi()} data-testid="op-ai-save">Save</button></div>
+                  </section>
+                  <section className="card">
+                    <div className="card-h"><span className="h3">Usage by workspace · 30 days</span></div>
+                    <div style={{ padding: "0 8px 8px", overflowX: "auto" }}>
+                      <table className="dt"><thead><tr><th>Workspace</th><th className="r">Requests</th><th className="r">Cost</th><th className="r">Last used</th></tr></thead>
+                        <tbody>{ai.usage.byWorkspace.length === 0 ? <tr><td colSpan={4} className="faint small">No AI use yet.</td></tr>
+                          : ai.usage.byWorkspace.map((w) => <tr key={w.name}><td><b>{w.name}</b></td><td className="r num">{w.calls}</td><td className="r num">{usd(w.cost)}</td><td className="r small muted">{ago(w.last)}</td></tr>)}</tbody></table>
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
           )}
 
           {view === "audit" && (
