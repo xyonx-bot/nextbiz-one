@@ -395,3 +395,28 @@ export async function processIgInbound(body: unknown, signatureValid: boolean): 
   }
   return { stored, duplicate };
 }
+
+/* ───────────────────────── media (NextBiz Social) ───────────────────────── */
+
+export type IgMedia = { id: string; permalink: string | null; thumb: string | null; caption: string | null; type: string | null };
+const mediaCache = new Map<string, { at: number; m: IgMedia }>();
+
+/** Post info for comment rows (thumbnail, caption, link). Live accounts only; cached 30 min; never throws. */
+export async function igMediaInfo(accountId: string, mediaIds: string[]): Promise<Record<string, IgMedia>> {
+  const out: Record<string, IgMedia> = {};
+  const ids = [...new Set(mediaIds.filter(Boolean))].slice(0, 24);
+  const need = ids.filter((id) => { const c = mediaCache.get(id); if (c && Date.now() - c.at < 30 * 60_000) { out[id] = c.m; return false; } return true; });
+  if (!need.length || !igLive()) return out;
+  const a = await tokenFor(accountId).catch(() => null);
+  if (!a?.live || !a.token) return out;
+  await Promise.all(need.map(async (id) => {
+    try {
+      const r = await gfetch(`${IG_GRAPH}/${encodeURIComponent(id)}?fields=permalink,media_url,thumbnail_url,caption,media_type&access_token=${encodeURIComponent(a.token!)}`);
+      if (!r.ok) return;
+      const j = (await r.json()) as { permalink?: string; media_url?: string; thumbnail_url?: string; caption?: string; media_type?: string };
+      const m: IgMedia = { id, permalink: j.permalink ?? null, thumb: j.thumbnail_url ?? (j.media_type === "VIDEO" ? null : j.media_url ?? null), caption: j.caption ?? null, type: j.media_type ?? null };
+      mediaCache.set(id, { at: Date.now(), m }); out[id] = m;
+    } catch { /* best effort */ }
+  }));
+  return out;
+}

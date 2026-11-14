@@ -145,16 +145,24 @@ test.describe("IG access prep (r-nbo-ig-access-prep)", () => {
     const connJ = (await conn.json()) as { ok: boolean; mock: boolean };
     expect(connJ.ok).toBe(true);
     expect(connJ.mock).toBe(true);
+    // a workspace that already has a live (real) account keeps showing it — the mock row only shows otherwise
+    const hasLive = (await pool.query(
+      `SELECT 1 FROM ig_accounts a JOIN users u ON u.workspace_id = a.workspace_id WHERE lower(u.email) = lower($1) AND a.live`,
+      [process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one"])).rowCount! > 0;
     await page.reload();
     await page.locator(".si", { hasText: "Other channels" }).click();
-    await expect(page.getByTestId("ig-acct")).toContainText("@mock_business");
-    await expect(page.getByTestId("ig-acct")).toContainText("Connecting…");
     const st = await page.request.get("/api/instagram/connect");
     const j = (await st.json()) as { ok: boolean; live: boolean; account: { live: boolean; username: string } | null };
     expect(j.ok).toBe(true);
     expect(j.live).toBe(false);
-    expect(j.account?.live).toBe(false);
-    expect(j.account?.username).toBe("@mock_business");
+    if (!hasLive) {
+      await expect(page.getByTestId("ig-acct")).toContainText("@mock_business");
+      await expect(page.getByTestId("ig-acct")).toContainText("Connecting…");
+      expect(j.account?.live).toBe(false);
+      expect(j.account?.username).toBe("@mock_business");
+    } else {
+      expect(j.account?.live).toBe(true);
+    }
     const audit = await pool.query(`SELECT action FROM ig_audit ORDER BY id DESC LIMIT 1`);
     expect(audit.rows[0].action).toBe("connect-mock");
   });

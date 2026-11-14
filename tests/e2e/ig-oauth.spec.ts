@@ -62,7 +62,7 @@ test.describe("Instagram Login OAuth", () => {
     await page.goto("/settings");
     await page.locator(".si", { hasText: "Other channels" }).click();
     await expect(page.getByTestId("ig-oauth")).toBeVisible();
-    await expect(page.getByTestId("ig-oauth")).toContainText("Login with Instagram");
+    await expect(page.getByTestId("ig-oauth")).toContainText(/Login with Instagram|Reconnect/);
   });
 
   test("rail: ads chip navigates to /ads; social chip lands on the Instagram connect section", async ({ page }) => {
@@ -73,7 +73,8 @@ test.describe("Instagram Login OAuth", () => {
     expect(page.url()).toContain("/ads");
     // social chip -> Connections, Instagram card with the login CTA (no dead button)
     await page.getByTestId("rail-social").click();
-    await page.waitForURL("**/connections**");
-    await expect(page.getByTestId("ig-connect")).toBeVisible();
+    // Instagram connected → NextBiz Social; not connected → Social shows the guided connect state
+    await page.waitForURL("**/social**");
+    await expect(page.getByTestId("social-overview").or(page.getByTestId("channel-gate"))).toBeVisible();
   });
 });

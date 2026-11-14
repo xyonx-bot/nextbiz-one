@@ -12,7 +12,8 @@ import type { ShellData } from "@/lib/shell";
  */
 export type ShellActive =
   | "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts" | "automation" | "settings" | "connections"
-  | "ads" | "ads-new" | "ads-perf";
+  | "ads" | "ads-new" | "ads-perf"
+  | "social" | "social-comments";
 
 type Item = { key: ShellActive; label: string; icon: string; href: string };
 const CHAT: Item[] = [
@@ -27,6 +28,12 @@ const ADS: Item[] = [
   { key: "ads-new", label: "Create campaign", icon: "plus", href: "/ads/new" },
   { key: "ads-perf", label: "Performance", icon: "chart-line-up", href: "/ads/performance" },
 ];
+const SOCIAL: (Omit<Item, "key"> & { key: ShellActive | "social-dms" | "social-auto" })[] = [
+  { key: "social", label: "Overview", icon: "squares-four", href: "/social" },
+  { key: "social-comments", label: "Comments", icon: "chat-teardrop-text", href: "/social/comments" },
+  { key: "social-dms", label: "Instagram DMs", icon: "paper-plane-tilt", href: "/inbox?ch=ig" },
+  { key: "social-auto", label: "Auto-replies", icon: "lightning", href: "/automation" },
+];
 const LOGO = "/logo.png";
 
 export function ShellClient({
@@ -40,7 +47,7 @@ export function ShellClient({
   data: ShellData;
   children: React.ReactNode;
 }) {
-  const mod: "chat" | "ads" | null = CHAT.some((i) => i.key === active) ? "chat" : ADS.some((i) => i.key === active) ? "ads" : null;
+  const mod: "chat" | "ads" | "social" | null = CHAT.some((i) => i.key === active) ? "chat" : ADS.some((i) => i.key === active) ? "ads" : SOCIAL.some((i) => i.key === active) ? "social" : null;
   const leaf = mod === null;
   const [panelOff, setPanelOff] = useState(false);
   const [flyout, setFlyout] = useState(false);
@@ -70,10 +77,10 @@ export function ShellClient({
   const closeAll = () => { setFlyout(false); setSheet(false); setMe(false); };
   const signOut = async () => { await fetch("/api/auth/logout", { method: "POST" }).catch(() => {}); window.location.href = "/login"; };
   const showBurger = !leaf && (!wide || panelOff);
-  const items = mod === "ads" ? ADS : CHAT;
-  const modName = mod === "ads" ? "NextBiz Ads" : "NextBiz Chat";
+  const items = mod === "ads" ? ADS : mod === "social" ? SOCIAL : CHAT;
+  const modName = mod === "ads" ? "NextBiz Ads" : mod === "social" ? "NextBiz Social" : "NextBiz Chat";
   const waNumber = data.wa?.displayName?.match(/\(([^)]+)\)/)?.[1] ?? null;
-  const inMore = ["templates", "automation", "settings", "connections", "ads", "ads-new", "ads-perf"].includes(active);
+  const inMore = ["templates", "automation", "settings", "connections", "social", "social-comments", "ads", "ads-new", "ads-perf"].includes(active);
 
   return (
     <div
@@ -88,7 +95,7 @@ export function ShellClient({
           <Icon name="chat-circle-dots" />{data.unread > 0 && <span className="badge red">{data.unread > 99 ? "99+" : data.unread}</span>}<span className="tip">NextBiz Chat</span>
         </a>
         <a className={`ri m-ads${mod === "ads" ? " on" : ""}`} href="/ads" aria-label="NextBiz Ads" data-testid="rail-ads"><Icon name="megaphone" /><span className="dot" /><span className="tip">NextBiz Ads</span></a>
-        <a className="ri m-social" href="/connections#instagram" aria-label="NextBiz Social" data-testid="rail-social"><Icon name="images" /><span className="tip">NextBiz Social · Instagram</span></a>
+        <a className={`ri m-social${mod === "social" ? " on" : ""}`} href="/social" aria-label="NextBiz Social" data-testid="rail-social"><Icon name="images" /><span className="tip">NextBiz Social · Instagram</span></a>
         <span className="sp" />
         <a className={`ri${active === "connections" ? " on" : ""}`} href="/connections" aria-label="Connections" data-testid="rail-connections"><Icon name="plugs-connected" /><span className="tip">Connections</span></a>
         <a className={`ri${active === "settings" ? " on" : ""}`} href="/settings" aria-label="Settings"><Icon name="gear" /><span className="tip">Settings</span></a>
@@ -125,7 +132,17 @@ export function ShellClient({
             ))}
           </nav>
           <div className="pfoot">
-            {mod === "chat" ? (
+            {mod === "social" ? (
+              <div className="numcard igcard" data-testid="ig-numcard">
+                <div className="top">
+                  {data.ig?.picture ? <img className="igpic" src={data.ig.picture} alt="" /> : <span className="wa ig"><Icon name="instagram-logo" /></span>}
+                  <span className="grow"><b className="trunc" style={{ display: "block" }}>{data.ig?.username ? `@${data.ig.username.replace(/^@/, "")}` : "Instagram"}</b><small>Instagram professional</small></span></div>
+                <div className="stats">
+                  <div><span>Status</span><strong className={data.channels.instagram ? "good" : ""}>{data.channels.instagram ? "Connected" : "Not connected"}</strong></div>
+                  <div><span>Manage</span><strong><a href="/connections#instagram" style={{ textDecoration: "underline" }}>Connection</a></strong></div>
+                </div>
+              </div>
+            ) : mod === "chat" ? (
               <div className="numcard" data-testid="wa-numcard">
                 <div className="top"><span className="wa"><Icon name="whatsapp-logo" /></span><span className="grow"><b className="trunc" style={{ display: "block" }}>{data.workspaceName}</b><small>{waNumber ? `+${waNumber}`.replace(/^\+\+/, "+") : "WhatsApp Business"}</small></span></div>
                 <div className="stats">
@@ -149,9 +166,10 @@ export function ShellClient({
           <div className="acts">
             {actions && <span className="page-acts row">{actions}</span>}
             <span className="vsep" />
-            <a href="/connections" className="conn" title={data.wa?.connected ? "WhatsApp connected — manage channels" : "WhatsApp not connected — open Connections"} style={data.wa?.connected ? undefined : { background: "var(--banana-tint)", color: "var(--banana-deep)", borderColor: "var(--banana-line)" }}>
-              <span className="pulse" style={data.wa?.connected ? undefined : { background: "var(--banana)" }} /><span className="txt">{data.wa?.connected ? "Connected" : "Not connected"}</span>
-            </a>
+            {(() => { const on = mod === "social" ? data.channels.instagram : !!data.wa?.connected; const ch = mod === "social" ? "Instagram" : "WhatsApp"; return (
+            <a href={mod === "social" ? "/connections#instagram" : "/connections"} className="conn" title={`${ch} ${on ? "connected" : "not connected"} — open Connections`} style={on ? undefined : { background: "var(--banana-tint)", color: "var(--banana-deep)", borderColor: "var(--banana-line)" }}>
+              <span className="pulse" style={on ? undefined : { background: "var(--banana)" }} /><span className="txt">{on ? "Connected" : "Not connected"}</span>
+            </a>); })()}
             <a className="btn btn-ghost btn-icon bell" href="/inbox" aria-label="Notifications">
               <Icon name="bell" />{data.unread > 0 && <span className="ndot" />}
             </a>
@@ -176,6 +194,8 @@ export function ShellClient({
         {CHAT.map((i) => <a key={i.key} className={`pi${i.key === active ? " on" : ""}`} href={i.href}><Icon name={i.icon} /><span>{i.label}</span></a>)}
         <div className="sgrp eyebrow">NextBiz Ads <span className="demo" style={{ marginLeft: 6 }}>Demo</span></div>
         {ADS.map((i) => <a key={i.key} className={`pi${i.key === active ? " on" : ""}`} href={i.href}><Icon name={i.icon} /><span>{i.label}</span></a>)}
+        <div className="sgrp eyebrow">NextBiz Social</div>
+        {SOCIAL.map((i) => <a key={i.key} className={`pi${i.key === active ? " on" : ""}`} href={i.href}><Icon name={i.icon} /><span>{i.label}</span></a>)}
         <div className="sgrp eyebrow">Workspace</div>
         <a className={`pi${active === "connections" ? " on" : ""}`} href="/connections"><Icon name="plugs-connected" /><span>Connections</span></a>
         <a className={`pi${active === "settings" ? " on" : ""}`} href="/settings"><Icon name="gear" /><span>Settings</span></a>

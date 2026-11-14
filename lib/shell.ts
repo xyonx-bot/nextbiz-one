@@ -13,6 +13,7 @@ export type ShellData = {
   wa: { displayName: string | null; connected: boolean } | null;
   /** Which channels this workspace has connected — pages show a guided setup state for the missing ones. */
   channels: { whatsapp: boolean; instagram: boolean; ads: boolean };
+  ig: { username: string | null; picture: string | null } | null;
 };
 
 export function initialsOf(name: string) {
@@ -34,7 +35,7 @@ export async function getShellData(): Promise<ShellData> {
     ).catch(() => ({ rows: [{ n: 0 }] })),
     p.query(`SELECT name FROM workspaces WHERE id = $1`, [wsId]).catch(() => none),
     p.query(`SELECT display_name, status FROM waba_connections WHERE workspace_id = $1 ORDER BY (status = 'connected') DESC, created_at DESC LIMIT 1`, [wsId]).catch(() => none),
-    p.query(`SELECT 1 FROM ig_accounts WHERE workspace_id = $1 AND live LIMIT 1`, [wsId]).catch(() => none),
+    p.query(`SELECT username, profile_picture_url FROM ig_accounts WHERE workspace_id = $1 AND live ORDER BY updated_at DESC LIMIT 1`, [wsId]).catch(() => none),
   ]) : [{ rows: [{ n: 0 }] }, none, none, none];
   const w = wa.rows[0] as { display_name: string | null; status: string } | undefined;
   const waConnected = w?.status === "connected";
@@ -49,5 +50,6 @@ export async function getShellData(): Promise<ShellData> {
     wa: w ? { displayName: w.display_name ?? null, connected: waConnected } : null,
     // Ads: no live ad-account connection exists yet (Marketing API pending) — always the guided state
     channels: { whatsapp: waConnected, instagram: ig.rows.length > 0, ads: false },
+    ig: ig.rows[0] ? { username: (ig.rows[0] as { username: string | null }).username, picture: (ig.rows[0] as { profile_picture_url: string | null }).profile_picture_url } : null,
   };
 }
