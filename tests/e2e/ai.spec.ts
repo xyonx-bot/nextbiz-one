@@ -68,3 +68,24 @@ test.describe.serial("NextBiz AI", () => {
     expect((await page.request.get("/api/operator/ai")).status()).toBe(200);
   });
 });
+
+test("dashboard — new workspace gets the launch pad, not a wall of zeros", async ({ page }) => {
+  const { hash } = await import("bcryptjs");
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const T = Date.now(), email = `dash-${T}@e2e.test`;
+  const ws = (await pool.query(`INSERT INTO workspaces (name) VALUES ($1) RETURNING id`, [`Dash ${T}`])).rows[0].id;
+  await pool.query(`INSERT INTO users (workspace_id, email, password_hash, display_name, is_operator, is_approved) VALUES ($1,$2,$3,'Dash Owner',false,true)`, [ws, email, await hash("pw-12345678", 4)]);
+  try {
+    await page.goto("/login"); await page.fill("#email", email); await page.fill("#password", "pw-12345678");
+    await Promise.all([page.click("button[type=submit]"), page.waitForURL((u) => !u.pathname.startsWith("/login"))]);
+    await page.goto("/");
+    await expect(page.getByTestId("dashboard")).toHaveAttribute("data-state", "new");
+    await expect(page.getByTestId("setup")).toBeVisible();
+    await expect(page.getByTestId("launch-pad")).toBeVisible();
+    await expect(page.getByTestId("kpi-conv")).toHaveCount(0);
+    await expect(page.getByTestId("card-channels")).toHaveCount(0); // the launch pad already offers the connects
+    await expect(page.locator(".pg-dash .demo")).toHaveCount(0);
+  } finally {
+    await pool.query(`DELETE FROM workspaces WHERE id = $1`, [ws]); await pool.query(`DELETE FROM users WHERE email = $1`, [email]); await pool.end();
+  }
+});

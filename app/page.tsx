@@ -1,132 +1,94 @@
 import { redirect } from "next/navigation";
-import { getPool } from "@/lib/db";
-import { draftToCampaign, performance, seedCampaigns } from "@/lib/ads";
 import { getShellData } from "@/lib/shell";
+import { dashboardData } from "@/lib/dashboard";
 import { ShellClient } from "@/components/ShellClient";
 import { Icon } from "@/components/Icon";
 import { PairBars, Spark } from "@/components/Charts";
+import { AskAi, CopyLink } from "@/components/DashBits";
 import { avatarClass, initials } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
 /**
- * P1.5 Dashboard — design v2 (nextbiz-one-v2/dashboard). Leaf page. Leads with what needs attention,
- * then KPIs, 14-day activity, recent chats, last broadcast funnel, automation, connection health.
- * Fresh workspaces see a setup checklist instead of empty widgets. Everything here is live data
- * except the NextBiz Ads teaser, which is badged as demo.
+ * Dashboard v3 — composed from the channels the workspace actually has (WhatsApp, Instagram, Meta ads).
+ *  · New workspace: Getting started + a Launch pad (share links, first test) instead of a wall of zeros.
+ *  · Active workspace: what needs you (all channels) → pulse (conversations, contacts, median reply time,
+ *    automatic replies) → messages per day by channel + latest chats → channel cards.
+ *  · No demo numbers anywhere: ads show live figures only when an ad account is connected.
  */
-const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const keyOf = (d: unknown) => (d instanceof Date ? dayKey(d) : String(d).slice(0, 10));
 const n = (v: number) => v.toLocaleString("en-IN");
-function delta(cur: number, prev: number, unit = "vs prior 14 days") {
-  if (prev === 0) return cur === 0 ? <span className="foot">No activity yet</span> : <span className="foot"><span className="delta up"><Icon name="arrow-up-right" size="xs" />New</span>{unit}</span>;
-  const pct = Math.round(((cur - prev) / prev) * 100);
-  return <span className="foot"><span className={`delta ${pct >= 0 ? "up" : "down"}`}><Icon name="arrow-up-right" size="xs" style={pct < 0 ? { transform: "rotate(90deg)" } : undefined} />{Math.abs(pct)}%</span>{unit}</span>;
-}
-function since(iso: string | Date | null) {
+const inr = (v: number) => "₹" + Math.round(v).toLocaleString("en-IN");
+function since(iso: string | null) {
   if (!iso) return "never";
   const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (m < 1) return "just now"; if (m < 60) return `${m} min ago`;
   const h = Math.floor(m / 60); if (h < 48) return `${h}h ago`;
   return `${Math.floor(h / 24)} days ago`;
 }
+function dur(s: number | null) {
+  if (s == null) return "—";
+  if (s < 60) return `${Math.max(1, Math.round(s))}s`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  if (s < 86400) return `${(s / 3600).toFixed(s < 36000 ? 1 : 0)} h`;
+  return `${(s / 86400).toFixed(1)} days`;
+}
+function Delta({ cur, prev, unit }: { cur: number; prev: number; unit: string }) {
+  if (!prev && !cur) return <span className="foot">Quiet so far · {unit}</span>;
+  if (!prev) return <span className="foot"><span className="delta up"><Icon name="arrow-up-right" size="xs" />New</span>{unit}</span>;
+  if (!cur) return <span className="foot"><span className="delta flat">Quiet</span>{unit}</span>;
+  const p = Math.round(((cur - prev) / prev) * 100);
+  return <span className="foot"><span className={`delta ${p >= 0 ? "up" : "down"}`}><Icon name="arrow-up-right" size="xs" style={p < 0 ? { transform: "rotate(90deg)" } : undefined} />{Math.abs(p)}%</span>{unit}</span>;
+}
 
 export default async function HomePage() {
-  const p = getPool();
   const shell = await getShellData();
   if (!shell.wsId) redirect("/login");
-  const wsId = shell.wsId;
-  const q = <T = Record<string, unknown>>(sql: string) => p.query(sql, [wsId]).then((r) => r.rows as T[]).catch(() => [] as T[]);
-  const [msgs14, msgTrend, convTrend, contacts30, contacts14, active24, unreadConvs, closing, rejected, approvedTpl, recents, lastBc, autoLog, autoSet, lastIn, anyIn, contactsTotal, adDrafts] = await Promise.all([
-    q<{ d: Date; direction: string; n: number }>(`SELECT date_trunc('day', created_at)::date AS d, direction, count(*)::int AS n FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '14 days' GROUP BY 1,2`),
-    q<{ cur: number; prev: number }>(`SELECT (SELECT count(*)::int FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '14 days') AS cur,
-            (SELECT count(*)::int FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '28 days' AND created_at <= now() - interval '14 days') AS prev`),
-    q<{ cur: number; prev: number }>(`SELECT (SELECT count(DISTINCT conversation_id)::int FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '14 days') AS cur,
-            (SELECT count(DISTINCT conversation_id)::int FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '28 days' AND created_at <= now() - interval '14 days') AS prev`),
-    q<{ cur: number; prev: number; opted: number }>(`SELECT (SELECT count(*)::int FROM contacts WHERE workspace_id = $1 AND created_at > now() - interval '30 days') AS cur,
-            (SELECT count(*)::int FROM contacts WHERE workspace_id = $1 AND created_at > now() - interval '60 days' AND created_at <= now() - interval '30 days') AS prev,
-            (SELECT count(*)::int FROM contacts WHERE workspace_id = $1 AND opt_in) AS opted`),
-    q<{ d: Date; n: number }>(`SELECT date_trunc('day', created_at)::date AS d, count(*)::int AS n FROM contacts WHERE workspace_id = $1 AND created_at > now() - interval '14 days' GROUP BY 1`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM conversations WHERE workspace_id = $1 AND last_inbound_at > now() - interval '24 hours'`),
-    q<{ n: number; oldest: Date | null }>(`SELECT count(*)::int AS n, min(first_unread) AS oldest FROM (
-            SELECT c.id, min(m.created_at) AS first_unread FROM conversations c JOIN messages m ON m.conversation_id = c.id
-             WHERE c.workspace_id = $1 AND m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0)) GROUP BY c.id) u`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM conversations c WHERE c.workspace_id = $1 AND c.last_inbound_at BETWEEN now() - interval '24 hours' AND now() - interval '21 hours'
-            AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.direction = 'out' AND m.created_at > c.last_inbound_at)`),
-    q<{ name: string }>(`SELECT name FROM templates WHERE workspace_id = $1 AND lower(status) = 'rejected' ORDER BY updated_at DESC`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM templates WHERE workspace_id = $1 AND lower(status) = 'approved'`),
-    q<{ id: string; name: string | null; wa_id: string; body: string | null; created_at: Date; direction: string; unread: number }>(
-      `SELECT c.id, ct.name, ct.wa_id, lm.body, lm.created_at, lm.direction,
-              (SELECT count(*)::int FROM messages m WHERE m.conversation_id = c.id AND m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0))) AS unread
-         FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
-         JOIN LATERAL (SELECT body, created_at, direction FROM messages m WHERE m.conversation_id = c.id ORDER BY created_at DESC LIMIT 1) lm ON true
-        WHERE c.workspace_id = $1 ORDER BY lm.created_at DESC LIMIT 5`),
-    q<{ id: string; name: string; sent_at: Date | null; created_at: Date; total: number; sent: number; delivered: number; read: number; failed: number; replied: number }>(
-      `SELECT b.id, b.name, b.sent_at, b.created_at,
-              count(br.id)::int AS total,
-              count(*) FILTER (WHERE br.status IN ('sent','delivered','read'))::int AS sent,
-              count(*) FILTER (WHERE br.status IN ('delivered','read'))::int AS delivered,
-              count(*) FILTER (WHERE br.status = 'read')::int AS read,
-              count(*) FILTER (WHERE br.status = 'failed')::int AS failed,
-              (SELECT count(DISTINCT c.contact_id)::int FROM messages m JOIN conversations c ON c.id = m.conversation_id
-                WHERE m.direction = 'in' AND b.sent_at IS NOT NULL AND m.created_at > b.sent_at
-                  AND c.contact_id IN (SELECT contact_id FROM broadcast_recipients WHERE broadcast_id = b.id)) AS replied
-         FROM broadcasts b LEFT JOIN broadcast_recipients br ON br.broadcast_id = b.id
-        WHERE b.workspace_id = $1 AND b.sent_at IS NOT NULL GROUP BY b.id ORDER BY b.sent_at DESC LIMIT 1`),
-    q<{ type: string; n: number }>(`SELECT type, count(*)::int AS n FROM automation_log WHERE workspace_id = $1 AND created_at > now() - interval '7 days' GROUP BY 1`),
-    q<{ welcome_enabled: boolean; away_enabled: boolean }>(`SELECT welcome_enabled, away_enabled FROM automation_settings WHERE workspace_id = $1`),
-    q<{ at: Date | null }>(`SELECT max(created_at) AS at FROM messages WHERE workspace_id = $1 AND direction = 'in'`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM messages WHERE workspace_id = $1 AND direction = 'in'`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM contacts WHERE workspace_id = $1`),
-    q(`SELECT id, name, objective, status, daily_budget, start_time, stop_time, destination FROM ads_mock_campaigns WHERE workspace_id = $1 ORDER BY created_at DESC`),
-  ]);
+  const d = await dashboardData(shell.wsId);
 
-  // 14-day series
-  const days: string[] = [], labels: string[] = [];
-  for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(dayKey(d)); labels.push(d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })); }
-  const series = (rows: { d: unknown; n: number }[]) => { const m = new Map(rows.map((r) => [keyOf(r.d), r.n])); return days.map((k) => m.get(k) ?? 0); };
-  const inS = series(msgs14.filter((r) => r.direction === "in")), outS = series(msgs14.filter((r) => r.direction === "out"));
-  const totS = inS.map((v, i) => v + outS[i]);
-  const contactS = series(contacts14);
-
-  const connected = !!shell.wa?.connected;
-  const mt = msgTrend[0] ?? { cur: 0, prev: 0 }, ct = convTrend[0] ?? { cur: 0, prev: 0 }, c30 = contacts30[0] ?? { cur: 0, prev: 0, opted: 0 };
-  const un = unreadConvs[0] ?? { n: 0, oldest: null };
+  const anyChannel = d.wa.connected || !!d.ig || !!d.ads;
   const setup = [
-    { done: connected, t: "Connect WhatsApp", s: connected ? shell.wa?.displayName ?? "Connected" : "Link your business number", href: "/connections#whatsapp" },
-    { done: (anyIn[0]?.n ?? 0) > 0, t: "Receive your first message", s: (anyIn[0]?.n ?? 0) > 0 ? "Messages are flowing" : "Send “Hi” from your phone to test", href: "/onboarding" },
-    { done: !!autoSet[0]?.welcome_enabled, t: "Turn on a welcome message", s: "Instant reply for every new customer · 1 min", href: "/automation" },
-    { done: (contactsTotal[0]?.n ?? 0) >= 10, t: "Add your contacts", s: "Customers are added automatically when they message you", href: "/contacts" },
-    { done: (approvedTpl[0]?.n ?? 0) > 0, t: "Get a template approved", s: "Needed to message customers after 24 hours", href: "/templates" },
+    { done: d.wa.connected || !!d.ig, t: "Connect WhatsApp or Instagram", s: d.wa.connected ? d.wa.displayName ?? "WhatsApp connected" : d.ig ? `@${d.ig.username} connected` : "Bring your customer chats in", href: "/connections" },
+    { done: d.everActive, t: "Receive your first message", s: d.everActive ? "Messages are flowing" : "Send “Hi” from your phone to test", href: d.wa.connected ? "/onboarding" : "/connections" },
+    { done: !!(d.settings.welcome_enabled || d.settings.ig_welcome_enabled), t: "Turn on a welcome message", s: "Instant reply for every new customer · 1 min", href: d.wa.connected ? "/automation" : "/social/automation" },
+    { done: d.contacts.total + d.contacts.ig_new >= 10, t: "Grow your contacts", s: "People are added automatically when they message you", href: "/contacts" },
+    d.wa.connected
+      ? { done: d.approvedTemplates > 0, t: "Get a template approved", s: "Needed to message customers after 24 hours", href: "/templates" }
+      : { done: d.rulesOn > 0, t: "Add a keyword reply", s: "Answer “price?” and “timing?” automatically", href: d.ig ? "/social/automation" : "/automation" },
   ];
   const setupDone = setup.filter((s) => s.done).length;
+
   const attention = [
-    un.n > 0 && { href: "/inbox", tile: "green", icon: "tray", t: `${un.n} unread chat${un.n > 1 ? "s" : ""}`, s: `Oldest waiting ${since(un.oldest)}` },
-    (closing[0]?.n ?? 0) > 0 && { href: "/inbox", tile: "banana", icon: "hourglass", t: `${closing[0].n} window${closing[0].n > 1 ? "s" : ""} closing`, s: "Reply within 3h or use a template" },
-    rejected.length > 0 && { href: "/templates", tile: "red", icon: "warning-circle", t: `${rejected.length} template${rejected.length > 1 ? "s" : ""} rejected`, s: `${rejected[0].name} · fix & resubmit` },
-    !connected && { href: "/settings#whatsapp", tile: "grape", icon: "plugs-connected", t: "WhatsApp not connected", s: "Messages can't arrive until you reconnect" },
-  ].filter(Boolean) as { href: string; tile: string; icon: string; t: string; s: string }[];
+    d.unread.wa > 0 && { href: "/inbox?ch=wa", tile: "green", icon: "whatsapp-logo", t: `${d.unread.wa} unread WhatsApp chat${d.unread.wa > 1 ? "s" : ""}`, s: `Oldest waiting ${since(d.unread.oldest)}` },
+    d.unread.ig > 0 && { href: "/social/dms", tile: "pink", icon: "instagram-logo", t: `${d.unread.ig} unread Instagram DM${d.unread.ig > 1 ? "s" : ""}`, s: "Reply within 24 hours" },
+    (d.ig?.needs ?? 0) > 0 && { href: "/social/comments?filter=needs", tile: "pink", icon: "chat-teardrop-text", t: `${d.ig!.needs} comment${d.ig!.needs > 1 ? "s" : ""} need a reply`, s: "On your Instagram posts" },
+    d.closing > 0 && { href: "/inbox", tile: "banana", icon: "hourglass", t: `${d.closing} reply window${d.closing > 1 ? "s" : ""} closing`, s: "Reply within 3h" },
+    d.rejected.length > 0 && { href: "/templates", tile: "red", icon: "warning-circle", t: `${d.rejected.length} template${d.rejected.length > 1 ? "s" : ""} rejected`, s: `${d.rejected[0]} · fix & resubmit` },
+    d.ig?.lastError && { href: "/connections#instagram", tile: "red", icon: "warning", t: "Instagram needs attention", s: d.ig.lastError.slice(0, 60) },
+    d.ads?.error && { href: "/connections#ads", tile: "red", icon: "warning", t: "Ad account needs attention", s: d.ads.error.slice(0, 60) },
+  ].filter(Boolean).slice(0, 4) as { href: string; tile: string; icon: string; t: string; s: string }[];
 
-  const bc = lastBc[0];
+  const both = d.wa.connected && !!d.ig;
+  const labels = d.days.map((x) => new Date(x + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }));
+  const totalIn = d.waIn.map((v, i) => v + d.igIn[i]);
+  const quiet14 = d.totals.in14 === 0 && d.totals.out14 === 0;
+  const waNumber = d.wa.displayName?.match(/\(([^)]+)\)/)?.[1]?.replace(/\D/g, "") ?? null;
+  const bc = d.lastBc;
+  const cardCount = [!!d.ig, d.wa.connected, anyChannel, !!d.ads].filter(Boolean).length;
+  const span = cardCount >= 4 ? "s3" : cardCount === 3 ? "s4" : cardCount === 2 ? "s6" : "s12";
   const pct = (a: number) => (bc && bc.total > 0 ? Math.round((a / bc.total) * 100) : 0);
-  const auto = Object.fromEntries(autoLog.map((r) => [r.type, r.n]));
-  const autoTotal = autoLog.reduce((s, r) => s + r.n, 0);
-
-  const adsRep = performance([...adDrafts.map((r) => draftToCampaign(r as never)), ...seedCampaigns(wsId)], 7, wsId);
-  const inr = (v: number) => "₹" + Math.round(v).toLocaleString("en-IN");
-  const hour = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" });
-  const greet = +hour < 12 ? "Good morning" : +hour < 17 ? "Good afternoon" : "Good evening";
+  const hour = +new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" });
+  const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const first = shell.userName.split(" ")[0].replace(/^./, (c) => c.toUpperCase());
 
   return (
     <ShellClient active="dashboard" title="Dashboard" data={shell}
-      actions={<a className="btn btn-primary" href="/broadcasts?new=1"><Icon name="plus" /><span className="lbl">New broadcast</span></a>}>
-      <div className="pg-dash">
-        <div className="page" data-testid="dashboard">
+      actions={d.wa.connected ? <a className="btn btn-primary" href="/broadcasts?new=1"><Icon name="plus" /><span className="lbl">New broadcast</span></a> : undefined}>
+      <div className="pg-dash v3">
+        <div className="page" data-testid="dashboard" data-state={d.everActive ? "live" : "new"}>
           <div className="pagehead">
             <div className="t"><div className="h1">{greet}, {first}</div>
-              <p>{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Kolkata" })} · {attention.length ? "here's what needs you today." : "nothing urgent — you're all caught up."}</p></div>
-            <span className="pill neutral nodot">Last 14 days</span>
+              <p>{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Kolkata" })} · {!d.everActive ? "let's get your first customer chats in." : attention.length ? "here's what needs you today." : "nothing urgent — you're all caught up."}</p></div>
+            {shell.ai && d.everActive && <AskAi prompt="What needs my attention today?" label="What needs me today?" testId="dash-ask-ai" />}
           </div>
 
           {setupDone < setup.length && (
@@ -134,7 +96,7 @@ export default async function HomePage() {
               <div className="l">
                 <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Getting started</span>
                 <h2>{setupDone <= 2 ? "Let's get your first customer chat in." : "Almost set up — a few steps left."}</h2>
-                <p className="muted" style={{ fontSize: "var(--fs-sm)", maxWidth: 380 }}>Finish these and NextBiz One answers, organises and follows up on WhatsApp for you.</p>
+                <p className="muted" style={{ fontSize: "var(--fs-sm)", maxWidth: 380 }}>Finish these and NextBiz One answers, organises and follows up on {both ? "WhatsApp and Instagram" : d.ig ? "Instagram" : "WhatsApp"} for you.</p>
                 <div className="prog"><div className="meter"><span style={{ width: `${(setupDone / setup.length) * 100}%` }} /></div>{setupDone} of {setup.length} done</div>
               </div>
               <div className="steps">
@@ -149,81 +111,145 @@ export default async function HomePage() {
             </section>
           )}
 
-          {attention.length > 0 && (
-            <section className="attn" aria-label="Needs your attention">
+          {d.everActive && (attention.length > 0 ? (
+            <section className="attn" aria-label="Needs your attention" data-testid="attention">
               {attention.map((a) => (
                 <a key={a.t} className="at" href={a.href}><span className={`icon-tile lg ${a.tile}`}><Icon name={a.icon} /></span><span className="grow"><b>{a.t}</b><small>{a.s}</small></span><Icon name="caret-right" size="sm" /></a>
               ))}
             </section>
+          ) : (
+            <section className="card calm" data-testid="all-caught-up">
+              <span className="icon-tile lg green"><Icon name="check-circle" /></span>
+              <span className="grow"><b>You&apos;re all caught up</b><small>No unread chats, no comments waiting, no windows closing.</small></span>
+              <a className="btn btn-ghost btn-sm" href={d.wa.connected ? "/inbox" : "/social/dms"}>Open inbox<Icon name="arrow-right" size="xs" /></a>
+            </section>
+          ))}
+
+          {!d.everActive ? (
+            /* ── Launch pad: a brand-new workspace sees how to get its first chats, not zeros ── */
+            <section className="card launch" data-testid="launch-pad">
+              <div className="lp-preview" aria-hidden="true">
+                <span className="eyebrow">Coming up here</span>
+                <b>Your first week, at a glance</b>
+                <div className="lp-kpis">{["Conversations", "New contacts", "Reply time", "Auto replies"].map((k) => <span key={k}><i />{k}</span>)}</div>
+                <div className="lp-bars">{[30, 52, 41, 68, 46, 80, 62, 88, 57, 74, 66, 92, 71, 84].map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}</div>
+                <div className="lp-rows">{[0, 1, 2].map((i) => <div key={i}><span className={`av sm c${i + 1}`} /><span><i style={{ width: `${60 - i * 12}%` }} /><i style={{ width: `${40 + i * 10}%` }} /></span></div>)}</div>
+              </div>
+              <div className="lp-go">
+                <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Get your first messages</span>
+                <h3>{anyChannel ? "Share your link — every message lands in your inbox." : "Connect a channel to start."}</h3>
+                {waNumber && <CopyLink url={`https://wa.me/${waNumber}`} label="Your WhatsApp chat link" icon="whatsapp-logo" testId="share-wa" />}
+                {d.ig?.username && <CopyLink url={`https://instagram.com/${d.ig.username}`} label="Your Instagram profile" icon="instagram-logo" testId="share-ig" />}
+                {!d.wa.connected && <a className="lp-link" href="/connections#whatsapp"><span className="icon-tile sm green"><Icon name="whatsapp-logo" /></span><span className="grow"><b>Connect WhatsApp</b><small>Your business number, official Cloud API</small></span><Icon name="caret-right" size="sm" /></a>}
+                {!d.ig && <a className="lp-link" href="/connections#instagram"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span className="grow"><b>Connect Instagram</b><small>DMs and comments in one place</small></span><Icon name="caret-right" size="sm" /></a>}
+                {anyChannel && <div className="lp-tip"><Icon name="device-mobile" /><span><b>Test it now:</b> send “Hi” from your own phone — it shows up here within seconds.</span></div>}
+                {shell.ai && <AskAi prompt="Write a friendly welcome message for new customers of my business, and suggest 3 keyword replies I should set up." label="Ask AI to write my welcome message" className="btn btn-soft ai-btn lp-ai" testId="dash-ai-welcome" />}
+              </div>
+            </section>
+          ) : (
+            <>
+              <section className="grid">
+                <div className="card kpi s3" data-testid="kpi-conv"><div className="stat"><span className="lbl"><Icon name="chat-circle-dots" size="sm" />Conversations</span><span className="val v">{n(d.convs.cur ?? 0)}</span><Delta cur={d.convs.cur ?? 0} prev={d.convs.prev ?? 0} unit="14 days" /><div className="spark-wrap"><Spark data={totalIn} /></div></div></div>
+                <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="user-plus" size="sm" />New contacts</span><span className="val v">{n((d.contacts.cur ?? 0) + (d.contacts.ig_new ?? 0))}</span><Delta cur={(d.contacts.cur ?? 0) + (d.contacts.ig_new ?? 0)} prev={d.contacts.prev ?? 0} unit="30 days" /><span className="foot sub">{n(d.contacts.opted ?? 0)} of {n(d.contacts.total ?? 0)} WhatsApp contacts opted in</span></div></div>
+                <div className="card kpi s3" data-testid="kpi-reply"><div className="stat"><span className="lbl"><Icon name="timer" size="sm" />Reply time</span><span className="val v">{dur(d.reply.median_s)}</span>
+                  <span className="foot">{d.reply.samples ? <>median first reply · {n(d.reply.samples)}, incl. automatic</> : "no replies in 14 days"}</span>
+                  <div className="meter rt" style={{ marginTop: 10 }}><span style={{ width: `${d.reply.median_s == null ? 0 : Math.max(8, 100 - Math.min(100, (d.reply.median_s / 3600) * 100))}%` }} /></div></div></div>
+                <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="lightning" size="sm" />Automatic replies</span><span className="val v">{n(d.auto.total)}</span><span className="foot">sent for you · 7 days</span>
+                  <span className="foot sub">{d.settings.welcome_enabled || d.settings.ig_welcome_enabled ? "Welcome message on" : "Welcome message off"} · {d.rulesOn} keyword rule{d.rulesOn === 1 ? "" : "s"}</span></div></div>
+
+                <div className="card s8">
+                  <div className="card-h"><span className="h3">Customer messages</span><span className="xs faint" style={{ fontWeight: 600 }}>14 days</span><span className="sp" />
+                    <div className="legend">{both ? <><span><i style={{ background: "var(--chat)" }} />WhatsApp {n(d.totals.waIn)}</span><span><i style={{ background: "var(--social)" }} />Instagram {n(d.totals.igIn)}</span></>
+                      : <><span><i style={{ background: d.ig ? "var(--social)" : "var(--chat)" }} />Received</span><span><i style={{ background: "#C9C1B1" }} />Sent</span></>}</div></div>
+                  <div className="chart">{quiet14 ? (
+                    <div className="quiet"><Icon name="clock" /><span><b>A quiet two weeks.</b> No messages since {since(d.wa.lastIn && d.ig?.lastIn ? (d.wa.lastIn > d.ig.lastIn ? d.wa.lastIn : d.ig.lastIn) : d.wa.lastIn ?? d.ig?.lastIn ?? null)} — a broadcast or a post can wake things up.</span></div>
+                  ) : both ? <PairBars a={d.waIn} b={d.igIn} labels={labels} colors={["var(--chat)", "var(--social)"]} names={["WhatsApp", "Instagram"]} height={220} />
+                    : d.ig ? <PairBars a={d.igIn} b={d.igOut} labels={labels} colors={["var(--social)", "#C9C1B1"]} names={["Received", "Sent"]} height={220} />
+                    : <PairBars a={d.waIn} b={d.waOut} labels={labels} height={220} />}</div>
+                </div>
+                <div className="card s4">
+                  <div className="card-h"><span className="h3">Latest conversations</span><a className="btn-link" href={d.wa.connected ? "/inbox" : "/social/dms"}>Inbox<Icon name="arrow-right" size="xs" /></a></div>
+                  <div className="rc">
+                    {d.recent.map((r) => (
+                      <a key={`${r.ch}-${r.id}`} href={r.href}><span className={`av ${avatarClass(r.handle ?? r.id)}`}>{initials(r.who.replace(/^@/, ""), r.handle ?? "")}<span className={`src ${r.ch}`}><Icon name={r.ch === "wa" ? "whatsapp-logo" : "instagram-logo"} /></span></span>
+                        <span className="grow trunc"><b className="trunc">{r.who}</b><small className="trunc">{r.dir === "out" ? "You: " : ""}{r.body ?? "—"}</small></span>
+                        <span className="tm">{since(r.at)}{r.unread > 0 && <span className={`badge${r.ch === "ig" ? " red" : ""}`}>{r.unread}</span>}</span></a>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </>
           )}
 
-          <section className="grid">
-            <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="chat-circle-dots" size="sm" />Messages</span><span className="val v">{n(mt.cur)}</span>{delta(mt.cur, mt.prev)}<div className="spark-wrap"><Spark data={totS} /></div></div></div>
-            <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="users-three" size="sm" />Conversations</span><span className="val v">{n(ct.cur)}</span>{delta(ct.cur, ct.prev)}<span className="foot">{active24[0]?.n ?? 0} active in the last 24h</span></div></div>
-            <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="user-plus" size="sm" />New contacts</span><span className="val v">{n(c30.cur)}</span>{delta(c30.cur, c30.prev, "vs prior 30 days")}<div className="spark-wrap"><Spark data={contactS} /></div></div></div>
-            <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="megaphone" size="sm" />Can receive broadcasts</span><span className="val v">{n(c30.opted)}</span><span className="foot">opted-in of {n(contactsTotal[0]?.n ?? 0)} contacts</span>
-              <div className="meter" style={{ marginTop: 10 }}><span style={{ width: `${(contactsTotal[0]?.n ?? 0) ? Math.round((c30.opted / contactsTotal[0].n) * 100) : 0}%` }} /></div></div></div>
-
-            <div className="card s8">
-              <div className="card-h"><span className="h3">WhatsApp activity</span><div className="legend"><span><i style={{ background: "var(--chat)" }} />Received</span><span><i style={{ background: "#C9C1B1" }} />Sent</span></div></div>
-              <div className="chart">{totS.some((v) => v > 0) ? <PairBars a={inS} b={outS} labels={labels} /> : (
-                <div className="zero-chart" style={{ display: "grid" }}><span><Icon name="chart-bar" size="xl" style={{ color: "var(--ink-4)" }} /><br />Your daily message volume shows up here<br />after the first conversations.</span></div>)}</div>
-            </div>
-            <div className="card s4">
-              <div className="card-h"><span className="h3">Recent chats</span><a className="btn-link" href="/inbox">Open inbox<Icon name="arrow-right" size="xs" /></a></div>
-              <div className="rc">
-                {recents.length === 0 && <div className="empty" style={{ padding: 20 }}><p>No conversations yet.</p></div>}
-                {recents.map((r) => (
-                  <a key={r.id} href="/inbox"><span className={`av ${avatarClass(r.wa_id)}`}>{initials(r.name, r.wa_id)}</span>
-                    <span className="grow trunc"><b>{r.name ?? `+${r.wa_id}`}</b><small className="trunc">{r.direction === "out" ? "You: " : ""}{r.body ?? "—"}</small></span>
-                    <span className="tm">{since(r.created_at)}{r.unread > 0 && <span className="badge">{r.unread}</span>}</span></a>
-                ))}
+          {/* ── channel cards: only for what's connected; the rest becomes one tidy "Your channels" card ── */}
+          <section className="grid cards3">
+            {d.ig && (
+              <div className={`card ${span} ch-ig`} data-testid="card-ig">
+                <div className="card-h"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span className="h3">Instagram</span><a className="btn-link" style={{ color: "var(--social-deep)" }} href="/social">Social<Icon name="arrow-right" size="xs" /></a></div>
+                <div className="card-b" style={{ paddingTop: 0 }}>
+                  <div className="nums3"><div><span>DMs · 7d</span><b>{n(d.ig.dms7)}</b></div><div><span>Comments · 7d</span><b>{n(d.ig.comments7)}</b></div><div className={d.ig.needs ? "hot" : ""}><span>Need a reply</span><b>{n(d.ig.needs)}</b></div></div>
+                  <a className="btn btn-soft btn-sm" style={{ marginTop: 12, width: "100%", justifyContent: "center" }} href={d.ig.needs ? "/social/comments?filter=needs" : "/social/comments"}><Icon name="chat-teardrop-text" />{d.ig.needs ? "Reply to comments" : "See comments"}</a>
+                </div>
               </div>
-            </div>
-
-            <div className="card s4 pair">
-              <div className="card-h"><span className="h3">Last broadcast</span>{bc && <span className="pill ok sm">Sent</span>}</div>
-              {bc ? (
-                <>
+            )}
+            {d.wa.connected && (
+              <div className={`card ${span}`}>
+                <div className="card-h"><span className="icon-tile sm green"><Icon name="megaphone" /></span><span className="h3">Last broadcast</span>{bc && <span className="pill ok sm">Sent</span>}</div>
+                {bc ? (
                   <div className="card-b" style={{ paddingTop: 0 }}>
-                    <div className="row" style={{ marginBottom: 14 }}><span className="icon-tile sm"><Icon name="megaphone" /></span><span className="grow"><b style={{ fontSize: "var(--fs-sm)" }}>{bc.name}</b><br /><small className="faint xs" style={{ fontWeight: 600 }}>{bc.sent_at && new Date(bc.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · {bc.total} recipients</small></span></div>
+                    <div className="xs faint" style={{ fontWeight: 600, marginBottom: 10 }}><b style={{ color: "var(--ink)" }}>{bc.name}</b> · {new Date(bc.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · {bc.total} recipients</div>
                     <div className="funnel">
                       {([["Sent", bc.sent], ["Delivered", bc.delivered], ["Read", bc.read], ["Replied", bc.replied]] as const).map(([l, v]) => (
                         <div key={l} className="fr"><span>{l}</span><div className="bar"><span style={{ width: `${Math.max(pct(v), v > 0 ? 6 : 0)}%` }}>{v}</span></div><span className="v">{pct(v)}%</span></div>
                       ))}
                     </div>
                   </div>
-                  <div className="card-f"><span className="xs faint grow" style={{ fontWeight: 600 }}>{bc.failed > 0 ? `${bc.failed} failed to deliver` : "No delivery failures"}</span><a className="btn-link" href="/broadcasts">Report</a></div>
-                </>
-              ) : (
-                <div className="empty" style={{ paddingTop: 8 }}><p>Send an approved template to your opted-in contacts — results show up here.</p><div className="acts"><a className="btn btn-soft btn-sm" href="/broadcasts?new=1">New broadcast</a></div></div>
-              )}
-            </div>
-            <div className="card s4 pair">
-              <div className="card-h"><span className="h3">Automation · 7 days</span><a className="btn-link" href="/automation">Manage</a></div>
-              <div className="card-b auto-rows" style={{ paddingTop: 0 }}>
-                <div className="ar"><span className="icon-tile sm green"><Icon name="hand" /></span><span><b>Welcome message</b><small>{autoSet[0]?.welcome_enabled ? "On" : "Off"} · greets new contacts</small></span><span className="v">{auto.welcome ?? 0}</span></div>
-                <div className="ar"><span className="icon-tile sm grape"><Icon name="lightning" /></span><span><b>Keyword replies</b><small>Answers common questions</small></span><span className="v">{(auto.keyword ?? 0) + (auto.rule ?? 0)}</span></div>
-                <div className="ar"><span className="icon-tile sm"><Icon name="clock" /></span><span><b>Away replies</b><small>{autoSet[0]?.away_enabled ? "On" : "Off"} · outside business hours</small></span><span className="v">{auto.away ?? 0}</span></div>
-                {autoTotal === 0 && <p className="xs faint" style={{ fontWeight: 600, paddingTop: 8 }}>No automatic replies sent this week.</p>}
+                ) : (
+                  <div className="card-b first" style={{ paddingTop: 0 }}>
+                    <p><b>{n(d.contacts.opted ?? 0)}</b> opted-in contact{d.contacts.opted === 1 ? "" : "s"} can get your first broadcast{d.approvedTemplates ? ` · ${d.approvedTemplates} approved template${d.approvedTemplates > 1 ? "s" : ""} ready` : " once a template is approved"}.</p>
+                    <a className="btn btn-soft btn-sm" href={d.approvedTemplates ? "/broadcasts?new=1" : "/templates?new=1"}>{d.approvedTemplates ? "Send a broadcast" : "Create a template"}</a>
+                  </div>
+                )}
+              </div>
+            )}
+            {anyChannel && (
+              <div className={`card ${span}`}>
+                <div className="card-h"><span className="icon-tile sm grape"><Icon name="lightning" /></span><span className="h3">Automation · 7 days</span><a className="btn-link" href={d.wa.connected ? "/automation" : "/social/automation"}>Manage</a></div>
+                <div className="card-b auto-rows" style={{ paddingTop: 0 }}>
+                  <div className="ar"><span className="icon-tile sm green"><Icon name="hand" /></span><span><b>Welcome message</b><small>{[d.wa.connected && `WhatsApp ${d.settings.welcome_enabled ? "on" : "off"}`, d.ig && `Instagram ${d.settings.ig_welcome_enabled ? "on" : "off"}`].filter(Boolean).join(" · ")}</small></span><span className="v">{(d.auto.wa.welcome ?? 0)}</span></div>
+                  <div className="ar"><span className="icon-tile sm grape"><Icon name="chat-text" /></span><span><b>Keyword replies</b><small>{d.rulesOn} rule{d.rulesOn === 1 ? "" : "s"} on</small></span><span className="v">{(d.auto.wa.keyword ?? 0) + (d.auto.wa.comment ?? 0)}</span></div>
+                  <div className="ar"><span className="icon-tile sm"><Icon name="clock" /></span><span><b>Away replies</b><small>Outside business hours</small></span><span className="v">{d.auto.wa.away ?? 0}</span></div>
+                  {d.ig && <div className="ar"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span><b>Instagram auto-DMs</b><small>Welcome + keyword DMs</small></span><span className="v">{d.auto.ig}</span></div>}
+                </div>
+              </div>
+            )}
+            {d.ads ? (
+              <div className={`card ${span} ch-ads`} data-testid="card-ads">
+                <div className="card-h"><span className="icon-tile sm orange"><Icon name="target" /></span><span className="h3">Ads · 7 days</span><a className="btn-link" style={{ color: "var(--ads-deep)" }} href="/ads/performance">Performance<Icon name="arrow-right" size="xs" /></a></div>
+                <div className="card-b" style={{ paddingTop: 0 }}>
+                  {d.ads.error ? <p className="xs" style={{ color: "var(--danger-deep)", fontWeight: 600 }}>{d.ads.error}</p> : (
+                    <>
+                      <div className="nums3"><div><span>Spend</span><b>{inr(d.ads.spend)}</b></div><div><span>Results</span><b>{n(d.ads.results)}</b></div><div><span>Per result</span><b>{d.ads.results ? inr(d.ads.cpr) : "—"}</b></div></div>
+                      <p className="xs faint" style={{ fontWeight: 600, marginTop: 10 }}>{d.ads.name} · {d.ads.active ? `${d.ads.active} campaign${d.ads.active > 1 ? "s" : ""} running` : "nothing running right now"}</p>
+                    </>
+                  )}
+                  <a className="btn btn-soft btn-sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} href={d.ads.active ? "/ads" : "/ads/new"}><Icon name={d.ads.active ? "target" : "plus"} />{d.ads.active ? "Campaigns" : "Create a campaign"}</a>
+                </div>
+              </div>
+            ) : null}
+            {anyChannel && (
+            <div className="card s12 chstrip" data-testid="card-channels">
+              <div className="card-h"><span className="icon-tile sm neutral"><Icon name="plugs-connected" /></span><span className="h3">Your channels</span><a className="btn-link" href="/connections">Manage</a></div>
+              <div className="chs">
+                <div className={`chi${d.wa.connected ? " on wa" : ""}`}><span className={`icon-tile ${d.wa.connected ? "green" : "neutral"}`}><Icon name="whatsapp-logo" /></span><span className="grow"><b>WhatsApp</b><small>{d.wa.connected ? `${d.wa.displayName ?? "Connected"} · last message ${since(d.wa.lastIn)}` : "Chats, templates and broadcasts on your number"}</small></span>
+                  {d.wa.connected ? <span className="pill sm ok">Live</span> : <a className="btn btn-soft btn-sm" href="/connections#whatsapp">Connect</a>}</div>
+                <div className={`chi${d.ig ? " on ig" : ""}`}><span className={`icon-tile ${d.ig ? "pink" : "neutral"}`}><Icon name="instagram-logo" /></span><span className="grow"><b>Instagram</b><small>{d.ig ? `@${d.ig.username} · last DM ${since(d.ig.lastIn)}` : "DMs and comments, answered in one place"}</small></span>
+                  {d.ig ? <span className={`pill sm ${d.ig.lastError ? "warn" : "ok"}`}>{d.ig.lastError ? "Check" : "Live"}</span> : <a className="btn btn-soft btn-sm" href="/connections#instagram">Connect</a>}</div>
+                <div className={`chi${d.ads ? " on ads" : ""}`}><span className={`icon-tile ${d.ads ? "orange" : "neutral"}`}><Icon name="target" /></span><span className="grow"><b>Meta Ads</b><small>{d.ads ? d.ads.name ?? "Ad account connected" : "Click-to-WhatsApp ads that land in your inbox"}</small></span>
+                  {d.ads ? <span className={`pill sm ${d.ads.error ? "warn" : "ok"}`}>{d.ads.error ? "Check" : "Live"}</span> : <a className="btn btn-soft btn-sm" href="/connections#ads">Connect</a>}</div>
               </div>
             </div>
-            <div className="card s4">
-              <div className="card-h"><span className="h3">Connection health</span><a className="btn-link" href="/settings#whatsapp">Settings</a></div>
-              <div className="card-b hl" style={{ paddingTop: 0 }}>
-                <div className="hrow"><span className={`icon-tile sm ${connected ? "green" : "banana"}`}><Icon name="whatsapp-logo" /></span><span className="grow"><b>WhatsApp number</b><small>{shell.wa?.displayName ?? "Not connected"}</small></span><span className={`pill sm ${connected ? "ok" : "warn"}`}>{connected ? "Live" : "Offline"}</span></div>
-                <div className="hrow"><span className="icon-tile sm green"><Icon name="plugs-connected" /></span><span className="grow"><b>Incoming messages</b><small>Last received {since(lastIn[0]?.at ?? null)}</small></span><span className={`pill sm ${lastIn[0]?.at ? "ok" : "neutral"}`}>{lastIn[0]?.at ? "Healthy" : "Waiting"}</span></div>
-                <div className="hrow"><span className="icon-tile sm grape"><Icon name="notebook" /></span><span className="grow"><b>Templates</b><small>{approvedTpl[0]?.n ?? 0} approved · {rejected.length} rejected</small></span><a className="btn btn-soft btn-sm" href="/templates">View</a></div>
-              </div>
-            </div>
-
-            <div className="card ads s12">
-              <div className="card-h"><span className="icon-tile sm orange"><Icon name="megaphone" /></span><span className="h3">NextBiz Ads <span className="demo" style={{ marginLeft: 6, verticalAlign: 1 }}>Demo data</span></span><a className="btn-link" style={{ color: "var(--ads-deep)" }} href="/ads/performance">View performance<Icon name="arrow-right" size="xs" /></a></div>
-              <div className="card-b row wrap gap-16" style={{ paddingTop: 0 }}>
-                <div className="nums grow" style={{ minWidth: 280 }}><div><span>Spend · 7d</span><b>{inr(adsRep.totals.spend)}</b></div><div><span>Results</span><b>{n(adsRep.totals.results)}</b></div><div><span>Cost / result</span><b>{inr(adsRep.totals.cost_per_result)}</b></div></div>
-                <p className="small muted" style={{ maxWidth: 360 }}>Click-to-WhatsApp ads land straight in your inbox. Connect an ad account to replace this demo data with your real campaigns.</p>
-              </div>
-            </div>
+            )}
           </section>
         </div>
       </div>
