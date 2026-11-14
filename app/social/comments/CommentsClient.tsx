@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Resizer, useStoredWidth } from "@/components/Resizer";
+import { AiSuggestButton, AiSuggestStrip, useAiSuggest } from "@/components/AiSuggest";
+import { setAiContext } from "@/lib/ai-bridge";
 import { avatarClass } from "@/lib/ui";
 
 /**
@@ -142,6 +144,11 @@ export function CommentsClient({ username }: { username: string | null }) {
   }
 
   const c = d?.comment ?? null;
+  const sug = useAiSuggest("comment", c?.id ?? null, text, setText);
+  useEffect(() => {
+    setAiContext(c ? { page: "comments", title: `comment by ${handle(c.from_name)}`, entity: { comment: c.text, from: c.from_name, state: c.state, post_caption: d?.media?.caption?.slice(0, 200) ?? null } } : { page: "comments", title: "Instagram comments" });
+    return () => setAiContext(null);
+  }, [c, d]);
   const pm = (c?.media_id && media[c.media_id]) || d?.media || null;
   const fm = mediaF ? media[mediaF] : null;
   const pUsed = c ? privateUsed(c) : false, pExp = c ? privateExpired(c) : false;
@@ -257,11 +264,13 @@ export function CommentsClient({ username }: { username: string | null }) {
                     title={pUsed ? "Instagram allows one private reply per comment" : pExp ? "Private replies close 7 days after the comment" : ""}><Icon name="paper-plane-tilt" size="sm" />Private DM</button>
                   <span className="hint">{kind === "public" ? "Everyone can see it under the comment" : pUsed ? "Already used for this comment" : "Opens a DM chat · one per comment, within 7 days"}</span>
                 </div>
+                <AiSuggestStrip s={sug} />
                 {ruleSuggestion && <button className="sugg" onClick={() => { setText(ruleSuggestion); taRef.current?.focus(); }}><Icon name="lightning" size="xs" />Use “{c.rule_name}” reply</button>}
                 <div className="crow2">
                   <textarea ref={taRef} className="textarea" rows={2} value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} data-testid="comment-reply"
                     placeholder={kind === "public" ? `Reply to ${handle(c.from_name)} publicly…` : `Message ${handle(c.from_name)} privately…`}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }} />
+                    onKeyDown={(e) => { if (sug.onKey(e)) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sug.close(); void send(); } }} />
+                  <AiSuggestButton s={sug} />
                   <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void send()} data-testid="comment-send"><Icon name="paper-plane-right" />{busy ? "Sending…" : "Send"}</button>
                 </div>
                 {note && <div className={`note ${note.kind === "ok" ? "ok" : "bad"}`} style={{ marginTop: 8 }} role="status"><Icon name={note.kind === "ok" ? "check-circle" : "warning-circle"} /><span>{note.text}</span></div>}

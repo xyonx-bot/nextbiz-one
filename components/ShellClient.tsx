@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Icon } from "./Icon";
+import { AiAssistant } from "./AiAssistant";
 import type { ShellData } from "@/lib/shell";
 
 /**
@@ -54,6 +55,13 @@ export function ShellClient({
   const [sheet, setSheet] = useState(false);
   const [wide, setWide] = useState(true);
   const [me, setMe] = useState(false);
+  const [ai, setAi] = useState(false);
+  // ⌘J / Ctrl+J opens NextBiz AI anywhere
+  useEffect(() => {
+    if (!data.ai) return;
+    const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") { e.preventDefault(); setAi((v) => !v); } };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  }, [data.ai]);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -168,6 +176,7 @@ export function ShellClient({
           <label className="search gsearch"><Icon name="magnifying-glass" size="sm" /><input placeholder="Search conversations, contacts, templates…" aria-label="Search" /><span className="kbd">⌘K</span></label>
           <div className="acts">
             {actions && <span className="page-acts row">{actions}</span>}
+            {data.ai && <button className={`btn btn-soft ai-btn${ai ? " on" : ""}`} onClick={() => setAi((v) => !v)} title="NextBiz AI (⌘J)" data-testid="ai-open"><Icon name="sparkle" /><span className="lbl">Ask AI</span></button>}
             <span className="vsep" />
             {(() => { const on = mod === "social" ? data.channels.instagram : !!data.wa?.connected; const ch = mod === "social" ? "Instagram" : "WhatsApp"; return (
             <a href={mod === "social" ? "/connections#instagram" : "/connections"} className="conn" title={`${ch} ${on ? "connected" : "not connected"} — open Connections`} style={on ? undefined : { background: "var(--banana-tint)", color: "var(--banana-deep)", borderColor: "var(--banana-line)" }}>
@@ -204,6 +213,7 @@ export function ShellClient({
         <a className={`pi${active === "settings" ? " on" : ""}`} href="/settings"><Icon name="gear" /><span>Settings</span></a>
         <button className="pi" style={{ width: "100%" }} onClick={signOut}><Icon name="sign-out" /><span>Sign out</span></button>
       </div>
+      {data.ai && <AiAssistant open={ai} onClose={() => setAi(false)} />}
     </div>
   );
 }

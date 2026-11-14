@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { aiStatus, setAiContext, useAiHandler } from "@/lib/ai-bridge";
 
 /**
  * NextBiz Ads · Create — a real Meta ad builder. One page, six plain steps, live preview:
@@ -93,6 +94,44 @@ export function NewCampaignClient() {
   const [busy, setBusy] = useState<"" | "draft" | "publish">("");
   const fileRef = useRef<HTMLInputElement>(null);
   const live = !!ident?.connected;
+  // NextBiz AI copilot
+  const [aiOn, setAiOn] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
+  const [flash, setFlash] = useState<Set<string>>(new Set());
+  useEffect(() => { void aiStatus().then((s) => setAiOn(s.available)); }, []);
+  const applyFields = useCallback((f: Record<string, unknown>) => {
+    const changed = new Set<string>();
+    const s = (k: string, fn: () => void) => { if (f[k] !== undefined && f[k] !== null && f[k] !== "") { fn(); changed.add(k); } };
+    s("name", () => setName(String(f.name).slice(0, 100)));
+    s("goal", () => { if (["whatsapp", "instagram_dm", "website"].includes(String(f.goal))) setGoal(f.goal as Goal); });
+    s("locations", () => { const ls = (f.locations as Loc[]).filter((l) => l?.key && l?.name).map((l) => ({ ...l, radiusKm: l.type === "city" ? Math.min(80, Math.max(10, Number(l.radiusKm) || 25)) : undefined })); if (ls.length) setLocs(ls); });
+    s("ageMin", () => setAgeMin(Math.min(65, Math.max(18, Number(f.ageMin)))));
+    s("ageMax", () => setAgeMax(Math.min(65, Math.max(18, Number(f.ageMax)))));
+    s("genders", () => { if (["all", "men", "women"].includes(String(f.genders))) setGenders(f.genders as "all"); });
+    s("interests", () => setInterests((f.interests as Interest[]).filter((i) => i?.id && i?.name)));
+    s("primaryText", () => setPrimary(String(f.primaryText).slice(0, 2200)));
+    s("headline", () => setHeadline(String(f.headline).slice(0, 255)));
+    s("description", () => setDesc(String(f.description).slice(0, 255)));
+    s("websiteUrl", () => setUrl(String(f.websiteUrl)));
+    s("dailyBudget", () => setBudget(Math.max(100, Math.round(Number(f.dailyBudget) || 100))));
+    setFlash(changed); setTimeout(() => setFlash(new Set()), 4000);
+    return changed.size;
+  }, []);
+  useAiHandler("campaign_form", useCallback((p: Record<string, unknown>) => {
+    const n = applyFields(p); setAiNote({ kind: "ok", text: `NextBiz AI filled ${n} field${n === 1 ? "" : "s"} — review everything, then publish yourself.` });
+  }, [applyFields]));
+  async function aiFill() {
+    if (aiPrompt.trim().length < 3) return;
+    setAiBusy(true); setAiNote(null);
+    const d = await fetch("/api/ai/campaign-fill", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: aiPrompt, current: { name, goal, locations: locs.map((l) => l.name), ageMin, ageMax, dailyBudget: budget, headline, primaryText: primary } }) }).then((r) => r.json()).catch(() => null);
+    setAiBusy(false);
+    if (!d?.ok) { setAiNote({ kind: "bad", text: d?.error ?? "The AI couldn't fill the form." }); return; }
+    const n = applyFields(d.fields ?? {});
+    setAiNote({ kind: "ok", text: `${d.summary ? `${d.summary} — ` : ""}filled ${n} field${n === 1 ? "" : "s"} (highlighted). Add your image or video, check everything, then publish.` });
+  }
 
   useEffect(() => {
     fetch("/api/ads/identities", { cache: "no-store" }).then((r) => r.json()).then((d: Ident) => {
@@ -136,6 +175,12 @@ export function NewCampaignClient() {
     if (!d?.ok) { setMedia((m) => m ? { ...m, uploading: false, error: d?.error ?? "Upload failed" } as Media : m); return; }
     setMedia((m) => !m ? m : m.kind === "image" ? { ...m, hash: d.hash, uploading: false } : { ...m, id: d.id, uploading: false });
   }, [format, live]);
+
+  useEffect(() => {
+    setAiContext({ page: "campaign", title: "the campaign builder", entity: { form: { name, goal, locations: locs.map((l) => `${l.name}${l.type === "city" ? ` +${l.radiusKm ?? 25}km` : ""}`), ageMin, ageMax, genders,
+      interests: interests.map((i) => i.name), placements: placeMode === "auto" ? "Advantage+" : places, format, mediaUploaded: !!media, primaryText: primary, headline, dailyBudget: budget }, adAccountConnected: live } });
+    return () => setAiContext(null);
+  }, [name, goal, locs, ageMin, ageMax, genders, interests, placeMode, places, format, media, primary, headline, budget, live]);
 
   const igNeeded = goal === "instagram_dm" || placeMode === "auto" || places.some((p) => p.startsWith("instagram:"));
   const checks: [boolean, string][] = [
@@ -181,14 +226,25 @@ export function NewCampaignClient() {
     <div className="pg-ads-create">
       <div className="cw" data-testid="ads-wizard">
         <div className="form">
+          {aiOn && (
+            <section className="card ai-fill" data-testid="ai-fill">
+              <div className="ai-fill-h"><span className="ai-logo sm"><Icon name="sparkle" /></span><span className="grow"><b>Describe your ad — AI fills the form</b><small>e.g. “₹500 a day, women 25–45 within 20 km of Kolkata, Diwali cheesecakes, people should message on WhatsApp”</small></span></div>
+              <div className="ai-fill-b">
+                <textarea className="textarea" rows={2} value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value.slice(0, 2000))} placeholder="Who, where, budget, what you're selling…" data-testid="ai-fill-input"
+                  onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void aiFill(); } }} />
+                <button className="btn btn-primary" disabled={aiBusy || aiPrompt.trim().length < 3} onClick={() => void aiFill()} data-testid="ai-fill-go"><Icon name="sparkle" />{aiBusy ? "Filling…" : "Fill with AI"}</button>
+              </div>
+              {aiNote && <div className={`note ${aiNote.kind === "ok" ? "info" : "bad"}`} style={{ margin: "0 var(--pad) var(--pad)" }}><Icon name={aiNote.kind === "ok" ? "check-circle" : "warning-circle"} /><span>{aiNote.text}</span></div>}
+            </section>
+          )}
           {!live && ident && <div className="note warn"><Icon name="info" /><span><b>Planner mode.</b> No ad account is connected, so you can plan and save drafts but not publish. <a href="/connections#ads" style={{ textDecoration: "underline", fontWeight: 700 }}>Connect an ad account</a></span></div>}
 
           {/* 1 goal */}
           <section className="card">
             <div className="sec-h"><span className="k">1</span><span className="grow"><b>What should people do?</b><small>This sets where your ad sends people.</small></span></div>
             <div className="sec-b">
-              <div className="field"><label htmlFor="f-name">Campaign name <span className="opt">only you see this</span></label><input id="f-name" className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 100))} placeholder="Diwali cakes — Kolkata" data-testid="f-name" /></div>
-              <div className="goals g3">
+              <div className={`field${flash.has("name") ? " ai-flash" : ""}`}><label htmlFor="f-name">Campaign name <span className="opt">only you see this</span></label><input id="f-name" className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 100))} placeholder="Diwali cakes — Kolkata" data-testid="f-name" /></div>
+              <div className={`goals g3${flash.has("goal") ? " ai-flash" : ""}`}>
                 {GOALS.map(([k, t, s, ic, tone]) => (
                   <div key={k} className={`goal${goal === k ? " on" : ""}`} onClick={() => setGoal(k)} role="radio" aria-checked={goal === k} tabIndex={0} data-testid={`obj-${k}`}>
                     <span className={`icon-tile ${goal === k ? tone : "neutral"}`}><Icon name={ic} /></span><b>{t}</b><small>{s}</small>
@@ -229,7 +285,7 @@ export function NewCampaignClient() {
           <section className="card">
             <div className="sec-h"><span className="k">3</span><span className="grow"><b>Who should see it?</b><small>Real places from Meta&apos;s map — a city with a radius, a state, a PIN code or a country.</small></span></div>
             <div className="sec-b">
-              <div className="field"><label>Locations</label>
+              <div className={`field${flash.has("locations") ? " ai-flash" : ""}`}><label>Locations</label>
                 <Search<Loc> placeholder="Search a city, state, PIN code or country" url="/api/ads/targeting/locations" testId="loc-search"
                   onPick={(l) => setLocs((xs) => xs.some((x) => x.key === l.key) ? xs : [...xs, { ...l, radiusKm: l.type === "city" ? 25 : undefined }])}
                   render={(l) => <><span className={`lt ${l.type}`}>{TYPE_LABEL[l.type] ?? l.type}</span><span className="grow"><b>{l.name}</b><small>{[l.region, l.country_name ?? l.country_code].filter(Boolean).join(", ")}</small></span><Icon name="plus" size="sm" /></>} />
@@ -319,12 +375,12 @@ export function NewCampaignClient() {
           <section className="card">
             <div className="sec-h"><span className="k">6</span><span className="grow"><b>Text, budget &amp; schedule</b><small>Short and friendly wins. You can pause any time.</small></span></div>
             <div className="sec-b">
-              <div className="field"><label htmlFor="f-body">Primary text</label><textarea id="f-body" className="textarea" rows={3} value={primary} onChange={(e) => setPrimary(e.target.value.slice(0, 2200))} placeholder="Fresh mango cheesecake is back 🥭 Order on WhatsApp — same-day delivery across Kolkata." data-testid="f-body" /><span className={`hint${primary.length > 125 ? " warnh" : ""}`}>{primary.length} characters{primary.length > 125 ? " — text after ~125 characters is hidden behind “more”" : ""}</span></div>
+              <div className={`field${flash.has("primaryText") ? " ai-flash" : ""}`}><label htmlFor="f-body">Primary text</label><textarea id="f-body" className="textarea" rows={3} value={primary} onChange={(e) => setPrimary(e.target.value.slice(0, 2200))} placeholder="Fresh mango cheesecake is back 🥭 Order on WhatsApp — same-day delivery across Kolkata." data-testid="f-body" /><span className={`hint${primary.length > 125 ? " warnh" : ""}`}>{primary.length} characters{primary.length > 125 ? " — text after ~125 characters is hidden behind “more”" : ""}</span></div>
               <div className="g2">
-                <div className="field"><label htmlFor="f-headline">Headline</label><input id="f-headline" className="input" value={headline} onChange={(e) => setHeadline(e.target.value.slice(0, 255))} placeholder="Cheesecakes from ₹650" data-testid="f-headline" /><span className={`hint${headline.length > 40 ? " warnh" : ""}`} data-testid="cnt-headline">{headline.length} / 40</span></div>
+                <div className={`field${flash.has("headline") ? " ai-flash" : ""}`}><label htmlFor="f-headline">Headline</label><input id="f-headline" className="input" value={headline} onChange={(e) => setHeadline(e.target.value.slice(0, 255))} placeholder="Cheesecakes from ₹650" data-testid="f-headline" /><span className={`hint${headline.length > 40 ? " warnh" : ""}`} data-testid="cnt-headline">{headline.length} / 40</span></div>
                 <div className="field"><label htmlFor="f-desc">Description <span className="opt">optional</span></label><input id="f-desc" className="input" value={desc} onChange={(e) => setDesc(e.target.value.slice(0, 255))} placeholder="Free delivery over ₹999" /></div>
               </div>
-              <div className="range"><label className="label" htmlFor="f-budget">Daily budget</label><span className="bigbud">{inr(budget)}<small className="faint" style={{ fontSize: "var(--fs-md)", fontWeight: 700 }}> / day</small></span>
+              <div className={`range${flash.has("dailyBudget") ? " ai-flash" : ""}`}><label className="label" htmlFor="f-budget">Daily budget</label><span className="bigbud">{inr(budget)}<small className="faint" style={{ fontSize: "var(--fs-md)", fontWeight: 700 }}> / day</small></span>
                 <input type="range" min={100} max={10000} step={50} value={Math.min(Math.max(budget, 100), 10000)} onChange={(e) => setBudget(Number(e.target.value))} aria-label="Daily budget" />
                 <input className="input" type="number" min={100} max={1000000} value={budget} onChange={(e) => setBudget(Number(e.target.value))} style={{ maxWidth: 160 }} aria-label="Daily budget in rupees" data-testid="f-budget" /></div>
               <div className="est"><div><span>30 days at most</span><b>{inr(budget * 30)}</b></div><div><span>Billed by</span><b>Meta, to the ad account</b></div></div>

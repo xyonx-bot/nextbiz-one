@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { getSessionUser, type SessionUser } from "./auth";
 import { getPool } from "./db";
+import { aiAvailable } from "./ai";
 
 /** Everything the app shell shows on every page — one round trip, read on the server. */
 export type ShellData = {
@@ -15,6 +16,8 @@ export type ShellData = {
   channels: { whatsapp: boolean; instagram: boolean; ads: boolean };
   ig: { username: string | null; picture: string | null } | null;
   adAccount: { id: string; name: string | null } | null;
+  /** NextBiz AI switched on (operator setting + server key) */
+  ai: boolean;
 };
 
 export function initialsOf(name: string) {
@@ -51,6 +54,7 @@ export async function getShellData(): Promise<ShellData> {
     workspaceName: w?.display_name?.replace(/\s*\(.*\)\s*$/, "").trim() || (ws.rows[0] as { name?: string } | undefined)?.name || "My workspace",
     wa: w ? { displayName: w.display_name ?? null, connected: waConnected } : null,
     channels: { whatsapp: waConnected, instagram: ig.rows.length > 0, ads: ads.rows.length > 0 },
+    ai: await aiAvailable().catch(() => false),
     adAccount: ads.rows[0] ? { id: (ads.rows[0] as { ad_account_id: string }).ad_account_id, name: (ads.rows[0] as { name: string | null }).name } : null,
     ig: ig.rows[0] ? { username: (ig.rows[0] as { username: string | null }).username, picture: (ig.rows[0] as { profile_picture_url: string | null }).profile_picture_url } : null,
   };

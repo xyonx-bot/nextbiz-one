@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Resizer, useStoredWidth } from "@/components/Resizer";
+import { AiSuggestButton, AiSuggestStrip, useAiSuggest } from "@/components/AiSuggest";
+import { setAiContext, useAiHandler } from "@/lib/ai-bridge";
 import { avatarClass, fmtPhone, initials } from "@/lib/ui";
 
 /**
@@ -178,6 +180,20 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
   const sel = thread?.conversation;
   const isIg = sel?.channel === "ig";
   const win = windowInfo(sel?.lastInboundAt ?? null);
+  // NextBiz AI: what's on screen, approved replies land in the composer, ✨ suggestions
+  const sug = useAiSuggest(isIg ? "ig" : "wa", selected, draft, setDraft);
+  useEffect(() => {
+    setAiContext(sel ? { page: "inbox", title: `${isIg ? "Instagram" : "WhatsApp"} chat with ${sel.name ?? sel.waId}`,
+      entity: { conversation_id: selected, channel: isIg ? "instagram" : "whatsapp", customer: sel.name ?? sel.waId, reply_window_open: win.state !== "closed" } } : { page: "inbox", title: "Inbox" });
+    return () => setAiContext(null);
+  }, [sel, selected, isIg, win.state]);
+  const takeReply = useCallback((payload: Record<string, unknown>) => {
+    const text = String(payload.text ?? ""); if (!text) return;
+    const want = payload.conversation_id ? String(payload.conversation_id) : null;
+    if (want && want !== selected && convs?.some((c) => c.id === want)) void open(want);
+    setDraft(text); requestAnimationFrame(() => taRef.current?.focus());
+  }, [selected, convs, open]);
+  useAiHandler("reply", takeReply);
   useEffect(() => {
     if (sel && sel.channel !== "ig" && win.state === "closed" && tpls === null) {
       fetch("/api/templates", { cache: "no-store" }).then((r) => r.json()).then((d) => setTpls((d?.templates ?? []).filter((t: Tpl) => /approved/i.test(t.status)))).catch(() => setTpls([]));
@@ -341,13 +357,15 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
 
               <footer className="composer">
                 {win.state === "soon" && <div className="cbanner"><Icon name="hourglass" /><span>Reply window closes in <b>{dur(win.left)}</b>. After that you can only send approved templates.</span></div>}
+                {win.state !== "closed" && <AiSuggestStrip s={sug} />}
                 {win.state !== "closed" ? (
                   <form className="cbox" onSubmit={send}>
                     <textarea ref={taRef} id="composer-input" data-testid="composer-input" rows={1} placeholder="Write a reply…" value={draft}
                       onChange={(e) => { setDraft(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(160, e.target.scrollHeight) + "px"; }}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }} aria-label="Message" />
+                      onKeyDown={(e) => { if (sug.onKey(e)) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sug.close(); void send(); } }} aria-label="Message" />
                     <div className="ctools">
                       <a className="btn btn-ghost btn-sm" href="/templates" title="Templates"><Icon name="notebook" />Templates</a>
+                      <AiSuggestButton s={sug} />
                       <span className="hint faint">Enter to send · Shift + Enter for new line</span>
                       <button type="submit" className="btn btn-primary send" style={{ marginLeft: "auto" }} disabled={sending || !draft.trim()} data-testid="send-btn"><Icon name="paper-plane-right" />{sending ? "Sending…" : "Send"}</button>
                     </div>
