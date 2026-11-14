@@ -9,7 +9,15 @@ import { Icon } from "@/components/Icon";
  * analytics in v1. The word "WABA" never appears.
  */
 type Profile = { name: string; about: string | null; connection: { display_name: string | null; status: string | null } | null };
-type Session = { id: string; created_at: string; expires_at: string; current: boolean };
+type Session = { id: string; created_at: string; expires_at: string; current: boolean; user_agent?: string | null };
+/** "Mozilla/5.0 (Linux; Android 14…) Chrome/131…" → ["Chrome on Android", "phone"] */
+function device(ua?: string | null): [string, string] {
+  if (!ua) return ["Unknown device", "globe"];
+  const os = /iPhone|iPad/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "";
+  const br = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : /HeadlessChrome|Playwright|node|curl/i.test(ua) ? "Script" : "Browser";
+  return [os ? `${br} on ${os}` : br, /iPhone|Android|Mobile/.test(ua) ? "device-mobile" : "globe"];
+}
+const rel = (iso: string) => { const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 30 ? `${d} days ago` : new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); };
 type IgAccount = { ig_user_id: string; username: string | null; display_name: string | null; scopes: string[]; live: boolean; updated_at: string;
   expires_at: string | null; webhook_subscribed?: boolean; last_error?: string | null; profile_picture_url?: string | null };
 
@@ -64,6 +72,11 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
     setBusy(true);
     const d = await fetch("/api/settings/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ about: about.trim() || null }) }).then((x) => x.json()).catch(() => null);
     setBusy(false); setNote(d?.ok ? { kind: "ok", text: "Profile saved" } : { kind: "bad", text: d?.error ?? "Couldn't save" }); if (d?.ok) await load();
+  }
+  const [allSess, setAllSess] = useState(false);
+  async function revokeOthers() {
+    const d = await fetch("/api/settings/sessions", { method: "DELETE" }).then((x) => x.json()).catch(() => null);
+    setNote(d?.ok ? { kind: "ok", text: `Signed out ${d.removed} other session${d.removed === 1 ? "" : "s"}` } : { kind: "bad", text: d?.error ?? "Couldn't sign them out — try again" }); await load();
   }
   async function revoke(id: string) {
     const d = await fetch(`/api/settings/sessions/${id}`, { method: "DELETE" }).then((x) => x.json()).catch(() => null);
@@ -151,16 +164,17 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
 
           <section className="card sec" id="security">
             <div className="card-h"><span className="grow"><span className="h2">Login &amp; security</span><small>{email}</small></span></div>
-            <div className="frow" style={{ borderBottom: 0 }}><div><b>Active sessions</b><small>Devices signed in to this workspace</small></div><div className="xs muted" style={{ fontWeight: 600, alignSelf: "center" }}>{sessions?.length ?? 0} active · sessions expire after 30 days</div></div>
-            <div className="sess">
-              {sessions === null && <span className="sk" style={{ height: 44 }} />}
-              {(sessions ?? []).map((s) => (
-                <div className="se frow-s" key={s.id} data-testid="session-row">
-                  <span className="icon-tile sm neutral"><Icon name={s.current ? "globe" : "device-mobile"} /></span>
-                  <span className="grow"><b>{s.current ? "This device" : "Other session"}</b><small>Signed in {d8(s.created_at)} · expires {d8(s.expires_at)}</small></span>
-                  {s.current ? <span className="pill ok sm">Current</span> : <button className="btn btn-soft btn-sm" onClick={() => void revoke(s.id)}>Revoke</button>}
-                </div>
-              ))}
+            <div className="frow" style={{ borderBottom: 0 }}><div><b>Active sessions</b><small>{sessions ? `${sessions.length} signed in · each expires 30 days after sign-in` : "Devices signed in to your account"}</small></div>
+              <div>{(sessions?.length ?? 0) > 1 && <button className="btn btn-soft btn-sm" onClick={() => void revokeOthers()} data-testid="revoke-others"><Icon name="sign-out" />Sign out all others</button>}</div></div>
+            <div className="sess compact">
+              {sessions === null && <span className="sk" style={{ height: 40 }} />}
+              {(sessions ?? []).slice(0, allSess ? undefined : 5).map((s) => { const [dev, ic] = device(s.user_agent); return (
+                <div className={`se2${s.current ? " cur" : ""}`} key={s.id} data-testid="session-row">
+                  <Icon name={ic} />
+                  <span className="grow trunc"><b>{s.current ? `This device · ${dev}` : dev}</b><small>Signed in {rel(s.created_at)}</small></span>
+                  {s.current ? <span className="pill ok sm">Current</span> : <button className="btn btn-ghost btn-sm" onClick={() => void revoke(s.id)} aria-label={`Sign out ${dev}`}>Sign out</button>}
+                </div>); })}
+              {(sessions?.length ?? 0) > 5 && <button className="se-more" onClick={() => setAllSess((v) => !v)} data-testid="sessions-more">{allSess ? "Show fewer" : `Show ${sessions!.length - 5} more`}<Icon name={allSess ? "caret-up" : "caret-down"} size="sm" /></button>}
             </div>
           </section>
 

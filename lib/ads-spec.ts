@@ -15,6 +15,15 @@ export const Targeting = z.object({
   placements: z.union([z.literal("auto"), z.array(z.enum(PLACEMENTS)).min(1, "Pick at least one placement")]),
 }).refine((t) => t.ageMax >= t.ageMin, { message: "Maximum age must be at least the minimum age" });
 
+export const Welcome = z.object({
+  greeting: z.string().trim().max(300),
+  mode: z.enum(["autofill", "questions"]),
+  autofill: z.string().trim().max(300).nullable().optional(),
+  questions: z.array(z.string().trim().max(80)).max(4).optional(),
+  extra: z.enum(["none", "call", "url"]).optional(),
+  extraUrl: z.string().url().nullable().optional(),
+});
+
 export const Spec = z.object({
   name: z.string().trim().min(2).max(100),
   pageId: z.string().regex(/^\d{5,}$/, "Choose a Facebook Page"),
@@ -27,7 +36,8 @@ export const Spec = z.object({
   headline: z.string().trim().min(1, "Write a headline").max(255),
   description: z.string().trim().max(255).nullable().optional(),
   websiteUrl: z.string().url().nullable().optional(),
-  cta: z.string().max(30).nullable().optional(),
+  cta: z.string().regex(/^[A-Z_]{3,30}$/).nullable().optional(),
+  welcome: Welcome.nullable().optional(),
   dailyBudget: z.number().int().min(100, "Daily budget must be at least ₹100").max(1_000_000),
   startTime: z.string().datetime().nullable().optional(),
   endTime: z.string().datetime().nullable().optional(),

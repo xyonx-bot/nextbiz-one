@@ -118,6 +118,7 @@ export type AdSpec = {
   placements: "auto" | Placement[];
   format: "image" | "video"; imageHash?: string | null; videoId?: string | null; videoThumb?: string | null;
   primaryText: string; headline: string; description?: string | null; websiteUrl?: string | null; cta?: string | null;
+  welcome?: Welcome | null;
   dailyBudget: number; startTime?: string | null; endTime?: string | null;
 };
 
@@ -161,7 +162,53 @@ export async function estimateAudience(c: AdsConnection, s: Parameters<typeof ta
   return d?.estimate_mau_lower_bound != null ? { lower: d.estimate_mau_lower_bound, upper: d.estimate_mau_upper_bound ?? d.estimate_mau_lower_bound } : null;
 }
 
-const CTA_WEB = ["LEARN_MORE", "SHOP_NOW", "SIGN_UP", "BOOK_TRAVEL", "CONTACT_US", "ORDER_NOW", "GET_QUOTE"];
+/** Ad buttons. Messaging goals keep the chat destination whichever label is shown (verified against Meta). */
+export const CTA_TYPES = ["LEARN_MORE", "SHOP_NOW", "ORDER_NOW", "BOOK_NOW", "GET_QUOTE", "CONTACT_US", "SIGN_UP", "APPLY_NOW", "GET_OFFER", "SUBSCRIBE", "SEE_MENU", "DOWNLOAD", "WATCH_MORE"];
+/** What happens when the chat opens: the business's greeting + how the customer starts (pre-typed message or quick questions). */
+export type Welcome = { greeting: string; mode: "autofill" | "questions"; autofill?: string | null; questions?: string[]; extra?: "none" | "call" | "url"; extraUrl?: string | null };
+
+export function welcomeSpec(w: Welcome, goal: Goal): Record<string, unknown> | null {
+  const greeting = w.greeting.trim();
+  if (!greeting) return null;
+  const message: Record<string, unknown> = { text: greeting };
+  if (goal === "whatsapp" && w.extra === "call") message.automated_greeting_message_cta = { type: "call" };
+  if (goal === "whatsapp" && w.extra === "url" && w.extraUrl) message.automated_greeting_message_cta = { type: "url", url: w.extraUrl };
+  const qs = (w.questions ?? []).map((q) => q.trim()).filter(Boolean).slice(0, 4);
+  if (w.mode === "questions" && qs.length) message.ice_breakers = qs.map((title) => ({ title }));
+  else if (w.autofill?.trim()) message.autofill_message = { content: w.autofill.trim() };
+  return {
+    type: "VISUAL_EDITOR", version: 2, landing_screen_type: "welcome_message", media_type: "text",
+    text_format: { customer_action_type: w.mode === "questions" && qs.length ? "ice_breakers" : "autofill_message", message },
+  };
+}
+
+/** object_story_spec — the same for publishing and for Meta's exact preview. */
+export function storySpecOf(s: Pick<AdSpec, "goal" | "pageId" | "instagramId" | "format" | "imageHash" | "videoId" | "videoThumb" | "primaryText" | "headline" | "description" | "websiteUrl" | "cta" | "welcome">) {
+  const dest = s.goal === "whatsapp" ? "WHATSAPP" : s.goal === "instagram_dm" ? "INSTAGRAM_DIRECT" : null;
+  const type = s.cta && CTA_TYPES.includes(s.cta) ? s.cta : dest === "WHATSAPP" ? "WHATSAPP_MESSAGE" : dest ? "INSTAGRAM_MESSAGE" : "LEARN_MORE";
+  const cta = dest ? { type, value: { app_destination: dest } } : { type, value: { link: s.websiteUrl } };
+  const link = s.goal === "website" ? s.websiteUrl! : s.goal === "whatsapp" ? "https://api.whatsapp.com/send" : "https://www.instagram.com/";
+  const welcome = dest && s.welcome ? welcomeSpec(s.welcome, s.goal) : null;
+  const story: Record<string, unknown> = { page_id: s.pageId, ...(s.instagramId ? { instagram_user_id: s.instagramId } : {}) };
+  if (s.format === "video") {
+    story.video_data = { video_id: s.videoId, image_url: s.videoThumb ?? undefined, message: s.primaryText, title: s.headline, link_description: s.description ?? undefined,
+      call_to_action: { ...cta, value: { ...cta.value, ...(s.goal === "website" ? {} : { link }) } }, ...(welcome ? { page_welcome_message: welcome } : {}) };
+  } else {
+    story.link_data = { image_hash: s.imageHash, link, message: s.primaryText, name: s.headline, description: s.description ?? undefined, call_to_action: cta, ...(welcome ? { page_welcome_message: welcome } : {}) };
+  }
+  return story;
+}
+
+export const PREVIEW_FORMATS = ["MOBILE_FEED_STANDARD", "INSTAGRAM_STANDARD", "INSTAGRAM_STORY", "INSTAGRAM_REELS", "FACEBOOK_STORY_MOBILE", "FACEBOOK_REELS_MOBILE"] as const;
+/** Meta's own rendering of the ad (an iframe it hosts) — exactly what people will see. */
+export async function previewAd(c: AdsConnection, story: Record<string, unknown>, format: (typeof PREVIEW_FORMATS)[number]): Promise<{ ok: true; src: string; width: number; height: number } | { ok: false; error: string }> {
+  const r = await gget<{ data?: { body?: string }[] }>(`/${c.ad_account_id}/generatepreviews?ad_format=${format}&creative=${encodeURIComponent(JSON.stringify({ object_story_spec: story }))}`, tok(c));
+  if (!r.ok) return r;
+  const body = r.data.data?.[0]?.body ?? "";
+  const src = body.match(/src="([^"]+)"/)?.[1]?.replace(/&amp;/g, "&");
+  const width = Number(body.match(/width="(\d+)"/)?.[1] ?? 320), height = Number(body.match(/height="(\d+)"/)?.[1] ?? 520);
+  return src && /^https:\/\/[a-z.]*facebook\.com\//.test(src) ? { ok: true, src, width, height } : { ok: false, error: "Meta didn't return a preview" };
+}
 
 /** Publish: campaign → ad set → creative → ad, all PAUSED. Rolls back the campaign if a later step fails. */
 export async function publishCampaign(c: AdsConnection, s: AdSpec): Promise<{ ok: true; campaignId: string; adSetId: string; adId: string } | { ok: false; error: string; step: string }> {
@@ -185,16 +232,7 @@ export async function publishCampaign(c: AdsConnection, s: AdSpec): Promise<{ ok
   });
   if (!adset.ok) { await rollback(); return { ok: false, error: adset.error, step: "audience" }; }
 
-  const cta = s.goal === "whatsapp" ? { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } }
-    : s.goal === "instagram_dm" ? { type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT" } }
-    : { type: CTA_WEB.includes(s.cta ?? "") ? s.cta : "LEARN_MORE", value: { link: s.websiteUrl } };
-  const link = s.goal === "website" ? s.websiteUrl! : s.goal === "whatsapp" ? "https://api.whatsapp.com/send" : "https://www.instagram.com/";
-  const story: Record<string, unknown> = { page_id: s.pageId, ...(s.instagramId ? { instagram_user_id: s.instagramId } : {}) };
-  if (s.format === "video") {
-    story.video_data = { video_id: s.videoId, image_url: s.videoThumb ?? undefined, message: s.primaryText, title: s.headline, link_description: s.description ?? undefined, call_to_action: { ...cta, value: { ...cta.value, ...(s.goal === "website" ? {} : { link }) } } };
-  } else {
-    story.link_data = { image_hash: s.imageHash, link, message: s.primaryText, name: s.headline, description: s.description ?? undefined, call_to_action: cta };
-  }
+  const story = storySpecOf(s);
   const creative = await gpost<{ id: string }>(`/${c.ad_account_id}/adcreatives`, t, { name: `${s.name} · creative`, object_story_spec: story });
   if (!creative.ok) { await rollback(); return { ok: false, error: creative.error, step: "creative" }; }
 

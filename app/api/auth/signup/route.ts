@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { token, expiresAt } = await createSession(userId);
+  const { token, expiresAt } = await createSession(userId, req.headers.get("user-agent"));
   const res = NextResponse.json({ ok: true, operator: isOperator, gated: !isOperator }, { status: 201 });
   res.cookies.set("nbo_session", token, {
     httpOnly: true, sameSite: "lax",

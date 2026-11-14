@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     // never reveal which part failed
     return NextResponse.json({ error: "Those credentials didn't match. Check them and try again." }, { status: 401 });
   }
-  const { token, expiresAt } = await createSession(user.id);
+  const { token, expiresAt } = await createSession(user.id, req.headers.get("user-agent"));
   const res = NextResponse.json({ ok: true });
   res.cookies.set("nbo_session", token, {
     httpOnly: true,

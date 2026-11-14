@@ -3,6 +3,8 @@ import { getShellData } from "@/lib/shell";
 import { dashboardData } from "@/lib/dashboard";
 import { ShellClient } from "@/components/ShellClient";
 import { Icon } from "@/components/Icon";
+import { AvatarPic } from "@/components/AvatarPic";
+import { igPic } from "@/lib/ui";
 import { PairBars, Spark } from "@/components/Charts";
 import { AskAi, CopyLink } from "@/components/DashBits";
 import { avatarClass, initials } from "@/lib/ui";
@@ -171,7 +173,7 @@ export default async function HomePage() {
                   <div className="card-h"><span className="h3">Latest conversations</span><a className="btn-link" href={d.wa.connected ? "/inbox" : "/social/dms"}>Inbox<Icon name="arrow-right" size="xs" /></a></div>
                   <div className="rc">
                     {d.recent.map((r) => (
-                      <a key={`${r.ch}-${r.id}`} href={r.href}><span className={`av ${avatarClass(r.handle ?? r.id)}`}>{initials(r.who.replace(/^@/, ""), r.handle ?? "")}<span className={`src ${r.ch}`}><Icon name={r.ch === "wa" ? "whatsapp-logo" : "instagram-logo"} /></span></span>
+                      <a key={`${r.ch}-${r.id}`} href={r.href}><span className={`av ${avatarClass(r.handle ?? r.id)}`}>{initials(r.who.replace(/^@/, ""), r.handle ?? "")}{r.ch === "ig" && <AvatarPic src={igPic(r.id)} />}<span className={`src ${r.ch}`}><Icon name={r.ch === "wa" ? "whatsapp-logo" : "instagram-logo"} /></span></span>
                         <span className="grow trunc"><b className="trunc">{r.who}</b><small className="trunc">{r.dir === "out" ? "You: " : ""}{r.body ?? "—"}</small></span>
                         <span className="tm">{since(r.at)}{r.unread > 0 && <span className={`badge${r.ch === "ig" ? " red" : ""}`}>{r.unread}</span>}</span></a>
                     ))}

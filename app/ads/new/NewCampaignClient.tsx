@@ -29,7 +29,10 @@ const PLACES: { group: string; icon: string; items: [string, string][] }[] = [
   { group: "Instagram", icon: "instagram-logo", items: [["instagram:stream", "Feed"], ["instagram:story", "Stories"], ["instagram:reels", "Reels"], ["instagram:explore", "Explore"]] },
   { group: "Messenger", icon: "chat-circle-dots", items: [["messenger:messenger_home", "Inbox"], ["messenger:story", "Stories"]] },
 ];
-const WEB_CTA: [string, string][] = [["LEARN_MORE", "Learn more"], ["SHOP_NOW", "Shop now"], ["ORDER_NOW", "Order now"], ["SIGN_UP", "Sign up"], ["CONTACT_US", "Contact us"], ["GET_QUOTE", "Get quote"]];
+const WEB_CTA: [string, string][] = [["LEARN_MORE", "Learn more"], ["SHOP_NOW", "Shop now"], ["ORDER_NOW", "Order now"], ["BOOK_NOW", "Book now"], ["GET_QUOTE", "Get quote"], ["CONTACT_US", "Contact us"],
+  ["SIGN_UP", "Sign up"], ["APPLY_NOW", "Apply now"], ["GET_OFFER", "Get offer"], ["SUBSCRIBE", "Subscribe"], ["SEE_MENU", "See menu"], ["DOWNLOAD", "Download"], ["WATCH_MORE", "Watch more"]];
+const META_FMTS: [string, string, Goal[] | null][] = [["INSTAGRAM_STANDARD", "Instagram feed", null], ["INSTAGRAM_STORY", "Instagram Story", null], ["MOBILE_FEED_STANDARD", "Facebook feed", null],
+  ["FACEBOOK_STORY_MOBILE", "Facebook Story", null], ["INSTAGRAM_REELS", "Instagram Reels", null], ["FACEBOOK_REELS_MOBILE", "Facebook Reels", null]];
 const TYPE_LABEL: Record<string, string> = { country: "Country", region: "State", city: "City", zip: "PIN code" };
 const RADII = [10, 15, 25, 40, 50, 80];
 const AGES = Array.from({ length: 48 }, (_, i) => i + 18);
@@ -85,6 +88,18 @@ export function NewCampaignClient() {
   const [desc, setDesc] = useState("");
   const [url, setUrl] = useState("");
   const [cta, setCta] = useState("LEARN_MORE");
+  const [msgCta, setMsgCta] = useState("");          // "" = Meta's default chat button
+  const [greeting, setGreeting] = useState("Hi! 👋 Thanks for reaching out. How can we help you today?");
+  const [startMode, setStartMode] = useState<"autofill" | "questions">("autofill");
+  const [autofill, setAutofill] = useState("Hi! I'd like to know more about this.");
+  const [questions, setQuestions] = useState<string[]>(["What's the price?", "Do you deliver to my area?", ""]);
+  const [extra, setExtra] = useState<"none" | "call" | "url">("none");
+  const [extraUrl, setExtraUrl] = useState("");
+  const [pvMode, setPvMode] = useState<"meta" | "sketch" | "chat">("meta");
+  const [metaFmt, setMetaFmt] = useState("INSTAGRAM_STANDARD");
+  const [metaPv, setMetaPv] = useState<{ src: string; width: number; height: number } | null>(null);
+  const [metaPvErr, setMetaPvErr] = useState("");
+  const [metaPvBusy, setMetaPvBusy] = useState(false);
   const [budget, setBudget] = useState(500);
   const [start, setStart] = useState("");
   const [stop, setStop] = useState("");
@@ -196,12 +211,17 @@ export function NewCampaignClient() {
   ];
   const ready = live && checks.every(([ok]) => ok) && !ident?.pageError;
 
+  function welcome() {
+    if (goal === "website" || !greeting.trim()) return null;
+    return { greeting: greeting.trim(), mode: startMode, autofill: autofill.trim() || null, questions: questions.map((q) => q.trim()).filter(Boolean),
+      extra: goal === "whatsapp" ? extra : "none", extraUrl: goal === "whatsapp" && extra === "url" && /^https?:\/\/\S+\.\S+/.test(extraUrl) ? extraUrl.trim() : null };
+  }
   function spec() {
     return {
       name: name.trim(), pageId, instagramId: igId || null, ...targeting,
       format, imageHash: media?.kind === "image" ? media.hash : null, videoId: media?.kind === "video" ? media.id : null, videoThumb: media?.kind === "video" ? media.thumb : null,
       primaryText: primary.trim(), headline: headline.trim(), description: desc.trim() || null,
-      websiteUrl: goal === "website" ? url.trim() : null, cta: goal === "website" ? cta : null,
+      websiteUrl: goal === "website" ? url.trim() : null, cta: goal === "website" ? cta : msgCta || null, welcome: welcome(),
       dailyBudget: Math.round(budget), startTime: start ? new Date(start).toISOString() : null, endTime: stop ? new Date(stop).toISOString() : null,
     };
   }
@@ -217,9 +237,27 @@ export function NewCampaignClient() {
     router.push(publish ? "/ads?status=PAUSED" : "/ads?status=DRAFT");
   }
 
+  // Meta's own preview (exact) — refetched shortly after the creative changes
+  const mediaReady = !!media && (media.kind === "image" ? !!media.hash : !!media.id && media.ready);
+  const canMetaPv = live && !!pageId && mediaReady;
+  const pvKey = JSON.stringify([canMetaPv, metaFmt, goal, pageId, igId, media?.kind === "image" ? media.hash : media?.kind === "video" ? media.id : null, primary, headline, desc, url, cta, msgCta, greeting, startMode, autofill, questions, extra]);
+  const dPvKey = useDebounced(pvKey, 900);
+  useEffect(() => {
+    if (!canMetaPv || pvMode !== "meta") return;
+    let alive = true; setMetaPvBusy(true); setMetaPvErr("");
+    fetch("/api/ads/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      format: metaFmt, goal, pageId, instagramId: igId || null, kind: media!.kind, imageHash: media?.kind === "image" ? media.hash : null,
+      videoId: media?.kind === "video" ? media.id : null, videoThumb: media?.kind === "video" ? media.thumb : null, primaryText: primary, headline, description: desc || null,
+      websiteUrl: goal === "website" && /^https?:\/\/\S+\.\S+/.test(url) ? url : null, cta: goal === "website" ? cta : msgCta || null, welcome: welcome(),
+    }) }).then((r) => r.json()).then((d) => { if (!alive) return; if (d?.ok) setMetaPv({ src: d.src, width: d.width, height: d.height }); else { setMetaPv(null); setMetaPvErr(d?.error ?? "Meta couldn't build a preview."); } })
+      .catch(() => alive && setMetaPvErr("Couldn't reach Meta for the preview.")).finally(() => alive && setMetaPvBusy(false));
+    return () => { alive = false; };
+  }, [dPvKey, pvMode]);
   const pageName = ident?.pages.find((p) => p.id === pageId)?.name ?? "Your Page";
   const igName = ident?.instagram.find((p) => p.id === igId)?.username ?? "your.business";
-  const ctaLabel = goal === "whatsapp" ? "Send WhatsApp message" : goal === "instagram_dm" ? "Send message" : WEB_CTA.find(([k]) => k === cta)?.[1] ?? "Learn more";
+  const msgDefault = goal === "whatsapp" ? "Send WhatsApp message" : "Send message";
+  const ctaLabel = goal === "website" ? WEB_CTA.find(([k]) => k === cta)?.[1] ?? "Learn more" : msgCta ? WEB_CTA.find(([k]) => k === msgCta)?.[1] ?? msgDefault : msgDefault;
+  const selPage = ident?.pages.find((p) => p.id === pageId);
   const mediaSrc = media ? (media.kind === "video" ? media.thumb ?? null : media.preview) : null;
 
   return (
@@ -251,9 +289,42 @@ export function NewCampaignClient() {
                   </div>
                 ))}
               </div>
-              {goal === "whatsapp" && (ident?.pages.find((p) => p.id === pageId)?.whatsapp === false
-                ? <div className="note warn" data-testid="wa-unlinked"><Icon name="warning" /><span><b>{ident?.pages.find((p) => p.id === pageId)?.name} isn&apos;t linked to WhatsApp yet.</b> Meta only runs click-to-WhatsApp ads from a Page linked to your WhatsApp Business number: on Facebook, open the Page → Settings → Linked accounts → WhatsApp, and enter the number. Or choose Instagram DMs or Website visits.</span></div>
-                : <span className="hint"><Icon name="info" size="xs" /> Your Facebook Page must be linked to your WhatsApp Business number (Page settings → Linked accounts → WhatsApp).</span>)}
+              {goal === "whatsapp" && (selPage?.whatsapp === false
+                ? <div className="note warn" data-testid="wa-unlinked"><Icon name="warning" /><span><b>One more step on Facebook: link {selPage.name} to your WhatsApp number.</b> Your WhatsApp Business number is connected to NextBiz, but Meta also needs the <i>Facebook Page</i> linked to it before it runs click-to-WhatsApp ads (Meta told us this when we tried). On Facebook open {selPage.name} → <b>Settings → Linked accounts → WhatsApp</b>, enter your business number and confirm the code. <a className="btn-link" href="https://www.facebook.com/settings/?tab=linked_whatsapp" target="_blank" rel="noreferrer">Open Linked accounts ↗</a> (switch into the Page first) Until then, choose Instagram DMs or Website visits.</span></div>
+                : <span className="hint"><Icon name="info" size="xs" /> Meta needs your Facebook Page linked to your WhatsApp Business number (Page settings → Linked accounts → WhatsApp).</span>)}
+              {goal !== "website" && (
+                <>
+                  <div className="g2">
+                    <div className="field"><label htmlFor="f-mcta">Button on the ad</label>
+                      <select id="f-mcta" className="select" value={msgCta} onChange={(e) => setMsgCta(e.target.value)} data-testid="f-mcta">
+                        <option value="">{msgDefault} (recommended)</option>{WEB_CTA.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                      <span className="hint">Any label still opens the {goal === "whatsapp" ? "WhatsApp" : "Instagram"} chat.</span></div>
+                  </div>
+                  <div className="chatstart" data-testid="chat-start">
+                    <div className="cs-h"><Icon name="chat-teardrop-text" /><span className="grow"><b>When the chat opens</b><small>What people see in {goal === "whatsapp" ? "WhatsApp" : "Instagram"} right after tapping your ad.</small></span></div>
+                    <div className="field"><label htmlFor="f-greet">Your greeting <span className="opt">shown as a message from you</span></label>
+                      <textarea id="f-greet" className="textarea" rows={2} value={greeting} onChange={(e) => setGreeting(e.target.value.slice(0, 300))} data-testid="f-greet" placeholder="Leave empty to use Meta's default" /></div>
+                    <div className="field"><label>How the customer starts</label>
+                      <div className="seg" style={{ alignSelf: "flex-start" }}>
+                        <button type="button" className={startMode === "autofill" ? "on" : ""} onClick={() => setStartMode("autofill")} data-testid="start-autofill">A message typed for them</button>
+                        <button type="button" className={startMode === "questions" ? "on" : ""} onClick={() => setStartMode("questions")} data-testid="start-questions">Quick questions to tap</button>
+                      </div></div>
+                    {startMode === "autofill"
+                      ? <div className="field"><input className="input" value={autofill} onChange={(e) => setAutofill(e.target.value.slice(0, 300))} placeholder="Hi! I'd like to know more about this." aria-label="Message typed for the customer" data-testid="f-autofill" /><span className="hint">Already in their message box — they just press send. Easy first message = more chats.</span></div>
+                      : <div className="col gap-6">{questions.map((q, i) => <input key={i} className="input" value={q} onChange={(e) => setQuestions(questions.map((x, k) => (k === i ? e.target.value.slice(0, 80) : x)))} placeholder={`Question ${i + 1}${i > 1 ? " (optional)" : ""}`} aria-label={`Quick question ${i + 1}`} />)}
+                          {questions.length < 4 && <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setQuestions([...questions, ""])}><Icon name="plus" />Add a question</button>}
+                          <span className="hint">They tap one and it&apos;s sent as their first message.</span></div>}
+                    {goal === "whatsapp" && (
+                      <div className="field"><label>Button under your greeting <span className="opt">optional</span></label>
+                        <div className="seg" style={{ alignSelf: "flex-start" }}>
+                          {([["none", "None"], ["call", "Call us"], ["url", "Visit website"]] as const).map(([k, l]) => <button key={k} type="button" className={extra === k ? "on" : ""} onClick={() => setExtra(k)}>{l}</button>)}
+                        </div>
+                        {extra === "url" && <input className="input" value={extraUrl} onChange={(e) => setExtraUrl(e.target.value.trim())} placeholder="https://yourshop.in" aria-label="Website for the greeting button" />}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
               {goal === "website" && (
                 <div className="g2">
                   <div className="field"><label htmlFor="f-url">Website address</label><input id="f-url" className="input" value={url} onChange={(e) => setUrl(e.target.value.trim())} placeholder="https://yourshop.in/offer" /></div>
@@ -396,9 +467,24 @@ export function NewCampaignClient() {
         </div>
 
         <aside className="side">
-          <section className="card">
+          <section className="card pv-card">
             <div className="card-h"><span className="h3">Preview</span><span className="sp" />
-              <div className="seg sm">{([["fb", "Facebook"], ["ig", "Instagram"], ["story", "Story"]] as const).map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div></div>
+              <div className="seg sm">{([["meta", "Exact"], ["sketch", "Sketch"], ["chat", "Chat"]] as const).filter(([k]) => k !== "chat" || goal !== "website").map(([k, l]) => <button key={k} type="button" className={pvMode === k ? "on" : ""} onClick={() => setPvMode(k)} data-testid={`pv-${k}`}>{l}</button>)}</div></div>
+            {pvMode === "meta" && (
+              <div className="metapv" data-testid="meta-preview">
+                <select className="select sm" value={metaFmt} onChange={(e) => setMetaFmt(e.target.value)} aria-label="Placement to preview">{META_FMTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                {!canMetaPv ? (
+                  <div className="metapv-empty"><Icon name="eye" /><b>Meta&apos;s exact preview</b><small>{!live ? "Connect an ad account to see it." : !pageId ? "Choose your Facebook Page." : "Upload your image or video — then Meta renders the ad exactly as people will see it, per placement."}</small>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPvMode("sketch")}>See the quick sketch</button></div>
+                ) : metaPv ? (
+                  <div className={`metapv-frame${metaPvBusy ? " busy" : ""}`}><iframe key={metaPv.src} src={metaPv.src} width={metaPv.width} height={metaPv.height} title="Ad preview from Meta" loading="lazy" style={{ border: 0 }} /></div>
+                ) : metaPvErr ? <div className="note warn" style={{ fontSize: "var(--fs-xs)" }}><Icon name="warning" size="sm" /><span>{metaPvErr}</span></div>
+                  : <span className="sk" style={{ display: "block", height: 420 }} />}
+                {canMetaPv && <small className="faint xs" style={{ fontWeight: 600 }}>Rendered by Meta from your current settings{metaPvBusy ? " · updating…" : ""}.</small>}
+              </div>
+            )}
+            {pvMode === "sketch" && (<>
+              <div className="seg sm" style={{ margin: "0 var(--pad) 10px" }}>{([["fb", "Facebook"], ["ig", "Instagram"], ["story", "Story"]] as const).map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button>)}</div>
             <div className={`ad v-${view}`}>
               <div className="ad-h"><span className="av xs c2">{(view === "fb" ? pageName : igName).slice(0, 1).toUpperCase()}</span><span className="grow"><b>{view === "fb" ? pageName : igName}</b><small>Sponsored</small></span><Icon name="dots-three" size="sm" /></div>
               {view === "fb" && <div className="ad-txt top">{primary || "Your primary text appears here."}</div>}
@@ -406,6 +492,18 @@ export function NewCampaignClient() {
               <div className="ad-cta"><span className="trunc">{headline || "Your headline"}{desc && <small>{desc}</small>}</span><span className="b" style={goal === "website" ? { background: "#1877F2" } : goal === "instagram_dm" ? { background: "var(--social)" } : undefined}><Icon name={goal === "whatsapp" ? "whatsapp-logo" : goal === "instagram_dm" ? "instagram-logo" : "arrow-up-right"} size="sm" />{ctaLabel}</span></div>
               {view !== "fb" && <div className="ad-txt"><b>{igName}</b> {primary || "Your primary text appears here."}</div>}
             </div>
+            </>)}
+            {pvMode === "chat" && goal !== "website" && (
+              <div className={`chatpv ${goal === "whatsapp" ? "wa" : "ig"}`} data-testid="chat-preview">
+                <div className="cp-h"><span className="av xs c2">{(goal === "whatsapp" ? pageName : igName).slice(0, 1).toUpperCase()}</span><b>{goal === "whatsapp" ? pageName : igName}</b></div>
+                <div className="cp-b">
+                  <div className="cp-ad"><span className="cp-thumb" style={mediaSrc ? { backgroundImage: `url("${mediaSrc}")` } : undefined} /><span className="trunc"><b>{headline || "Your ad"}</b><small>From an ad</small></span></div>
+                  <div className="cp-in"><span>{greeting.trim() || "Hello! Can I get more info on this?"}</span>{goal === "whatsapp" && extra !== "none" && <span className="cp-btn"><Icon name={extra === "call" ? "phone" : "arrow-square-out"} size="xs" />{extra === "call" ? "Call" : "Visit website"}</span>}</div>
+                  {startMode === "questions" && questions.some((q) => q.trim()) ? <div className="cp-qs">{questions.filter((q) => q.trim()).map((q) => <span key={q}>{q}</span>)}</div> : null}
+                </div>
+                <div className="cp-f"><span className={startMode === "autofill" && autofill ? "typed" : ""}>{startMode === "autofill" ? autofill || "Message" : "Message"}</span><Icon name="paper-plane-right" size="sm" /></div>
+              </div>
+            )}
           </section>
           <section className="card aud">
             <div className="card-h"><span className="h3">Audience size</span></div>

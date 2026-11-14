@@ -12,11 +12,20 @@ export async function GET() {
   // and a raw `SELECT id` 500'd every call since S4-4 shipped. md5 gives the
   // client a stable, non-reversible handle without ever echoing the token.
   const { rows } = await getPool().query(
-    `SELECT md5(token) AS id, created_at, expires_at, (token = $2) AS current
-       FROM sessions WHERE user_id = $1 AND expires_at > now() ORDER BY created_at DESC`,
+    `SELECT md5(token) AS id, created_at, expires_at, user_agent, (token = $2) AS current
+       FROM sessions WHERE user_id = $1 AND expires_at > now() ORDER BY (token = $2) DESC, created_at DESC`,
     [u.id, token],
   );
   // no-store: browsers heuristic-cached this GET, so a revoke (DELETE) was
   // invisible until the cache aged out — the row "never went away"
   return NextResponse.json({ ok: true, sessions: rows }, { headers: { "Cache-Control": "no-store" } });
+}
+
+/** DELETE — sign out every other device (keeps this one). */
+export async function DELETE() {
+  const token = (await cookies()).get("nbo_session")?.value;
+  const u = await getSessionUser(token);
+  if (!u) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const r = await getPool().query(`DELETE FROM sessions WHERE user_id = $1 AND token <> $2`, [u.id, token]);
+  return NextResponse.json({ ok: true, removed: r.rowCount ?? 0 });
 }

@@ -8,3 +8,6 @@ export function initials(name: string | null, fallback: string) {
   return (name ?? fallback).replace(/[^\p{L}\p{N} ]/gu, "").trim().split(/\s+/).map((s) => s[0]).join("").slice(0, 2).toUpperCase() || "?";
 }
 export const fmtPhone = (wa: string) => (wa.length > 10 ? `+${wa.slice(0, wa.length - 10)} ${wa.slice(-10, -5)} ${wa.slice(-5)}` : `+${wa}`);
+
+/** Our proxy for an Instagram DM contact's picture (inbox ids look like "ig:<threadId>"). Server- and client-safe. */
+export const igPic = (id: string | null | undefined) => (id ? `/api/instagram/avatar/${id.replace(/^ig:/, "")}` : null);

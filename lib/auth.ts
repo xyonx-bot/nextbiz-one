@@ -90,12 +90,12 @@ export async function login(email: string, password: string): Promise<SessionUse
   };
 }
 
-export async function createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
+export async function createSession(userId: string, userAgent?: string | null): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400_000);
   await getPool().query(
-    `INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)`,
-    [token, userId, expiresAt],
+    `INSERT INTO sessions (token, user_id, expires_at, user_agent) VALUES ($1, $2, $3, $4)`,
+    [token, userId, expiresAt, userAgent?.slice(0, 300) ?? null],
   );
   return { token, expiresAt };
 }

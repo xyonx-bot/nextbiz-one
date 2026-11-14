@@ -23,7 +23,7 @@ const STATUS: Record<string, [string, string, string]> = {
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—");
 const dt = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-export function BroadcastsClient({ startNew = false, preselect = [] }: { startNew?: boolean; preselect?: string[] }) {
+export function BroadcastsClient({ startNew = false, preselect = [], templateId = null }: { startNew?: boolean; preselect?: string[]; templateId?: string | null }) {
   const [list, setList] = useState<Bc[] | null>(null);
   const [tpls, setTpls] = useState<Tpl[]>([]);
   const [anyTpl, setAnyTpl] = useState(false);
@@ -63,7 +63,10 @@ export function BroadcastsClient({ startNew = false, preselect = [] }: { startNe
     setOpen(true); setStep(1); setAudMode(ids.length ? "contacts" : "all"); setPicked(ids); setCq("");
     setPickTpl(null); setName(""); setWhen(""); setSchedule(false); setNote("");
   }, []);
-  useEffect(() => { if (startNew || preselect.length) startCompose(preselect); }, []);
+  useEffect(() => { if (startNew || preselect.length || templateId) startCompose(preselect); }, []);
+  // ?tpl= (from the Templates menu): preselect once the approved list has loaded
+  const [tplApplied, setTplApplied] = useState(false);
+  useEffect(() => { if (templateId && !tplApplied && tpls.length) { const t = tpls.find((x) => x.id === templateId); if (t) setPickTpl(t); setTplApplied(true); } }, [templateId, tpls, tplApplied]);
 
   const openReport = useCallback(async (b: Bc) => {
     setSel(b); setRcpt(null); setRf("all");

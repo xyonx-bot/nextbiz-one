@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
+import { AvatarPic } from "@/components/AvatarPic";
+import { igPic } from "@/lib/ui";
 import { PairBars } from "@/components/Charts";
 import { getShellData } from "@/lib/shell";
 import { listComments, mediaFor, recentDmThreads, socialAccount, socialPosts, socialProfile, socialStats, commentCounts } from "@/lib/social";
@@ -145,7 +147,7 @@ export default async function SocialPage() {
             <div className="card-h"><span className="grow"><span className="h2">Latest DMs</span></span><a className="btn btn-ghost btn-sm" href="/social/dms">Inbox<Icon name="arrow-right" /></a></div>
             {dms.length ? dms.map((t) => (
               <a key={t.id} className={`sx-row${t.unread ? " unread" : ""}`} href={`/social/dms?open=ig:${t.id}`}>
-                <span className={`av ${avatarClass(t.id)}`}>{(t.username ?? t.name ?? "?").replace(/^@/, "").slice(0, 2).toUpperCase()}</span>
+                <span className={`av ${avatarClass(t.id)}`}>{(t.username ?? t.name ?? "?").replace(/^@/, "").slice(0, 2).toUpperCase()}<AvatarPic src={igPic(t.id)} /></span>
                 <span className="grow"><b>{handle(t.username, t.name ?? "Instagram user")}</b><small className="trunc" style={{ display: "block" }}>{t.direction === "out" ? "You: " : ""}{t.body ?? "(media)"}</small></span>
                 <span className="tm">{ago(t.created_at)}</span>
                 {t.unread > 0 && <span className="badge">{t.unread}</span>}

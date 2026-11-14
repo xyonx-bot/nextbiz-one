@@ -38,12 +38,42 @@ export function PerformanceClient() {
   const maxRes = Math.max(1, ...(rep?.series ?? []).map((s) => s.results));
   const top = [...camps].filter((c) => c.insights.spend > 0).sort((a, b) => b.insights.spend - a.insights.spend).slice(0, 6);
   const avgCpr = t?.cost_per_result ?? 0;
+  const isDemo = (rep as { demo?: boolean } | null)?.demo !== false;
+  // live account, nothing delivered in this window → explain instead of a page of zeros
+  const empty = !!rep && !isDemo && !!t && t.spend === 0 && t.impressions === 0;
+  const running = camps.filter((c) => c.status === "ACTIVE"), paused = camps.filter((c) => c.status === "PAUSED");
 
   return (
     <div className="pg-ads-perf">
       <div className="page" data-testid="ads-performance">
-        <div className="pagehead"><div className="t"><div className="h1">Ads performance {rep && (rep as { demo?: boolean }).demo === false ? <span className="pill sm ok" style={{ verticalAlign: 5 }}>Live from Meta</span> : <span className="demo" style={{ verticalAlign: 5 }}>Demo data</span>}</div><p>Did your ads bring real conversations — and customers?</p></div>
+        <div className="pagehead"><div className="t"><div className="h1">Ads performance {rep && !isDemo ? <span className="pill sm ok" style={{ verticalAlign: 5 }}>Live from Meta</span> : rep ? <span className="demo" style={{ verticalAlign: 5 }}>Demo data</span> : null}</div><p>Did your ads bring real conversations — and customers?</p></div>
           <div className="seg">{(["7d", "30d"] as const).map((r) => <button key={r} className={range === r ? "on" : ""} onClick={() => setRange(r)} data-testid={`range-${r}`}>{r === "7d" ? "7 days" : "30 days"}</button>)}</div></div>
+        {empty ? (
+          <section className="grid" data-testid="perf-empty">
+            <div className="card s12 pe-hero">
+              <span className={`icon-tile lg ${running.length ? "green" : "orange"}`}><Icon name={running.length ? "hourglass" : camps.length ? "pause" : "rocket-launch"} /></span>
+              <div className="grow">
+                <h2>{running.length ? "Your ads are live — the first numbers are on their way" : camps.length ? "Nothing has run yet, so there's nothing to measure" : "No campaigns yet"}</h2>
+                <p>{running.length ? `${running.length} campaign${running.length > 1 ? "s are" : " is"} running. Meta usually reports the first views and chats within a few hours of the ad being approved.`
+                  : camps.length ? `You have ${paused.length || camps.length} campaign${(paused.length || camps.length) > 1 ? "s" : ""}, all paused. Paused ads don't spend or show — resume one and results appear here within hours.`
+                  : "Create a campaign that brings people to your WhatsApp or Instagram. Once it runs, this page shows what you spent and how many conversations it started."}</p>
+                <div className="row gap-6 wrap" style={{ marginTop: 12 }}>
+                  {camps.length ? <a className="btn btn-primary" href="/ads"><Icon name="play" />{running.length ? "See campaigns" : "Review & resume"}</a> : null}
+                  <a className={`btn ${camps.length ? "btn-soft" : "btn-primary"}`} href="/ads/new"><Icon name="plus" />New campaign</a>
+                  {range === "7d" && <button className="btn btn-ghost" onClick={() => setRange("30d")}>Check the last 30 days</button>}
+                </div>
+              </div>
+              {camps.length > 0 && <div className="pe-camps">{camps.slice(0, 4).map((c) => <a key={c.id} href="/ads" className="pe-c"><span className={`dot ${c.status === "ACTIVE" ? "on" : ""}`} /><span className="trunc grow">{c.name}</span><small>{c.status === "ACTIVE" ? "Running" : c.status === "PAUSED" ? "Paused" : c.status.toLowerCase()}</small></a>)}</div>}
+            </div>
+            <div className="s12 pe-h"><b>What you&apos;ll see here</b><small>Each number, in plain words</small></div>
+            {([["currency-inr", "Spend", "What Meta charged your ad account in this period.", "orange"],
+              ["chat-circle-dots", "Results", "Conversations your ads started (or link clicks, for website ads).", "green"],
+              ["coins", "Cost per result", "Spend ÷ results — the price of one new chat. Lower is better.", "grape"],
+              ["cursor-click", "Click-through rate", "Of everyone who saw the ad, how many tapped it.", "banana"]] as const).map(([ic, h, d, tone]) => (
+              <div key={h} className="card s3 pe-k"><span className={`icon-tile ${tone}`}><Icon name={ic} /></span><b>{h}</b><p>{d}</p><span className="pe-ghost" /></div>))}
+            <div className="card s12 pe-tips"><Icon name="lightbulb" /><span><b>Tip for your first campaign:</b> run it for at least 3–4 days at ₹300–₹500/day before judging. Meta needs about 50 results to learn who responds.</span></div>
+          </section>
+        ) : (
         <section className="grid">
           {t && p ? (
             <>
@@ -73,6 +103,7 @@ export function PerformanceClient() {
               <div className="card-f"><div className="note warn" style={{ flex: 1, fontSize: "var(--fs-xs)" }}><Icon name="lightbulb" size="sm" /><span><b>Tip:</b> {worst.name} costs {Math.round((worst.insights.cost_per_result / avgCpr - 1) * 100)}% more per result than average. Consider moving budget to {best.name}.</span></div></div>) : null; })()}
           </div>
         </section>
+        )}
       </div>
     </div>
   );
