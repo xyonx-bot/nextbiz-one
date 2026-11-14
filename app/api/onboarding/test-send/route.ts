@@ -15,6 +15,6 @@ export async function POST() {
   const own = creds?.displayName?.match(/\+?\d[\d ]{9,}/)?.[0]?.replace(/\D/g, "");
   if (!creds || !own) return NextResponse.json({ error: "No connected number found — connect WhatsApp first." }, { status: 409 });
   const send = await sendText(creds, own, "This is a test from NextBiz One");
-  if (!send.ok) return NextResponse.json({ error: send.error, metaCode: send.metaCode }, { status: 502 });
+  if (!send.ok) return NextResponse.json({ error: send.error, metaCode: send.metaCode }, { status: 422 });
   return NextResponse.json({ ok: true });
 }

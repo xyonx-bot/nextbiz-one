@@ -121,6 +121,6 @@ test.describe.serial("workspace isolation", () => {
     expect(ac.systemAccounts).toEqual([]);
     // Embedded Signup completion refuses without config / with junk input — never touches another workspace
     const es = await page.request.post("/api/whatsapp/embedded-signup", { data: { code: "x".repeat(20) } });
-    expect([409, 502]).toContain(es.status());
+    expect([409, 422]).toContain(es.status());
   });
 });

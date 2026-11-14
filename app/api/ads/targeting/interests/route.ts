@@ -11,5 +11,5 @@ export async function GET(req: Request) {
   const c = await adsConnection(t.wsId);
   if (q.length < 2 || !c) return NextResponse.json({ ok: true, interests: [] });
   try { return NextResponse.json({ ok: true, interests: await searchInterests(c, q) }); }
-  catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 502 }); }
+  catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 422 }); }
 }

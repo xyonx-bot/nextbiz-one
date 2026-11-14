@@ -19,12 +19,12 @@ export async function POST(req: Request) {
   if (IMG.includes(file.type)) {
     if (file.size > 30 * 1024 * 1024) return NextResponse.json({ error: "Images can be up to 30 MB." }, { status: 413 });
     const r = await uploadImage(c, file, name);
-    return r.ok ? NextResponse.json({ ok: true, kind: "image", hash: r.hash, url: r.url }) : NextResponse.json({ error: r.error }, { status: 502 });
+    return r.ok ? NextResponse.json({ ok: true, kind: "image", hash: r.hash, url: r.url }) : NextResponse.json({ error: r.error }, { status: 422 });
   }
   if (VID.includes(file.type)) {
     if (file.size > 95 * 1024 * 1024) return NextResponse.json({ error: "Videos can be up to 95 MB here — compress it or trim it." }, { status: 413 });
     const r = await uploadVideo(c, file, name);
-    return r.ok ? NextResponse.json({ ok: true, kind: "video", id: r.id }) : NextResponse.json({ error: r.error }, { status: 502 });
+    return r.ok ? NextResponse.json({ ok: true, kind: "video", id: r.id }) : NextResponse.json({ error: r.error }, { status: 422 });
   }
   return NextResponse.json({ error: "Use a JPG or PNG image, or an MP4/MOV video." }, { status: 415 });
 }

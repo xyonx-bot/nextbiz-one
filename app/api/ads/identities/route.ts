@@ -10,5 +10,5 @@ export async function GET() {
   const c = await adsConnection(t.wsId);
   if (!c) return NextResponse.json({ ok: true, connected: false, pages: [], instagram: [], pageError: null });
   try { return NextResponse.json({ ok: true, connected: true, account: { id: c.ad_account_id, name: c.name }, ...(await identities(c)) }, { headers: { "Cache-Control": "no-store" } }); }
-  catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 502 }); }
+  catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 422 }); }
 }

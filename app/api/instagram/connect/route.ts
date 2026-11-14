@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     const { account, mock } = await connectIgAccount(wsId, body.access_token);
     return NextResponse.json({ ok: true, mock, live: igLive(), account });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 502 });
+    return NextResponse.json({ error: (e as Error).message }, { status: 422 });
   }
 }
 

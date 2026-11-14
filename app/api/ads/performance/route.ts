@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   const conn = await adsConnection(ws);
   if (conn) {
     const live = await livePerformance(conn, range as 7 | 30);
-    if (!live.ok) return NextResponse.json({ error: live.error }, { status: 502 });
+    if (!live.ok) return NextResponse.json({ error: live.error }, { status: 422 });
     return NextResponse.json({ ok: true, ...live.report, account: { id: conn.ad_account_id, name: conn.name } }, { headers: { "Cache-Control": "no-store" } });
   }
   const drafts = (await getPool().query(

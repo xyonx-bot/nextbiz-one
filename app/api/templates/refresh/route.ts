@@ -10,7 +10,7 @@ export async function POST() {
   const t = await getTenant();
   if (!t) return unauthorized();
   const poll = await pollTemplates(await getWaCreds(t.wsId));
-  if (!poll.ok) return NextResponse.json({ error: poll.error }, { status: 502 });
+  if (!poll.ok) return NextResponse.json({ error: poll.error }, { status: 422 });
   const p = getPool();
   let updated = 0;
   for (const m of poll.templates) {

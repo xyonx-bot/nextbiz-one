@@ -31,7 +31,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return NextResponse.json({ error: "Private replies are only possible within 7 days of the comment. Reply publicly instead." }, { status: 409 });
   }
   const s = b.data.kind === "public" ? await igPublicReply(c.account_id, c.comment_id, b.data.text) : await igPrivateReply(c.account_id, c.comment_id, b.data.text);
-  if (!s.ok) return NextResponse.json({ error: s.error }, { status: 502 });
+  if (!s.ok) return NextResponse.json({ error: s.error }, { status: 422 });
 
   await p.query(
     `UPDATE ig_comments SET reply_text = $2, reply_kind = $3, replied_at = now(), hidden_at = NULL,
