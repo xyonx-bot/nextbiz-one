@@ -42,6 +42,9 @@ export function PerformanceClient() {
   // live account, nothing delivered in this window → explain instead of a page of zeros
   const empty = !!rep && !isDemo && !!t && t.spend === 0 && t.impressions === 0;
   const running = camps.filter((c) => c.status === "ACTIVE"), paused = camps.filter((c) => c.status === "PAUSED");
+  // the list shows what can run: live and paused first, then drafts; cancelled/deleted ones are noise here
+  const RANK: Record<string, number> = { ACTIVE: 0, PAUSED: 1 };
+  const shownCamps = camps.filter((c) => !/DELETED|ARCHIVED|CANCEL/i.test(c.status)).sort((a, b) => (RANK[a.status] ?? 2) - (RANK[b.status] ?? 2));
 
   return (
     <div className="pg-ads-perf">
@@ -55,7 +58,8 @@ export function PerformanceClient() {
               <div className="grow">
                 <h2>{running.length ? "Your ads are live — the first numbers are on their way" : camps.length ? "Nothing has run yet, so there's nothing to measure" : "No campaigns yet"}</h2>
                 <p>{running.length ? `${running.length} campaign${running.length > 1 ? "s are" : " is"} running. Meta usually reports the first views and chats within a few hours of the ad being approved.`
-                  : camps.length ? `You have ${paused.length || camps.length} campaign${(paused.length || camps.length) > 1 ? "s" : ""}, all paused. Paused ads don't spend or show — resume one and results appear here within hours.`
+                  : paused.length ? `${paused.length === 1 ? "Your campaign is" : `${paused.length} campaigns are`} paused, and paused ads don't spend or show. Resume one and results appear here within hours.`
+                  : camps.length ? "None of your campaigns has been published and resumed yet. Finish a draft, publish it, then resume it to start."
                   : "Create a campaign that brings people to your WhatsApp or Instagram. Once it runs, this page shows what you spent and how many conversations it started."}</p>
                 <div className="row gap-6 wrap" style={{ marginTop: 12 }}>
                   {camps.length ? <a className="btn btn-primary" href="/ads"><Icon name="play" />{running.length ? "See campaigns" : "Review & resume"}</a> : null}
@@ -63,7 +67,7 @@ export function PerformanceClient() {
                   {range === "7d" && <button className="btn btn-ghost" onClick={() => setRange("30d")}>Check the last 30 days</button>}
                 </div>
               </div>
-              {camps.length > 0 && <div className="pe-camps">{camps.slice(0, 4).map((c) => <a key={c.id} href="/ads" className="pe-c"><span className={`dot ${c.status === "ACTIVE" ? "on" : ""}`} /><span className="trunc grow">{c.name}</span><small>{c.status === "ACTIVE" ? "Running" : c.status === "PAUSED" ? "Paused" : c.status.toLowerCase()}</small></a>)}</div>}
+              {shownCamps.length > 0 && <div className="pe-camps">{shownCamps.slice(0, 4).map((c) => <a key={c.id} href="/ads" className="pe-c"><span className={`dot ${c.status === "ACTIVE" ? "on" : ""}`} /><span className="trunc grow">{c.name}</span><small>{c.status === "ACTIVE" ? "Running" : c.status === "PAUSED" ? "Paused" : c.status.toLowerCase() === "draft" ? "Draft" : c.status.toLowerCase()}</small></a>)}</div>}
             </div>
             <div className="s12 pe-h"><b>What you&apos;ll see here</b><small>Each number, in plain words</small></div>
             {([["currency-inr", "Spend", "What Meta charged your ad account in this period.", "orange"],
