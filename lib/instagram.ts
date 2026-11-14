@@ -298,12 +298,36 @@ export async function igPublicReply(accountId: string, commentId: string, text: 
 }
 
 /** Best-effort customer profile (User Profile API) — only for people who messaged the account. */
-async function fetchProfile(accountId: string, igsid: string): Promise<{ username?: string; name?: string }> {
+async function fetchProfile(accountId: string, igsid: string): Promise<{ username?: string; name?: string; profile_pic?: string }> {
   const a = await tokenFor(accountId);
   if (!igLive() || !a.live || !a.token) return {};
-  const r = await gfetch(`${IG_GRAPH}/${encodeURIComponent(igsid)}?fields=name,username&access_token=${encodeURIComponent(a.token)}`).catch(() => null);
+  const r = await gfetch(`${IG_GRAPH}/${encodeURIComponent(igsid)}?fields=name,username,profile_pic&access_token=${encodeURIComponent(a.token)}`).catch(() => null);
   if (!r?.ok) return {};
-  return (await r.json()) as { username?: string; name?: string };
+  return (await r.json()) as { username?: string; name?: string; profile_pic?: string };
+}
+
+/**
+ * Profile picture for a DM thread. Meta's picture URLs expire after a few days, so the stored URL is
+ * refreshed through the User Profile API when it's older than 2 days or stops loading.
+ * Returns the image bytes (served by our own route so the browser never needs Meta's signed URL).
+ */
+export async function igThreadAvatar(wsId: string, threadId: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  const p = getPool();
+  const th = (await p.query(`SELECT id, ig_account_id, igsid, profile_pic, profile_pic_at FROM ig_threads WHERE id = $1 AND workspace_id = $2`, [threadId, wsId])).rows[0];
+  if (!th) return null;
+  const grab = async (url: string) => {
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    if (!r?.ok || !/^image\//.test(r.headers.get("content-type") ?? "")) return null;
+    return { bytes: await r.arrayBuffer(), type: r.headers.get("content-type") ?? "image/jpeg" };
+  };
+  const fresh = th.profile_pic_at && Date.now() - new Date(th.profile_pic_at).getTime() < 2 * 86400000;
+  if (th.profile_pic && fresh) { const g = await grab(th.profile_pic); if (g) return g; }
+  // don't hammer Meta for people without a picture: at most one lookup per 6 hours
+  if (th.profile_pic_at && !th.profile_pic && Date.now() - new Date(th.profile_pic_at).getTime() < 6 * 3600000) return null;
+  const prof = await fetchProfile(th.ig_account_id, th.igsid);
+  await p.query(`UPDATE ig_threads SET profile_pic = $2, profile_pic_at = now(), name = COALESCE(name, $3), username = COALESCE(username, $4) WHERE id = $1`,
+    [th.id, prof.profile_pic ?? null, prof.name ?? null, prof.username ?? null]);
+  return prof.profile_pic ? grab(prof.profile_pic) : null;
 }
 
 /* ───────────────────────── threads + inbound ───────────────────────── */
@@ -317,9 +341,9 @@ export async function ensureThread(wsId: string, accountId: string, igsid: strin
   }
   const prof = username ? { username } : await fetchProfile(accountId, igsid);
   const { rows } = await p.query(
-    `INSERT INTO ig_threads (workspace_id, ig_account_id, igsid, username, name) VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO ig_threads (workspace_id, ig_account_id, igsid, username, name, profile_pic, profile_pic_at) VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $6::text IS NULL THEN NULL ELSE now() END)
      ON CONFLICT (ig_account_id, igsid) DO UPDATE SET username = COALESCE(ig_threads.username, EXCLUDED.username) RETURNING id`,
-    [wsId, accountId, igsid, prof.username ?? null, prof.name ?? null],
+    [wsId, accountId, igsid, prof.username ?? null, prof.name ?? null, (prof as { profile_pic?: string }).profile_pic ?? null],
   );
   return { id: rows[0].id as string, created: true };
 }

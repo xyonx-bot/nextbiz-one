@@ -4,16 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Resizer, useStoredWidth } from "@/components/Resizer";
 import { avatarClass, fmtPhone, initials } from "@/lib/ui";
+import { TemplateSendModal } from "@/components/TemplateSender";
+import { AddContactModal, ImportContactsModal } from "./ContactForms";
 
 /**
  * Contacts — design v2 (nextbiz-one-v2/contacts): segments rail | data table (+ bulk bar) | profile drawer.
- * Segments are derived from real data (opt-in, activity, tags). Contacts are created automatically from
- * inbound WhatsApp messages; there is no manual add/import API yet, so the UI doesn't offer one.
+ * Segments are derived from real data (opt-in, activity, tags). Contacts arrive automatically from inbound
+ * WhatsApp messages, or are added by hand / imported from a CSV (opt-in only with recorded consent).
  */
 type Ct = {
   id: string; wa_id: string; name: string | null; opt_in: boolean;
   created_at: string; preview: string | null; last_at: string | null; conv_id: string | null;
-  tags: string[]; company: string | null; location: string | null; interested_in: string | null; budget: string | null;
+  tags: string[]; company: string | null; location: string | null; interested_in: string | null; budget: string | null; source?: string;
 };
 type HMsg = { id: string; direction: string; body: string | null; created_at: string };
 type Seg = { key: string; label: string; icon?: string; sw?: string; test: (c: Ct) => boolean };
@@ -40,6 +42,11 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
   const drawerRef = useRef<HTMLElement>(null);
   const [drawerW, setDrawerW] = useStoredWidth("nbo.contacts.drawerW");
   const [history, setHistory] = useState<HMsg[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [sendTo, setSendTo] = useState<Ct | null>(null);
+  const [toast, setToast] = useState("");
+  const flash = (t: string) => { setToast(t); setTimeout(() => setToast(""), 3500); };
 
   const load = useCallback(async () => {
     const res = await fetch("/api/contacts", { cache: "no-store" });
@@ -108,7 +115,8 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
               {segs.slice(0, 3).map((s) => <button key={s.key} className={`chip${seg === s.key ? " on" : ""}`} onClick={() => setSeg(s.key)}>{s.key === "all" ? "All" : s.label} <span className="n">{(list ?? []).filter(s.test).length}</span></button>)}
             </div>
             <span className="sp" />
-            <span className="xs faint hide-s" style={{ fontWeight: 600 }}>Contacts are added automatically when someone messages you</span>
+            <button className="btn btn-soft" onClick={() => setImporting(true)} data-testid="import-open"><Icon name="upload-simple" /><span className="lbl">Import CSV</span></button>
+            <button className="btn btn-primary" onClick={() => setAdding(true)} data-testid="add-open"><Icon name="user-plus" /><span className="lbl">Add contact</span></button>
           </div>
           <div className="bulk"><button className={`check${allPicked ? " on" : ""}`} onClick={() => setPicked(new Set())} aria-label="Clear selection" /><span>{picked.size} selected</span><span className="sp" />
             <span className="xs" style={{ fontWeight: 600, opacity: .8 }}>{pickedOpted} opted in</span>
@@ -140,8 +148,8 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
           <div className="empty zero-c" style={{ flex: 1 }}>
             <div className="art"><Icon name="users-three" /></div>
             <h3>No contacts yet</h3>
-            <p>Everyone who messages your WhatsApp number is added here automatically, with their opt-in status.</p>
-            <div className="acts"><a className="btn btn-primary" href="/inbox"><Icon name="tray" />Go to inbox</a></div>
+            <p>Everyone who messages your WhatsApp number is added here automatically. You can also add people yourself or import a list from Excel or Google Sheets.</p>
+            <div className="acts"><button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="user-plus" />Add contact</button><button className="btn btn-soft" onClick={() => setImporting(true)}><Icon name="upload-simple" />Import CSV</button></div>
           </div>
         </section>
       </div>
@@ -162,8 +170,9 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
               <button className="btn btn-ghost btn-icon" onClick={() => setSel(null)} aria-label="Close" style={{ alignSelf: "flex-start" }}><Icon name="x" /></button>
             </div>
             <div className="pf-acts" style={{ paddingTop: 14 }}>
-              {sel.conv_id && <a className="btn btn-primary btn-sm" href="/inbox"><Icon name="chat-circle-dots" />Open chat</a>}
-              {sel.opt_in && <a className="btn btn-soft btn-sm" href={`/broadcasts?new=1&to=${sel.id}`}><Icon name="megaphone" />Send template</a>}
+              {sel.conv_id && <a className="btn btn-primary btn-sm" href={`/inbox?open=${sel.conv_id}`}><Icon name="chat-circle-dots" />Open chat</a>}
+              <button className={`btn btn-sm ${sel.conv_id ? "btn-soft" : "btn-primary"}`} onClick={() => setSendTo(sel)} data-testid="pf-send-tpl"><Icon name="paper-plane-tilt" />Send template</button>
+              {sel.opt_in && <a className="btn btn-soft btn-sm" href={`/broadcasts?new=1&to=${sel.id}`}><Icon name="megaphone" />Add to broadcast</a>}
             </div>
             <div className="pf-b">
               <div className="optbox" style={sel.opt_in ? undefined : { background: "var(--sunken)", borderColor: "var(--line-2)" }}>
@@ -177,7 +186,7 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
                   <dt>Location</dt><dd className={sel.location ? "" : "faint"}>{sel.location ?? "—"}</dd>
                   <dt>Interested in</dt><dd className={sel.interested_in ? "" : "faint"}>{sel.interested_in ?? "—"}</dd>
                   <dt>Budget</dt><dd className={sel.budget ? "" : "faint"}>{sel.budget ?? "—"}</dd>
-                  <dt>Added</dt><dd>{fmtWhen(sel.created_at)} · automatically</dd>
+                  <dt>Added</dt><dd>{fmtWhen(sel.created_at)} · {sel.source === "import" ? "imported" : sel.source === "manual" ? "added by hand" : "messaged you"}</dd>
                 </dl></div>
               <div><div className="eyebrow" style={{ marginBottom: 12 }}>Recent messages</div>
                 <div className="tl">
@@ -192,6 +201,10 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
           </>
         )}
       </aside>
+      {adding && <AddContactModal onClose={() => setAdding(false)} onAdded={(_c, existed) => { setAdding(false); flash(existed ? "That number was already a contact — details updated." : "Contact added."); void load(); }} />}
+      {importing && <ImportContactsModal onClose={() => setImporting(false)} onDone={(m) => { flash(m); void load(); }} />}
+      <TemplateSendModal open={!!sendTo} contact={sendTo ? { id: sendTo.id, name: sendTo.name, waId: sendTo.wa_id } : null} onClose={() => setSendTo(null)} onSent={() => void load()} />
+      {toast && <div className="toast" role="status" data-testid="contacts-toast"><Icon name="check-circle" />{toast}</div>}
     </div>
   );
 }

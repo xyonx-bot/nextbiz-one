@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { AvatarPic } from "@/components/AvatarPic";
+import { igPic } from "@/lib/ui";
 import { Resizer, useStoredWidth } from "@/components/Resizer";
 import { AiSuggestButton, AiSuggestStrip, useAiSuggest } from "@/components/AiSuggest";
 import { setAiContext, useAiHandler } from "@/lib/ai-bridge";
+import { TemplateSender, TemplateSendModal } from "@/components/TemplateSender";
 import { avatarClass, fmtPhone, initials } from "@/lib/ui";
 
 /**
@@ -29,7 +32,6 @@ type Thread = {
   };
   messages: Msg[];
 };
-type Tpl = { id: string; name: string; category: string; status: string };
 
 const WINDOW_MS = 24 * 3600 * 1000;
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -80,7 +82,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
   const [draft, setDraft] = useState("");
   const [sendErr, setSendErr] = useState("");
   const [sending, setSending] = useState(false);
-  const [tpls, setTpls] = useState<Tpl[] | null>(null);
+  const [tplModal, setTplModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [hasIg, setHasIg] = useState(false);
   const [, tick] = useState(0);
@@ -175,7 +177,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
     const t = setInterval(() => { void loadList(); tick((n) => n + 1); }, 30000);
     return () => clearInterval(t);
   }, [loadList]);
-  useEffect(() => { const s = streamRef.current; if (s) requestAnimationFrame(() => { s.scrollTop = s.scrollHeight; }); }, [thread?.messages.length, thread?.conversation.id, tpls]);
+  useEffect(() => { const s = streamRef.current; if (s) requestAnimationFrame(() => { s.scrollTop = s.scrollHeight; }); }, [thread?.messages.length, thread?.conversation.id]);
 
   const sel = thread?.conversation;
   const isIg = sel?.channel === "ig";
@@ -194,11 +196,6 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
     setDraft(text); requestAnimationFrame(() => taRef.current?.focus());
   }, [selected, convs, open]);
   useAiHandler("reply", takeReply);
-  useEffect(() => {
-    if (sel && sel.channel !== "ig" && win.state === "closed" && tpls === null) {
-      fetch("/api/templates", { cache: "no-store" }).then((r) => r.json()).then((d) => setTpls((d?.templates ?? []).filter((t: Tpl) => /approved/i.test(t.status)))).catch(() => setTpls([]));
-    }
-  }, [sel, win.state, tpls]);
 
   const shown = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -303,7 +300,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
                   return (
                     <div key={c.id} className={`cv${c.unread > 0 ? " unread" : ""}${selected === c.id ? " on" : ""}`} data-testid="crow" tabIndex={0}
                       onClick={() => void open(c.id)} onKeyDown={(e) => e.key === "Enter" && void open(c.id)}>
-                      <span className={`av sm ${avatarClass(c.wa_id)}`}>{initials(c.name?.replace(/^@/, "") ?? null, c.wa_id)}{c.channel === "ig" ? <span className="src ig"><Icon name="instagram-logo" /></span> : <span className="src wa"><Icon name="whatsapp-logo" /></span>}</span>
+                      <span className={`av sm ${avatarClass(c.wa_id)}`}>{initials(c.name?.replace(/^@/, "") ?? null, c.wa_id)}{c.channel === "ig" && <AvatarPic src={igPic(c.id)} />}{c.channel === "ig" ? <span className="src ig"><Icon name="instagram-logo" /></span> : <span className="src wa"><Icon name="whatsapp-logo" /></span>}</span>
                       <div className="body">
                         <div className="l1"><span className="nm">{c.name ?? (c.channel === "ig" ? "Instagram user" : fmtPhone(c.wa_id))}</span>
                           {w.state === "soon" && <span className="wtag soon" title="Reply window closing soon"><Icon name="hourglass" />{dur(w.left)}</span>}
@@ -335,7 +332,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
             <>
               <header className="thead">
                 <button className="btn btn-ghost btn-icon back" onClick={() => setViewThread(false)} aria-label="Back to conversations" data-testid="thread-back"><Icon name="arrow-left" /></button>
-                <span className={`av ${avatarClass(sel.waId)}`}>{initials(sel.name?.replace(/^@/, "") ?? null, sel.waId)}{isIg ? <span className="src ig"><Icon name="instagram-logo" /></span> : <span className="src wa"><Icon name="whatsapp-logo" /></span>}</span>
+                <span className={`av ${avatarClass(sel.waId)}`}>{initials(sel.name?.replace(/^@/, "") ?? null, sel.waId)}{isIg && <AvatarPic key={selected} src={igPic(selected)} />}{isIg ? <span className="src ig"><Icon name="instagram-logo" /></span> : <span className="src wa"><Icon name="whatsapp-logo" /></span>}</span>
                 <div className="who">
                   <b><span className="trunc">{sel.name ?? (isIg ? "Instagram user" : fmtPhone(sel.waId))}</span></b>
                   <small><span className="num">{isIg ? (sel.username ? `@${sel.username} · Instagram` : "Instagram DM") : fmtPhone(sel.waId)}</span>{sel.tags[0] && <><span className="hide-s">·</span><span className="tag green hide-s">{sel.tags[0]}</span></>}</small>
@@ -364,7 +361,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
                       onChange={(e) => { setDraft(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(160, e.target.scrollHeight) + "px"; }}
                       onKeyDown={(e) => { if (sug.onKey(e)) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sug.close(); void send(); } }} aria-label="Message" />
                     <div className="ctools">
-                      <a className="btn btn-ghost btn-sm" href="/templates" title="Templates"><Icon name="notebook" />Templates</a>
+                      {!isIg && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTplModal(true)} title="Send an approved template" data-testid="composer-tpl"><Icon name="notebook" />Template</button>}
                       <AiSuggestButton s={sug} />
                       <span className="hint faint">Enter to send · Shift + Enter for new line</span>
                       <button type="submit" className="btn btn-primary send" style={{ marginLeft: "auto" }} disabled={sending || !draft.trim()} data-testid="send-btn"><Icon name="paper-plane-right" />{sending ? "Sending…" : "Send"}</button>
@@ -377,17 +374,11 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
                         <p>Instagram only allows replies within 24 hours of the customer&apos;s last message. When they write again, you can reply here.</p></span></div>
                   </div>
                 ) : (
-                  <div className="closed-box blocked" data-testid="window-closed">
-                    <div className="top"><span className="icon-tile sm neutral"><Icon name="lock" /></span>
-                      <span className="grow"><b>The 24-hour reply window is closed{sel.lastInboundAt ? ` (${ago(new Date(new Date(sel.lastInboundAt).getTime() + WINDOW_MS).toISOString())} ago)` : ""}</b>
-                        <p>WhatsApp only allows approved templates until {sel.name?.split(" ")[0] ?? "they"} reply again. Send one to this contact from Broadcasts to restart the conversation.</p></span></div>
-                    <div className="tplpick">
-                      {(tpls ?? []).slice(0, 3).map((t) => <span key={t.id} className="tag" style={{ height: 28, fontSize: "var(--fs-xs)" }}>{t.name}<small style={{ marginLeft: 4, color: "var(--ink-3)" }}>{t.category.toLowerCase()}</small></span>)}
-                      {tpls !== null && tpls.length === 0 && <span className="xs faint" style={{ fontWeight: 600 }}>No approved templates yet.</span>}
-                      <span className="sp" />
-                      <a className="btn btn-soft btn-sm" href="/templates">Templates</a>
-                      <a className="btn btn-primary btn-sm" href={`/broadcasts?to=${encodeURIComponent(sel.contactId)}`}><Icon name="megaphone" />Send a template</a>
-                    </div>
+                  <div className="closed-box tpl-mode" data-testid="window-closed">
+                    <div className="top"><span className="icon-tile sm banana"><Icon name="clock-countdown" /></span>
+                      <span className="grow"><b>{sel.lastInboundAt ? `The 24-hour reply window closed ${ago(new Date(new Date(sel.lastInboundAt).getTime() + WINDOW_MS).toISOString())} ago` : "This contact hasn't messaged you yet"}</b>
+                        <p>WhatsApp only delivers approved templates until {sel.name?.split(" ")[0] ?? "they"} reply. Send one below — when they answer, you can chat freely again.</p></span></div>
+                    <TemplateSender key={sel.id} compact contact={{ id: sel.contactId, name: sel.name, waId: sel.waId }} onSent={() => void open(sel.id, { focusThread: false })} />
                   </div>
                 )}
                 {sendErr && <div className="note bad" style={{ fontSize: "var(--fs-xs)" }}><Icon name="warning-circle" size="sm" /><span>{sendErr}</span></div>}
@@ -405,7 +396,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
             {sel ? (
               <>
                 <div className="dsec ident">
-                  <span className={`av xl ${avatarClass(sel.waId)}`}>{initials(sel.name, sel.waId)}</span>
+                  <span className={`av xl ${avatarClass(sel.waId)}`}>{initials(sel.name, sel.waId)}{isIg && <AvatarPic key={selected} src={igPic(selected)} />}</span>
                   <div><h3>{sel.name ?? "Unnamed contact"}</h3><div className="ph">{isIg ? (sel.username ? `@${sel.username}` : "Instagram") : fmtPhone(sel.waId)}</div></div>
                   {isIg ? (
                     <div className="qa" style={{ gridTemplateColumns: "1fr" }}>
@@ -415,7 +406,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
                   <div className="qa">
                     <button onClick={copyNumber}><Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy number"}</button>
                     <a href={`/contacts?id=${encodeURIComponent(sel.contactId)}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: 54, borderRadius: 11, background: "var(--bg)", border: "1px solid var(--line)", fontSize: 10, fontWeight: 700, color: "var(--ink-2)" }}><Icon name="identification-card" />Profile</a>
-                    <a href={`/broadcasts?to=${encodeURIComponent(sel.contactId)}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, height: 54, borderRadius: 11, background: "var(--bg)", border: "1px solid var(--line)", fontSize: 10, fontWeight: 700, color: "var(--ink-2)" }}><Icon name="megaphone" />Template</a>
+                    <button onClick={() => setTplModal(true)} data-testid="send-tpl-detail"><Icon name="notebook" />Send template</button>
                   </div>
                   )}
                 </div>
@@ -494,6 +485,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
         </section>
         )}
       </div>
+      <TemplateSendModal open={tplModal && !!sel && sel.channel !== "ig"} contact={sel ? { id: sel.contactId, name: sel.name, waId: sel.waId } : null} onClose={() => setTplModal(false)} onSent={() => { if (selected) void open(selected, { focusThread: false }); }} />
     </div>
   );
 }

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { AvatarPic } from "@/components/AvatarPic";
+import { igPic } from "@/lib/ui";
 import type { Channels } from "@/lib/channels";
 
 /**
@@ -237,7 +239,7 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
           {igOn && ig ? (
             <>
               <div className="cc-acct">
-                <span className="av c3">{(ig.username ?? "IG").replace(/^@/, "").slice(0, 2).toUpperCase()}</span>
+                <span className="av c3">{(ig.username ?? "IG").replace(/^@/, "").slice(0, 2).toUpperCase()}<AvatarPic src={(ig as { profile_picture_url?: string | null }).profile_picture_url} /></span>
                 <span className="grow"><b className="trunc">@{(ig.username ?? "instagram").replace(/^@/, "")}</b><small>{ig.expires_at ? `Login valid until ${d8(ig.expires_at)} · renews itself` : "Connected"}</small></span>
                 <span className={`live${ig.webhook_subscribed ? "" : " off"}`}><span className="pulse" />{ig.webhook_subscribed ? "Live" : "No events"}</span>
               </div>
