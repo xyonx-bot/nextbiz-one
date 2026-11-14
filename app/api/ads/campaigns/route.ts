@@ -37,7 +37,9 @@ export async function GET(req: Request) {
     // live: the connected Meta ad account (+ this workspace's unpublished drafts)
     const live = await liveCampaigns(conn, p.get("range") === "30d" ? 30 : 7);
     if (!live.ok) return NextResponse.json({ error: live.error, account: { id: conn.ad_account_id, name: conn.name } }, { status: 502 });
-    const campaigns = filterCampaigns([...drafts.map(draftToCampaign), ...live.campaigns], p.get("q") ?? "", p.get("status"));
+    // drafts that were published already show up as the live campaign — don't list them twice
+    const published = new Set((await getPool().query(`SELECT id FROM ads_mock_campaigns WHERE workspace_id = $1 AND meta_campaign_id IS NOT NULL`, [ws])).rows.map((r) => r.id));
+    const campaigns = filterCampaigns([...drafts.filter((d) => !published.has(d.id)).map(draftToCampaign), ...live.campaigns], p.get("q") ?? "", p.get("status"));
     return NextResponse.json({ ok: true, demo: false, account: { id: conn.ad_account_id, name: conn.name, currency: conn.currency }, campaigns },
       { headers: { "Cache-Control": "no-store" } });
   }

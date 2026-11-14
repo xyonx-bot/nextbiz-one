@@ -38,28 +38,34 @@ test.describe("Ads UI (design v2)", () => {
     await page.keyboard.press("Escape");
   });
 
-  test("/ads/new — validation, live preview, submit → In review", async ({ page }) => {
+  test("/ads/new — real builder: goal, location picker with radius, placements, preview; publish needs an ad account", async ({ page }) => {
     await login(page);
     await page.goto("/ads/new");
     await expect(page.getByTestId("ads-wizard")).toBeVisible();
     await page.getByTestId("wiz-submit").click();
     await expect(page.getByTestId("wizard-error")).toContainText("name");
     await page.getByTestId("f-name").fill(`e2e_ui_${T}`);
-    await page.getByTestId("obj-OUTCOME_ENGAGEMENT").click();
-    await page.getByTestId("f-audience").fill("Kolkata 25-45");
-    await expect(page.getByTestId("cnt-audience")).toHaveText("13 / 200");
-    await page.getByTestId("f-budget").fill("0");
-    await page.getByTestId("wiz-submit").click();
-    await expect(page.getByTestId("wizard-error")).toContainText("budget");
-    await page.getByTestId("f-budget").fill("1500");
+    await page.getByTestId("obj-instagram_dm").click();
+    await expect(page.getByTestId("obj-instagram_dm")).toHaveAttribute("aria-checked", "true");
+    // location: pick from the dropdown (demo list without an ad account), set a radius
+    await page.getByTestId("loc-search").fill("Kolk");
+    await page.getByTestId("loc-search-opt").first().click();
+    await expect(page.getByTestId("loc-chip")).toHaveCount(1);
+    await expect(page.getByTestId("loc-chip")).toContainText("Kolkata");
+    await page.getByTestId("loc-chip").locator("select").selectOption("40");
+    await expect(page.locator(".aud-sum")).toContainText("Kolkata +40km");
+    // manual placements
+    await page.getByTestId("place-manual").click();
+    await page.getByTestId("pl-facebook:feed").uncheck();
+    await expect(page.locator(".aud-sum")).toContainText("3 placements");
     await page.getByTestId("f-headline").fill("Websites from 9999");
-    await expect(page.getByTestId("pv-headline")).toHaveText("Websites from 9999");
     await expect(page.getByTestId("cnt-headline")).toHaveText("18 / 40");
-    await page.getByTestId("dest-whatsapp").click();
+    await page.getByTestId("f-budget").fill("50");
     await page.getByTestId("wiz-submit").click();
-    await page.waitForURL("**/ads?status=IN_REVIEW");
-    await expect(page.getByTestId("pill-IN_REVIEW")).toHaveClass(/on/);
-    await expect(page.locator(".crow", { hasText: `e2e_ui_${T}` })).toBeVisible();
+    await expect(page.getByTestId("wizard-error")).toContainText("₹100");
+    await page.getByTestId("f-budget").fill("1500");
+    await page.getByTestId("wiz-submit").click();
+    await expect(page.getByTestId("wizard-error")).toContainText("Connect an ad account");
   });
 
   test("draft path — save draft lands in Drafts; cancel from the drawer", async ({ page }) => {
