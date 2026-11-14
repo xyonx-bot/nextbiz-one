@@ -93,10 +93,13 @@ test.describe("Ads UI (design v2)", () => {
     await expect(page.locator(".dt tbody tr").first()).toBeVisible();
   });
 
-  test("dashboard mount — ads card with demo badge on /", async ({ page }) => {
+  test("dashboard — never shows demo ad numbers; Meta Ads is offered as a channel until connected", async ({ page }) => {
     await login(page);
     await page.goto("/");
-    await expect(page.locator(".card.ads .demo")).toBeVisible();
+    await expect(page.getByTestId("dashboard")).toBeVisible();
+    await expect(page.locator(".pg-dash .demo")).toHaveCount(0);
+    await expect(page.getByTestId("card-channels")).toContainText("Meta Ads");
+    await expect(page.getByTestId("card-ads")).toHaveCount(0); // no ad account in this test workspace
   });
 });
 

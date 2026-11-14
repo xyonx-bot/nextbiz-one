@@ -51,7 +51,7 @@ function Md({ text }: { text: string }) {
   return <>{out}</>;
 }
 
-export function AiAssistant({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AiAssistant({ open, onClose, ask }: { open: boolean; onClose: () => void; ask?: { text: string; n: number } | null }) {
   const router = useRouter();
   const path = usePathname();
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -69,6 +69,7 @@ export function AiAssistant({ open, onClose }: { open: boolean; onClose: () => v
   useEffect(() => { if (open) { void aiStatus().then((s) => setUsage(s)); requestAnimationFrame(() => ta.current?.focus()); } }, [open]);
   useEffect(() => { const s = stream.current; if (s) s.scrollTop = s.scrollHeight; }, [turns, busy]);
 
+  const asked = useRef(0);
   const pageKey = ctx?.page ?? (path.startsWith("/ads") ? "campaign" : path.startsWith("/inbox") || path.startsWith("/social/dms") ? "inbox" : path.startsWith("/social/comments") ? "comments" : path.includes("automation") ? "automation" : path.startsWith("/templates") ? "templates" : "default");
 
   const send = useCallback(async (text: string) => {
@@ -85,6 +86,9 @@ export function AiAssistant({ open, onClose }: { open: boolean; onClose: () => v
     setTurns((ts) => [...ts, d?.ok ? { role: "assistant", content: d.reply, actions: d.actions, tools: d.tools } : { role: "assistant", content: d?.error ?? "I couldn't reach the AI — try again.", error: true }]);
     void aiStatus().then(() => setUsage((u) => u ? { ...u, usedToday: u.usedToday + 1 } : u));
   }, [turns, busy, path, pageKey, acts]);
+
+  // a question handed over from the page (e.g. the dashboard's "Ask AI" button)
+  useEffect(() => { if (open && ask && ask.n !== asked.current && !busy) { asked.current = ask.n; void send(ask.text); } }, [open, ask, busy, send]);
 
   async function approve(a: AiAction) {
     if (a.type === "campaign_form" || a.type === "reply") {

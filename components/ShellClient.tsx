@@ -56,6 +56,12 @@ export function ShellClient({
   const [wide, setWide] = useState(true);
   const [me, setMe] = useState(false);
   const [ai, setAi] = useState(false);
+  const [aiAsk, setAiAsk] = useState<{ text: string; n: number } | null>(null);
+  // other parts of the page can open the assistant with a question ("Ask AI what needs me today")
+  useEffect(() => {
+    const on = (e: Event) => { const t = (e as CustomEvent<{ prompt?: string }>).detail?.prompt; setAi(true); if (t) setAiAsk({ text: t, n: Date.now() }); };
+    window.addEventListener("nbo:ai", on); return () => window.removeEventListener("nbo:ai", on);
+  }, []);
   // ⌘J / Ctrl+J opens NextBiz AI anywhere
   useEffect(() => {
     if (!data.ai) return;
@@ -213,7 +219,7 @@ export function ShellClient({
         <a className={`pi${active === "settings" ? " on" : ""}`} href="/settings"><Icon name="gear" /><span>Settings</span></a>
         <button className="pi" style={{ width: "100%" }} onClick={signOut}><Icon name="sign-out" /><span>Sign out</span></button>
       </div>
-      {data.ai && <AiAssistant open={ai} onClose={() => setAi(false)} />}
+      {data.ai && <AiAssistant open={ai} onClose={() => setAi(false)} ask={aiAsk} />}
     </div>
   );
 }
