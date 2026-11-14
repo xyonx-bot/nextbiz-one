@@ -187,8 +187,12 @@ export async function exchangeIgCode(wsId: string, code: string, redirectUri: st
   if (!short.access_token) throw new Error("Instagram code exchange returned no access token");
 
   const lRes = await gfetch(`https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${encodeURIComponent(appSecret)}&access_token=${encodeURIComponent(short.access_token)}`);
-  if (!lRes.ok) throw new Error(`Long-lived token exchange failed: ${await metaErr(lRes)}`);
-  const long = (await lRes.json()) as { access_token?: string; expires_in?: number };
+  // Instagram sometimes refuses the upgrade on a repeat login ("Unsupported request - method type: get") —
+  // keep the token it already gave us instead of failing the connect; the refresh job keeps it alive or reports it.
+  let long: { access_token?: string; expires_in?: number } = {};
+  let exchangeNote: string | null = null;
+  if (lRes.ok) long = (await lRes.json()) as typeof long;
+  else { exchangeNote = `Long-lived token exchange failed (${await metaErr(lRes)}) — reconnect if messages stop`; console.warn(`[ig] ${exchangeNote}`); }
   const token = long.access_token ?? short.access_token;
 
   const meRes = await gfetch(`${IG_GRAPH}/me?fields=user_id,username,name,profile_picture_url&access_token=${encodeURIComponent(token)}`);
@@ -202,7 +206,8 @@ export async function exchangeIgCode(wsId: string, code: string, redirectUri: st
   // the same Instagram account can only feed one workspace — webhooks are routed by it
   const other = await p.query(`SELECT 1 FROM ig_accounts WHERE ig_user_id = $1 AND workspace_id <> $2 AND live`, [igUserId, wsId]);
   if (other.rows.length) throw new Error(`@${me.username ?? igUserId} is already connected to another NextBiz One workspace`);
-  const expiresAt = long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString() : null;
+  const expiresAt = long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString()
+    : exchangeNote ? new Date(Date.now() + 3600 * 1000).toISOString() : null; // short-lived: ~1 hour
   // one live Instagram account per workspace: retire any other live row
   await p.query(`UPDATE ig_accounts SET live = false, access_token = NULL, updated_at = now() WHERE workspace_id = $1 AND ig_user_id <> $2 AND live`, [wsId, igUserId]);
   const { rows } = await p.query(
@@ -215,7 +220,8 @@ export async function exchangeIgCode(wsId: string, code: string, redirectUri: st
     [wsId, igUserId, short.user_id != null ? String(short.user_id) : null, me.username ?? null, me.name ?? null, me.profile_picture_url ?? null, token, granted, expiresAt],
   );
   const sub = await subscribeIgWebhooks(token);
-  await p.query(`UPDATE ig_accounts SET webhook_subscribed = $2, last_error = $3 WHERE id = $1`, [rows[0].id, sub.ok, sub.ok ? null : `Webhook subscription failed: ${sub.error}`]);
+  const lastError = [sub.ok ? null : `Webhook subscription failed: ${sub.error}`, exchangeNote].filter(Boolean).join(" · ") || null;
+  await p.query(`UPDATE ig_accounts SET webhook_subscribed = $2, last_error = $3 WHERE id = $1`, [rows[0].id, sub.ok, lastError]);
   await p.query(`INSERT INTO ig_audit (workspace_id, action, detail) VALUES ($1, 'oauth-connect', $2::jsonb)`,
     [wsId, JSON.stringify({ ig_user_id: igUserId, username: me.username ?? null, scopes: granted, webhooks: sub.ok ? "subscribed" : sub.error, expires_at: expiresAt })]);
   return { account: { ...(rows[0] as IgAccountRow), webhook_subscribed: sub.ok }, mock: false };
