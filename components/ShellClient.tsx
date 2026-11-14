@@ -120,7 +120,7 @@ export function ShellClient({
           </div>
           <div className="pmod">
             <span className="sw" /><span className="eyebrow">{modName}</span>
-            {mod === "ads" && <span className="demo">Demo</span>}
+            {mod === "ads" && !data.channels.ads && <span className="demo">Demo</span>}
             <button className="collapse" onClick={() => collapse(true)} title="Collapse panel" aria-label="Collapse panel"><Icon name="sidebar-simple" size="sm" /></button>
           </div>
           <nav className="pnav">
@@ -151,7 +151,10 @@ export function ShellClient({
                 </div>
               </div>
             ) : (
-              <div className="note warn" style={{ fontSize: "10.5px" }}><Icon name="info" size="sm" /><span><b>Demo data.</b> Connect an ad account to see live campaigns.</span></div>
+              data.adAccount
+                ? <div className="numcard"><div className="top"><span className="wa" style={{ background: "var(--ads)" }}><Icon name="megaphone" /></span><span className="grow"><b className="trunc" style={{ display: "block" }}>{data.adAccount.name ?? "Ad account"}</b><small className="mono">{data.adAccount.id}</small></span></div>
+                    <div className="stats"><div><span>Status</span><strong className="good">Live</strong></div><div><span>Manage</span><strong><a href="/connections#ads" style={{ textDecoration: "underline" }}>Connection</a></strong></div></div></div>
+                : <div className="note warn" style={{ fontSize: "10.5px" }}><Icon name="info" size="sm" /><span><b>Demo data.</b> <a href="/connections#ads" style={{ textDecoration: "underline" }}>Connect an ad account</a> to see live campaigns.</span></div>
             )}
           </div>
         </aside>
@@ -192,7 +195,7 @@ export function ShellClient({
         <div className="grab" />
         <div className="sgrp eyebrow">NextBiz Chat</div>
         {CHAT.map((i) => <a key={i.key} className={`pi${i.key === active ? " on" : ""}`} href={i.href}><Icon name={i.icon} /><span>{i.label}</span></a>)}
-        <div className="sgrp eyebrow">NextBiz Ads <span className="demo" style={{ marginLeft: 6 }}>Demo</span></div>
+        <div className="sgrp eyebrow">NextBiz Ads {!data.channels.ads && <span className="demo" style={{ marginLeft: 6 }}>Demo</span>}</div>
         {ADS.map((i) => <a key={i.key} className={`pi${i.key === active ? " on" : ""}`} href={i.href}><Icon name={i.icon} /><span>{i.label}</span></a>)}
         <div className="sgrp eyebrow">NextBiz Social</div>
         {SOCIAL.map((i) => <a key={i.key} className={`pi${i.key === active ? " on" : ""}`} href={i.href}><Icon name={i.icon} /><span>{i.label}</span></a>)}

@@ -27,7 +27,7 @@ export function PerformanceClient() {
   const load = useCallback(async () => {
     const [r, c] = await Promise.all([
       fetch(`/api/ads/performance?range=${range}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null),
-      fetch("/api/ads/campaigns", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
+      fetch(`/api/ads/campaigns?range=${range}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null),
     ]);
     if (r?.ok) setRep(r); setCamps(c?.campaigns ?? []);
   }, [range]);
@@ -42,7 +42,7 @@ export function PerformanceClient() {
   return (
     <div className="pg-ads-perf">
       <div className="page" data-testid="ads-performance">
-        <div className="pagehead"><div className="t"><div className="h1">Ads performance <span className="demo" style={{ verticalAlign: 5 }}>Demo data</span></div><p>Did your ads bring real conversations — and customers?</p></div>
+        <div className="pagehead"><div className="t"><div className="h1">Ads performance {rep && (rep as { demo?: boolean }).demo === false ? <span className="pill sm ok" style={{ verticalAlign: 5 }}>Live from Meta</span> : <span className="demo" style={{ verticalAlign: 5 }}>Demo data</span>}</div><p>Did your ads bring real conversations — and customers?</p></div>
           <div className="seg">{(["7d", "30d"] as const).map((r) => <button key={r} className={range === r ? "on" : ""} onClick={() => setRange(r)} data-testid={`range-${r}`}>{r === "7d" ? "7 days" : "30 days"}</button>)}</div></div>
         <section className="grid">
           {t && p ? (

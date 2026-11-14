@@ -11,7 +11,10 @@ import type { Channels } from "@/lib/channels";
  */
 type IgAccount = { username: string | null; display_name: string | null; live: boolean; expires_at: string | null; webhook_subscribed?: boolean; last_error?: string | null };
 type Es = { ready: boolean; appId: string | null; configId: string | null };
-type FB = { init: (o: Record<string, unknown>) => void; login: (cb: (r: { authResponse?: { code?: string } | null; status?: string }) => void, o: Record<string, unknown>) => void };
+type FB = { init: (o: Record<string, unknown>) => void; login: (cb: (r: { authResponse?: { code?: string; accessToken?: string } | null; status?: string }) => void, o: Record<string, unknown>) => void };
+type AdAcct = { id: string; name: string; currency: string; status: number; business: string | null };
+type AdsState = { connected: boolean; canUseSystem: boolean; appId: string | null; systemAccounts: AdAcct[];
+  account: { id: string; name: string | null; lastError: string | null; live: { status: number; spent: number; balanceLabel: string | null } | null } | null };
 declare global { interface Window { FB?: FB; fbAsyncInit?: () => void } }
 
 const d8 = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -36,7 +39,41 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
 }) {
   const router = useRouter();
   const [ig, setIg] = useState<IgAccount | null | undefined>(undefined);
-  const [busy, setBusy] = useState<"" | "wa" | "wa-off" | "ig-off">("");
+  const [busy, setBusy] = useState<"" | "wa" | "wa-off" | "ig-off" | "ads">("");
+  const [ads, setAds] = useState<AdsState | null>(null);
+  const [pick, setPick] = useState<AdAcct[] | null>(null);
+  const userTok = useRef<string | null>(null);
+  const loadAds = useCallback(async () => {
+    const d = await fetch("/api/ads/connection", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
+    setAds(d?.ok ? d : { connected: false, canUseSystem: false, appId: null, systemAccounts: [], account: null });
+  }, []);
+  useEffect(() => { void loadAds(); }, [loadAds]);
+  async function loginAds() {
+    if (!ads?.appId) return;
+    setBusy("ads");
+    try {
+      const FB = await loadFbSdk(ads.appId);
+      const tok = await new Promise<string | null>((res) => FB.login((r) => res(r.authResponse?.accessToken ?? null), { scope: "ads_read,ads_management,business_management", return_scopes: true }));
+      if (!tok) { setNote({ kind: "bad", text: "Facebook login was closed — nothing changed." }); return; }
+      userTok.current = tok;
+      const d = await fetch("/api/ads/connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "user", accessToken: tok }) }).then((x) => x.json()).catch(() => null);
+      if (!d?.ok) { setNote({ kind: "bad", text: d?.error ?? "Couldn't read your ad accounts." }); return; }
+      setPick(d.pick ?? []);
+    } catch (e) { setNote({ kind: "bad", text: (e as Error).message }); } finally { setBusy(""); }
+  }
+  async function connectAds(adAccountId: string) {
+    setBusy("ads");
+    const body = userTok.current ? { mode: "user", accessToken: userTok.current, adAccountId } : { mode: "system", adAccountId };
+    const d = await fetch("/api/ads/connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => null);
+    setBusy("");
+    if (!d?.ok) { setNote({ kind: "bad", text: d?.error ?? "Couldn't connect the ad account." }); return; }
+    setPick(null); userTok.current = null; setNote({ kind: "ok", text: `${d.account?.name ?? "Ad account"} connected — campaigns are live in NextBiz Ads` });
+    await loadAds(); router.refresh();
+  }
+  async function disconnectAds() {
+    setBusy("ads"); await fetch("/api/ads/connection", { method: "DELETE" }).catch(() => null); setBusy("");
+    setNote({ kind: "ok", text: "Ad account disconnected — nothing changed on Meta" }); await loadAds(); router.refresh();
+  }
   const [note, setNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
   const [typed, setTyped] = useState("");
@@ -116,7 +153,7 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
   const waName = wa?.displayName?.replace(/\s*\(.*\)\s*$/, "") || "Your business";
   const waNum = wa?.displayName?.match(/\(([^)]+)\)/)?.[1] ?? null;
   const igOn = !!ig?.live;
-  const count = [waOn, igOn || channels.instagram, channels.ads].filter(Boolean).length;
+  const count = [waOn, igOn || channels.instagram, !!ads?.connected || channels.ads].filter(Boolean).length;
 
   return (
     <div className="pg-conn" data-testid="connections">
@@ -130,7 +167,7 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
           <div className="dots">
             <span className={`d green${waOn ? " on" : ""}`}><Icon name="whatsapp-logo" /></span>
             <span className={`d pink${igOn ? " on" : ""}`}><Icon name="instagram-logo" /></span>
-            <span className={`d orange${channels.ads ? " on" : ""}`}><Icon name="megaphone" /></span>
+            <span className={`d orange${ads?.connected || channels.ads ? " on" : ""}`}><Icon name="megaphone" /></span>
           </div>
           <b className="num">{count} of 3</b><small>connected</small>
         </div>
@@ -224,26 +261,66 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
         </section>
 
         {/* Meta ads */}
-        <section id="ads" className="card cc" data-state={channels.ads ? "on" : "soon"} data-testid="cc-ads">
+        <section id="ads" className="card cc" data-state={ads?.connected ? "on" : "ready"} data-testid="cc-ads">
           <div className="cc-h">
             <span className="icon-tile lg orange"><Icon name="megaphone" /></span>
             <span className="grow"><b>Meta Ads</b><small>Click-to-WhatsApp &amp; Instagram campaigns</small></span>
-            <span className={`pill sm ${channels.ads ? "ok" : "warn"}`}>{channels.ads ? "Connected" : "Coming soon"}</span>
+            <span className={`pill sm ${ads?.connected ? "ok" : "neutral"}`}>{ads === null ? "…" : ads.connected ? "Connected" : "Not connected"}</span>
           </div>
-          <ol className="cc-steps">
-            <li><b>Log in with Facebook</b><small>The account with access to your ad account</small></li>
-            <li><b>Choose an ad account</b><small>Billing stays with Meta — we never charge for ads</small></li>
-            <li><b>Launch from NextBiz Ads</b><small>Ads open a WhatsApp chat straight to your inbox</small></li>
-          </ol>
+          {ads?.connected && ads.account ? (
+            <>
+              <div className="cc-acct" style={{ background: "var(--ads-tint)", borderColor: "var(--ads-line)" }}>
+                <span className="av c2">{(ads.account.name ?? "AD").slice(0, 2).toUpperCase()}</span>
+                <span className="grow"><b className="trunc">{ads.account.name ?? "Ad account"}</b><small className="mono">{ads.account.id}</small></span>
+                <span className={`live${ads.account.live?.status === 1 ? "" : " off"}`}><span className="pulse" />{ads.account.live?.status === 1 ? "Active" : "Check account"}</span>
+              </div>
+              <ul className="cc-facts">
+                <li><Icon name="wallet" size="sm" /><span><b>{ads.account.live?.balanceLabel ?? "Billing with Meta"}</b> · spent so far ₹{Math.round(ads.account.live?.spent ?? 0).toLocaleString("en-IN")}</span></li>
+                <li><Icon name="shield-check" size="sm" /><span><b>Meta bills this ad account</b> directly — NextBiz One never charges for ad spend</span></li>
+                {ads.account.lastError && <li><Icon name="warning-circle" size="sm" /><span style={{ color: "var(--danger-deep)" }}>{ads.account.lastError}</span></li>}
+              </ul>
+            </>
+          ) : (
+            <ol className="cc-steps">
+              <li><b>Log in with Facebook</b><small>The account with access to your ad account</small></li>
+              <li><b>Choose an ad account</b><small>Billing stays with Meta — we never charge for ads</small></li>
+              <li><b>Run from NextBiz Ads</b><small>See spend and chats per campaign, pause or resume</small></li>
+            </ol>
+          )}
           <div className="cc-unl"><span className="eyebrow">Unlocks</span><span>Campaigns</span><span>Create campaign</span><span>Performance</span></div>
+          {pick && (
+            <div className="cc-pick" data-testid="ads-pick">
+              <span className="eyebrow">Choose an ad account</span>
+              {pick.length === 0 && <p className="xs faint" style={{ fontWeight: 600 }}>No ad accounts on this login. Create one in Meta Business Settings, then try again.</p>}
+              {pick.map((a) => (
+                <button key={a.id} className="pick-row" disabled={busy === "ads"} onClick={() => void connectAds(a.id)}>
+                  <span className="grow"><b>{a.name}</b><small className="mono">{a.id} · {a.currency}{a.business ? ` · ${a.business}` : ""}</small></span>
+                  <span className={`pill sm ${a.status === 1 ? "ok" : "warn"}`}>{a.status === 1 ? "Active" : "Inactive"}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="cc-f">
-            <div className="note info cc-note"><Icon name="hourglass" /><span>Ad account connect opens once Meta approves our ads access. You can explore NextBiz Ads with demo data meanwhile.</span></div>
+            {ads?.connected ? (
+              <><a className="btn btn-soft btn-sm" href="/ads"><Icon name="target" />Open campaigns</a><span className="sp" />
+                <button className="btn btn-ghost btn-sm" disabled={busy === "ads"} onClick={() => void disconnectAds()} data-testid="ads-disconnect">Disconnect</button></>
+            ) : (
+              <>
+                {ads?.canUseSystem && ads.systemAccounts.length > 0 && !pick && (
+                  <button className="btn btn-primary" onClick={() => setPick(ads.systemAccounts)} data-testid="ads-connect-system"><Icon name="plugs-connected" />Connect your ad account</button>
+                )}
+                {!ads?.canUseSystem && <button className="btn btn-primary" disabled={busy === "ads" || !ads?.appId} onClick={() => void loginAds()} data-testid="ads-connect"><Icon name="facebook-logo" />{busy === "ads" ? "Connecting…" : "Log in with Facebook"}</button>}
+                {ads?.canUseSystem && <button className="btn btn-ghost btn-sm" disabled={busy === "ads"} onClick={() => void loginAds()}><Icon name="facebook-logo" />Use a Facebook login</button>}
+              </>
+            )}
           </div>
-          <div className="cc-f" style={{ paddingTop: 0 }}>
-            {adsDemo
-              ? <><a className="btn btn-soft btn-sm" href="/ads"><Icon name="play-circle" />Open demo</a><span className="sp" /><a className="btn btn-ghost btn-sm" href="/api/ads/demo?on=0&next=/connections">Turn off demo</a></>
-              : <a className="btn btn-soft btn-sm" href="/api/ads/demo?on=1&next=/ads" data-testid="ads-demo"><Icon name="play-circle" />Explore with demo data</a>}
-          </div>
+          {!ads?.connected && (
+            <div className="cc-f" style={{ paddingTop: 0 }}>
+              {adsDemo
+                ? <><a className="btn btn-soft btn-sm" href="/ads"><Icon name="play-circle" />Open demo</a><span className="sp" /><a className="btn btn-ghost btn-sm" href="/api/ads/demo?on=0&next=/connections">Turn off demo</a></>
+                : <a className="btn btn-ghost btn-sm" href="/api/ads/demo?on=1&next=/ads" data-testid="ads-demo"><Icon name="play-circle" />Explore with demo data</a>}
+            </div>
+          )}
         </section>
       </div>
 

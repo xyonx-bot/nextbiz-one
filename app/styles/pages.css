@@ -1234,3 +1234,11 @@ a.post:hover img { transform: scale(1.05); } a.post:hover .ov { opacity: 1; }
 .pg-social .syncing { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-2xs); font-weight: 800; color: var(--social-deep); padding: 0 2px; }
 .pg-social .syncing .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--social); animation: sxpulse 1.2s ease-in-out infinite; }
 @keyframes sxpulse { 50% { opacity: .35; } }
+.pg-ads-campaigns .banner.live { background: var(--chat-tint); border-color: var(--chat-line); }
+.confirm-run { position: fixed; z-index: 96; left: 50%; bottom: 84px; transform: translateX(-50%); width: min(560px, calc(100vw - 24px)); display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--ads-line); box-shadow: var(--shadow-3); }
+.confirm-run b { display: block; font-size: var(--fs-sm); font-weight: 800; } .confirm-run small { display: block; font-size: var(--fs-xs); color: var(--ink-2); font-weight: 600; line-height: 1.4; }
+@media (max-width: 560px) { .confirm-run { flex-wrap: wrap; } .confirm-run .grow { flex-basis: calc(100% - 50px); } }
+.pg-conn .cc-pick { margin: 0 var(--pad) 4px; padding: 10px; border-radius: var(--r-md); background: var(--ads-tint); border: 1px solid var(--ads-line); display: flex; flex-direction: column; gap: 6px; }
+.pg-conn .pick-row { display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--clay); transition: transform .12s var(--ease); }
+.pg-conn .pick-row:hover { transform: translateY(-1px); border-color: var(--ads-line); }
+.pg-conn .pick-row b { display: block; font-size: var(--fs-sm); font-weight: 800; } .pg-conn .pick-row small { display: block; font-size: var(--fs-2xs); color: var(--ink-3); }
