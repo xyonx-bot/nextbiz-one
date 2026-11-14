@@ -1230,3 +1230,7 @@ a.post:hover img { transform: scale(1.05); } a.post:hover .ov { opacity: 1; }
   .ccomposer .seg .hint { text-align: left; flex-basis: 100%; padding: 6px 2px 0; }
 }
 }
+.pg-social .syncb.spin .i { animation: spin 1s linear infinite; }
+.pg-social .syncing { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-2xs); font-weight: 800; color: var(--social-deep); padding: 0 2px; }
+.pg-social .syncing .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--social); animation: sxpulse 1.2s ease-in-out infinite; }
+@keyframes sxpulse { 50% { opacity: .35; } }

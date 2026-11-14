@@ -64,7 +64,8 @@ const dur = (ms: number) => { const m = Math.max(0, Math.floor(ms / 60000)); con
 const ago = (iso: string) => dur(Date.now() - new Date(iso).getTime());
 const MEDIA: Record<string, [string, string]> = { image: ["image", "Photo"], video: ["play", "Video"], audio: ["microphone", "Voice message"], document: ["file-pdf", "Document"], sticker: ["smiley", "Sticker"], location: ["map-pin", "Location"] };
 
-export function InboxClient() {
+/** `only="ig"` = the Instagram DM inbox inside NextBiz Social: same inbox, Instagram threads only, no WhatsApp chips. */
+export function InboxClient({ only }: { only?: "ig" } = {}) {
   const [filter, setFilter] = useState<"all" | "unread" | "wa" | "ig">("all");
   // deep links: /inbox?ch=ig (NextBiz Social → Instagram DMs), /inbox?ch=wa
   useEffect(() => { const ch = new URLSearchParams(window.location.search).get("ch"); if (ch === "ig" || ch === "wa") setFilter(ch); }, []);
@@ -103,7 +104,7 @@ export function InboxClient() {
 
   const loadList = useCallback(async () => {
     const [wa, ig] = await Promise.all([
-      fetch(`/api/conversations?unread=${filter === "unread" ? 1 : 0}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null) as Promise<{ conversations?: Conv[] } | null>,
+      only === "ig" ? Promise.resolve(null) : fetch(`/api/conversations?unread=${filter === "unread" ? 1 : 0}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null) as Promise<{ conversations?: Conv[] } | null>,
       fetch("/api/instagram/threads", { cache: "no-store" }).then((r) => r.json()).catch(() => null) as Promise<{ threads?: IgThreadRow[] } | null>,
     ]);
     const waRows: Conv[] = (wa?.conversations ?? []).map((c) => ({ ...c, channel: "wa" }));
@@ -116,7 +117,7 @@ export function InboxClient() {
       .sort((a, b) => new Date(b.last_at ?? b.last_inbound_at ?? 0).getTime() - new Date(a.last_at ?? a.last_inbound_at ?? 0).getTime());
     setHasIg(igRows.length > 0);
     setConvs(all);
-  }, [filter]);
+  }, [filter, only]);
 
   /** Open a thread. `markRead` only when a person actually chose it — the desktop auto-open just previews
    *  the newest chat and must not silently clear its unread state. */
@@ -152,8 +153,12 @@ export function InboxClient() {
 
   useEffect(() => { void loadList(); }, [loadList]);
   // desktop: open the newest conversation so the thread is never an empty pane
+  // deep link ?open=<id> (e.g. "Open DM" from a comment) opens that chat as if clicked
   useEffect(() => {
-    if (!selected && convs && convs.length > 0 && window.matchMedia("(min-width: 768px)").matches) void open(convs[0].id, { focusThread: false, markRead: false });
+    if (selected || !convs || convs.length === 0) return;
+    const want = new URLSearchParams(window.location.search).get("open");
+    if (want && convs.some((c) => c.id === want)) { void open(want); return; }
+    if (window.matchMedia("(min-width: 768px)").matches) void open(convs[0].id, { focusThread: false, markRead: false });
   }, [convs, selected, open]);
   // keep list fresh + window countdown ticking
   useEffect(() => {
@@ -255,7 +260,7 @@ export function InboxClient() {
             <div className="chips">
               <button className={`chip${filter === "all" ? " on" : ""}`} onClick={() => setFilter("all")}>All {filter === "all" && convs && <span className="n">{convs.length}</span>}</button>
               <button className={`chip${filter === "unread" ? " on" : ""}`} onClick={() => setFilter("unread")}>Unread {filter === "all" && unreadTotal > 0 && <span className="n">{unreadTotal}</span>}</button>
-              {(hasIg || filter === "ig") && <>
+              {!only && (hasIg || filter === "ig") && <>
                 <button className={`chip${filter === "wa" ? " on" : ""}`} onClick={() => setFilter("wa")} data-testid="filter-wa"><Icon name="whatsapp-logo" />WhatsApp</button>
                 <button className={`chip${filter === "ig" ? " on" : ""}`} onClick={() => setFilter("ig")} data-testid="filter-ig"><Icon name="instagram-logo" />Instagram</button>
               </>}
@@ -426,6 +431,21 @@ export function InboxClient() {
           </div>
         </aside>
 
+        {only === "ig" ? (
+        <section className="zero" aria-label="No Instagram DMs yet">
+          <div className="zero-in" style={{ gridTemplateColumns: "1fr" }}>
+            <div>
+              <span className="pill ok">Instagram connected</span>
+              <h2 style={{ marginTop: 12 }}>No Instagram DMs yet.</h2>
+              <p>When someone messages your Instagram account, the chat lands here — reply right from this screen, within Instagram&apos;s 24-hour window.</p>
+              <div className="row" style={{ marginTop: 20, gap: 8, flexWrap: "wrap" }}>
+                <a className="btn btn-primary" href="/social/automation"><Icon name="lightning" />Set up a welcome DM</a>
+                <a className="btn btn-soft" href="/social/comments"><Icon name="chat-teardrop-text" />Go to comments</a>
+              </div>
+            </div>
+          </div>
+        </section>
+        ) : (
         <section className="zero" aria-label="No conversations yet">
           <div className="zero-in">
             <div>
@@ -446,6 +466,7 @@ export function InboxClient() {
               <div className="ph-body"><span>Hi 👋</span><span className="in">Hi! Thanks for reaching out — how can we help?</span></div></div>
           </div>
         </section>
+        )}
       </div>
     </div>
   );

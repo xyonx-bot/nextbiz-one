@@ -13,7 +13,7 @@ import type { ShellData } from "@/lib/shell";
 export type ShellActive =
   | "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts" | "automation" | "settings" | "connections"
   | "ads" | "ads-new" | "ads-perf"
-  | "social" | "social-comments";
+  | "social" | "social-comments" | "social-dms" | "social-auto";
 
 type Item = { key: ShellActive; label: string; icon: string; href: string };
 const CHAT: Item[] = [
@@ -28,11 +28,11 @@ const ADS: Item[] = [
   { key: "ads-new", label: "Create campaign", icon: "plus", href: "/ads/new" },
   { key: "ads-perf", label: "Performance", icon: "chart-line-up", href: "/ads/performance" },
 ];
-const SOCIAL: (Omit<Item, "key"> & { key: ShellActive | "social-dms" | "social-auto" })[] = [
+const SOCIAL: Item[] = [
   { key: "social", label: "Overview", icon: "squares-four", href: "/social" },
   { key: "social-comments", label: "Comments", icon: "chat-teardrop-text", href: "/social/comments" },
-  { key: "social-dms", label: "Instagram DMs", icon: "paper-plane-tilt", href: "/inbox?ch=ig" },
-  { key: "social-auto", label: "Auto-replies", icon: "lightning", href: "/automation" },
+  { key: "social-dms", label: "Instagram DMs", icon: "paper-plane-tilt", href: "/social/dms" },
+  { key: "social-auto", label: "Auto-replies", icon: "lightning", href: "/social/automation" },
 ];
 const LOGO = "/logo.png";
 
@@ -80,7 +80,7 @@ export function ShellClient({
   const items = mod === "ads" ? ADS : mod === "social" ? SOCIAL : CHAT;
   const modName = mod === "ads" ? "NextBiz Ads" : mod === "social" ? "NextBiz Social" : "NextBiz Chat";
   const waNumber = data.wa?.displayName?.match(/\(([^)]+)\)/)?.[1] ?? null;
-  const inMore = ["templates", "automation", "settings", "connections", "social", "social-comments", "ads", "ads-new", "ads-perf"].includes(active);
+  const inMore = ["templates", "automation", "settings", "connections", "social", "social-comments", "social-dms", "social-auto", "ads", "ads-new", "ads-perf"].includes(active);
 
   return (
     <div

@@ -5,6 +5,7 @@ import { PairBars } from "@/components/Charts";
 import { getShellData } from "@/lib/shell";
 import { listComments, mediaFor, recentDmThreads, socialAccount, socialPosts, socialProfile, socialStats, commentCounts } from "@/lib/social";
 import { avatarClass } from "@/lib/ui";
+import { syncIfStale } from "@/lib/ig-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,8 @@ export default async function SocialPage() {
   if (!acct) {
     return <AppShell active="social" requires="social" title="Overview"><div /></AppShell>;
   }
+  // pull fresh comments from Instagram first (throttled), so the numbers below are complete
+  await syncIfStale(wsId).catch(() => null);
   const [profile, posts, stats, counts, needs, dms] = await Promise.all([
     socialProfile(acct), socialPosts(acct, 12), socialStats(wsId), commentCounts(wsId), listComments(wsId, { filter: "needs", limit: 5 }), recentDmThreads(wsId, 5),
   ]);
@@ -63,7 +66,7 @@ export default async function SocialPage() {
           </div>
           <div className="sx-acts">
             <a className="btn btn-primary" href="/social/comments?filter=needs" data-testid="sx-needs-btn"><Icon name="chat-teardrop-text" />{counts.needs ? `${counts.needs} need${counts.needs === 1 ? "s" : ""} a reply` : "All caught up"}</a>
-            <a className="btn btn-soft" href="/inbox?ch=ig"><Icon name="paper-plane-tilt" />Instagram DMs</a>
+            <a className="btn btn-soft" href="/social/dms"><Icon name="paper-plane-tilt" />Instagram DMs</a>
             <a className="btn btn-ghost" href={`https://www.instagram.com/${user}/`} target="_blank" rel="noreferrer"><Icon name="arrow-square-out" />Open profile</a>
           </div>
         </section>
@@ -98,14 +101,14 @@ export default async function SocialPage() {
               <li><span className={`dotx ${stats.rules.dm ? "on" : ""}`} /><span className="grow"><b>Keyword replies in DMs</b><small>Rules with “Instagram DM” on</small></span><span className="cnt num">{stats.rules.dm ?? 0}</span></li>
               <li><span className={`dotx ${stats.rules.comment ? "on" : ""}`} /><span className="grow"><b>Comment → DM rules</b><small>Private reply, optional public reply</small></span><span className="cnt num">{stats.rules.comment ?? 0}</span></li>
             </ul>
-            <div style={{ padding: "0 var(--pad) var(--pad)" }}><a className="btn btn-soft btn-sm" href="/automation" style={{ width: "100%", justifyContent: "center" }}><Icon name="lightning" />Manage auto-replies</a></div>
+            <div style={{ padding: "0 var(--pad) var(--pad)" }}><a className="btn btn-soft btn-sm" href="/social/automation" style={{ width: "100%", justifyContent: "center" }}><Icon name="lightning" />Manage auto-replies</a></div>
           </section>
         </div>
 
         {/* posts */}
         <section className="card sx-posts">
           <div className="card-h"><span className="grow"><span className="h2">Recent posts</span><small className="xs faint" style={{ display: "block", fontWeight: 600 }}>Tap a post to see and answer its comments</small></span>
-            <a className="btn btn-ghost btn-sm" href="/social/comments">All comments<Icon name="arrow-right" /></a></div>
+            <a className="btn btn-ghost btn-sm" href="/social/comments?filter=all" data-testid="sx-all-comments">All comments<Icon name="arrow-right" /></a></div>
           {posts.length ? (
             <div className="pgrid">
               {posts.map((p) => (
@@ -139,9 +142,9 @@ export default async function SocialPage() {
             }) : <div className="empty" style={{ padding: "22px 16px" }}><div className="art"><Icon name="check-circle" /></div><h3>All caught up</h3><p>New comments that no rule answered land here.</p></div>}
           </section>
           <section className="card sx-list">
-            <div className="card-h"><span className="grow"><span className="h2">Latest DMs</span></span><a className="btn btn-ghost btn-sm" href="/inbox?ch=ig">Inbox<Icon name="arrow-right" /></a></div>
+            <div className="card-h"><span className="grow"><span className="h2">Latest DMs</span></span><a className="btn btn-ghost btn-sm" href="/social/dms">Inbox<Icon name="arrow-right" /></a></div>
             {dms.length ? dms.map((t) => (
-              <a key={t.id} className={`sx-row${t.unread ? " unread" : ""}`} href="/inbox?ch=ig">
+              <a key={t.id} className={`sx-row${t.unread ? " unread" : ""}`} href={`/social/dms?open=ig:${t.id}`}>
                 <span className={`av ${avatarClass(t.id)}`}>{(t.username ?? t.name ?? "?").replace(/^@/, "").slice(0, 2).toUpperCase()}</span>
                 <span className="grow"><b>{handle(t.username, t.name ?? "Instagram user")}</b><small className="trunc" style={{ display: "block" }}>{t.direction === "out" ? "You: " : ""}{t.body ?? "(media)"}</small></span>
                 <span className="tm">{ago(t.created_at)}</span>

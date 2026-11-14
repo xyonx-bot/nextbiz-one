@@ -11,8 +11,11 @@ import { Icon } from "@/components/Icon";
 type Rule = { id: string; name: string; keywords: string[]; reply: string; enabled: boolean; send_once: boolean; fired_count: number; last_fired_at: string | null;
   on_whatsapp: boolean; on_instagram_dm: boolean; on_instagram_comment: boolean; comment_public_reply: string | null };
 type Settings = { welcome_enabled: boolean; welcome_text: string; away_enabled: boolean; away_text: string | null; business_hours: Record<string, [string, string]> } | null;
+type RawSettings = (NonNullable<Settings> & { ig_welcome_enabled?: boolean; ig_welcome_text?: string | null; ig_away_enabled?: boolean; ig_away_text?: string | null }) | null;
+export type AutoChannel = "whatsapp" | "instagram";
+const IG_WELCOME = "Hi! Thanks for the message 💬 We'll get back to you shortly.";
 type Faq = { id: string; question: string; answer: string };
-type LogRow = { type: string; status: string; created_at: string; rule_id: string | null };
+type LogRow = { type: string; status: string; created_at: string; rule_id: string | null; detail?: string | null };
 type Draft = { id?: string; name: string; keywords: string[]; reply: string; enabled: boolean; sendOnce: boolean;
   onWhatsapp: boolean; onInstagramDm: boolean; onInstagramComment: boolean; commentPublicReply: string };
 const NEW_DRAFT = (over: Partial<Draft> = {}): Draft => ({ name: "", keywords: [], reply: "", enabled: true, sendOnce: true, onWhatsapp: true, onInstagramDm: false, onInstagramComment: false, commentPublicReply: "", ...over });
@@ -25,8 +28,17 @@ const toH = (t: string) => { const [h, m] = t.split(":").map(Number); return h +
 const fmtH = (t: string) => { const [h, m] = t.split(":").map(Number); const ap = h >= 12 ? "p" : "a"; const hh = h % 12 || 12; return `${hh}${m ? ":" + String(m).padStart(2, "0") : ""}${ap}`; };
 const json = (method: string, url: string, b?: unknown) => fetch(url, { method, headers: { "Content-Type": "application/json" }, body: b === undefined ? undefined : JSON.stringify(b) }).then((r) => r.json().catch(() => null));
 
-export function AutomationClient() {
-  const [settings, setSettings] = useState<Settings>(null);
+/**
+ * One automation engine, one page per channel: Chat → Automation shows WhatsApp (rules with WhatsApp on,
+ * WhatsApp welcome/away); NextBiz Social → Auto-replies shows Instagram (DM + comment rules, Instagram's own
+ * welcome/away). A rule can still run on both — it then appears on both pages.
+ */
+export function AutomationClient({ channel = "whatsapp" }: { channel?: AutoChannel }) {
+  const ig = channel === "instagram";
+  const [raw, setRaw] = useState<RawSettings>(null);
+  const settings: Settings = raw ? (ig
+    ? { welcome_enabled: !!raw.ig_welcome_enabled, welcome_text: raw.ig_welcome_text || IG_WELCOME, away_enabled: !!raw.ig_away_enabled, away_text: raw.ig_away_text ?? raw.away_text, business_hours: raw.business_hours }
+    : raw) : null;
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [faq, setFaq] = useState<Faq[]>([]);
   const [log, setLog] = useState<LogRow[]>([]);
@@ -43,16 +55,20 @@ export function AutomationClient() {
 
   const load = useCallback(async () => {
     const d = await fetch("/api/automation", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
-    if (d?.ok) { setSettings(d.settings); setRules(d.rules ?? []); setFaq(d.faq ?? []); setLog(d.log ?? []); }
-    else setRules([]);
-  }, []);
+    if (d?.ok) {
+      setRaw(d.settings);
+      setRules((d.rules ?? []).filter((r: Rule) => ig ? (r.on_instagram_dm || r.on_instagram_comment) : r.on_whatsapp !== false));
+      setFaq(d.faq ?? []);
+      setLog((d.log ?? []).filter((l: LogRow) => ig === (l.detail ?? "").startsWith("[instagram]")));
+    } else setRules([]);
+  }, [ig]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (note) { const t = setTimeout(() => setNote(null), 3500); return () => clearTimeout(t); } }, [note]);
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === "Escape" && setDraft(null); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
 
   const flash = (ok: boolean, text: string) => setNote({ kind: ok ? "ok" : "bad", text });
   async function putSettings(b: Record<string, unknown>, ok = "Saved") {
-    setBusy(true); const d = await json("PUT", "/api/automation/settings", b); setBusy(false);
+    setBusy(true); const d = await json("PUT", "/api/automation/settings", { ...b, channel }); setBusy(false);
     flash(!!d?.ok, d?.ok ? ok : d?.error ?? "Couldn't save"); if (d?.ok) await load(); return !!d?.ok;
   }
   async function saveRule() {
@@ -77,7 +93,7 @@ export function AutomationClient() {
   async function toggleRule(r: Rule) { await json("PATCH", `/api/automation/rules/${r.id}`, { enabled: !r.enabled }); await load(); }
   async function runTest() {
     if (!testText.trim()) return;
-    const d = await json("POST", "/api/automation/rules/test", { text: testText });
+    const d = await json("POST", "/api/automation/rules/test", { text: testText, channel });
     setTestRes(d ? { matched: !!d.matched, rule: d.rule, keyword: d.keyword } : null);
   }
   async function addFaq() {
@@ -102,16 +118,16 @@ export function AutomationClient() {
       <div className="page" data-testid="automation">
         <div className="note info" style={{ background: "var(--surface)", border: "1px solid var(--line)", boxShadow: "var(--shadow-1)", color: "var(--ink-2)", padding: "12px 14px" }}>
           <span className="icon-tile sm grape"><Icon name="hand" /></span>
-          <span style={{ flex: 1 }}><b>Automation steps aside when you reply.</b> On WhatsApp and Instagram, the moment you answer a chat yourself, auto-replies pause for that conversation — customers never get a bot reply in the middle of your conversation.</span>
+          <span style={{ flex: 1 }}><b>Automation steps aside when you reply.</b> {ig ? "On Instagram, the moment you answer a DM yourself (here or in the Instagram app)" : "On WhatsApp, the moment you answer a chat yourself"}, auto-replies pause for that conversation — customers never get a bot reply in the middle of your conversation.</span>
         </div>
         <div className="cols">
           <div className="stackc">
             <section className="card">
               <div className="rule-h"><span className="icon-tile green"><Icon name="hand" /></span>
-                <span className="grow"><b>Welcome message</b><small>Sent once, the first time someone messages you</small></span>
+                <span className="grow"><b>{ig ? "Welcome DM" : "Welcome message"}</b><small>{ig ? "Sent once, the first time someone DMs you on Instagram" : "Sent once, the first time someone messages you on WhatsApp"}</small></span>
                 <button className={`tog${settings?.welcome_enabled ? " on" : ""}`} role="switch" aria-checked={!!settings?.welcome_enabled} aria-label="Welcome message" onClick={() => void putSettings({ welcomeEnabled: !settings?.welcome_enabled }, settings?.welcome_enabled ? "Welcome message off" : "Welcome message on")} data-testid="welcome-toggle" /></div>
               {welcomeEdit === null ? (
-                <div className="convo"><div className="b-in">Hi, I need a website for my bakery</div>
+                <div className="convo"><div className="b-in">{ig ? "hey! do you ship to Pune?" : "Hi, I need a website for my bakery"}</div>
                   <div className="b-out"><span className="tag-auto"><Icon name="lightning" size="xs" />Auto-reply</span>{settings?.welcome_text ?? "Hi! Thanks for reaching out — we usually reply within a day."}</div></div>
               ) : (
                 <div style={{ padding: "0 var(--pad)" }}><textarea className="textarea" rows={4} value={welcomeEdit} onChange={(e) => setWelcomeEdit(e.target.value.slice(0, 1024))} aria-label="Welcome message text" autoFocus /><span className="hint">{welcomeEdit.length} / 1024</span></div>
@@ -128,7 +144,7 @@ export function AutomationClient() {
                 <div className="seg">{(["all", "on", "off"] as const).map((t) => <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "all" ? "All" : t === "on" ? "On" : "Off"} {t === "all" ? rules?.length ?? 0 : (rules ?? []).filter((r) => (t === "on") === r.enabled).length}</button>)}</div></div>
               {rules && rules.length === 0 ? (
                 <div className="empty"><div className="art"><Icon name="lightning" /></div><h3>Answer common questions instantly</h3><p>Reply automatically when a message contains words like “price”, “timing” or “address”.</p>
-                  <div className="acts"><button className="btn btn-primary" onClick={() => setDraft(NEW_DRAFT({ name: "Price inquiries", keywords: ["price", "cost", "rate"] }))}><Icon name="plus" />Add keyword reply</button></div></div>
+                  <div className="acts"><button className="btn btn-primary" onClick={() => setDraft(NEW_DRAFT({ ...(ig ? { onWhatsapp: false, onInstagramDm: true, onInstagramComment: true } : {}), name: "Price inquiries", keywords: ["price", "cost", "rate"] }))}><Icon name="plus" />Add keyword reply</button></div></div>
               ) : (
                 <>
                   <div className="khead"><span /><span>When message contains</span><span>Reply</span><span style={{ textAlign: "right" }}>Fired</span><span /></div>
@@ -146,7 +162,7 @@ export function AutomationClient() {
                       </div>
                     ))}
                   </div>
-                  <div className="card-f"><span className="xs faint grow" style={{ fontWeight: 600 }}>First match wins · not case-sensitive</span><button className="btn btn-soft btn-sm" onClick={() => setDraft(NEW_DRAFT())} data-testid="add-rule"><Icon name="plus" />Add keyword reply</button></div>
+                  <div className="card-f"><span className="xs faint grow" style={{ fontWeight: 600 }}>First match wins · not case-sensitive</span><button className="btn btn-soft btn-sm" onClick={() => setDraft(NEW_DRAFT(ig ? { onWhatsapp: false, onInstagramDm: true, onInstagramComment: true } : {}))} data-testid="add-rule"><Icon name="plus" />Add keyword reply</button></div>
                 </>
               )}
             </section>
