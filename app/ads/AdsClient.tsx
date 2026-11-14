@@ -9,7 +9,7 @@ import { Icon } from "@/components/Icon";
  */
 type Camp = {
   id: string; name: string; objective: string; status: "ACTIVE" | "PAUSED" | "IN_REVIEW" | "DRAFT" | "CANCELLED";
-  daily_budget: number; start_time: string | null; stop_time: string | null; destination: "whatsapp" | "website" | null; source: "demo" | "draft";
+  daily_budget: number; start_time: string | null; stop_time: string | null; destination: "whatsapp" | "website" | null; source: "demo" | "draft" | "live";
   insights: { spend: number; impressions: number; reach: number; clicks: number; results: number; cost_per_result: number };
 };
 const OBJ: Record<string, string> = { OUTCOME_ENGAGEMENT: "WhatsApp messages", OUTCOME_TRAFFIC: "Website visits", OUTCOME_LEADS: "Lead signups", OUTCOME_SALES: "Catalog sales", OUTCOME_AWARENESS: "Brand awareness" };
@@ -23,15 +23,21 @@ export function AdsClient({ initialStatus }: { initialStatus?: string | null }) 
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Camp | null>(null);
   const [note, setNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
+  const [mode, setMode] = useState<{ demo: boolean; account: { id: string; name: string | null } | null; error: string | null }>({ demo: true, account: null, error: null });
+  const [confirmRun, setConfirmRun] = useState<Camp | null>(null);
 
   const load = useCallback(async () => {
     const d = await fetch("/api/ads/campaigns", { cache: "no-store" }).then((r) => r.json()).catch(() => null);
     setList(d?.campaigns ?? []);
+    setMode({ demo: d?.demo !== false && !d?.account, account: d?.account ?? null, error: d?.ok ? null : d?.error ?? null });
   }, []);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (note) { const t = setTimeout(() => setNote(null), 4000); return () => clearTimeout(t); } }, [note]);
 
   async function setStatus(c: Camp, status: "active" | "paused" | "cancelled") {
+    // resuming a live campaign starts real spend on the ad account — confirm first
+    if (c.source === "live" && status === "active" && confirmRun?.id !== c.id) { setConfirmRun(c); return; }
+    setConfirmRun(null);
     const res = await fetch(`/api/ads/campaigns/${c.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
     const d = await res.json().catch(() => null);
     setNote(res.ok && d?.ok !== false ? { kind: "ok", text: `${c.name} ${status === "active" ? "resumed" : status}` } : { kind: "bad", text: d?.error ?? "Couldn't update the campaign" });
@@ -46,9 +52,11 @@ export function AdsClient({ initialStatus }: { initialStatus?: string | null }) 
   return (
     <div className="pg-ads-campaigns">
       <div className="page azone" data-testid="ads-campaigns">
-        <div className="banner"><span className="icon-tile orange"><Icon name="info" /></span><span className="grow"><b>You&apos;re looking at demo data.</b> Connect a Meta ad account with a payment method to run real click-to-WhatsApp campaigns.</span><a className="btn btn-soft btn-sm" href="/settings#channels">Ad account</a></div>
+        {mode.demo
+          ? <div className="banner"><span className="icon-tile orange"><Icon name="info" /></span><span className="grow"><b>You&apos;re looking at demo data.</b> Connect a Meta ad account with a payment method to run real click-to-WhatsApp campaigns.</span><a className="btn btn-soft btn-sm" href="/connections#ads">Connect ad account</a></div>
+          : <div className="banner live" data-testid="ads-live-banner"><span className="icon-tile green"><Icon name="check-circle" /></span><span className="grow"><b>Live from Meta · {mode.account?.name ?? "Ad account"}</b> <span className="mono xs faint">{mode.account?.id}</span>{mode.error ? <span className="xs" style={{ color: "var(--danger-deep)", display: "block" }}>{mode.error}</span> : <span className="xs faint" style={{ display: "block", fontWeight: 600 }}>Spend is billed by Meta to this ad account. Numbers are the last 7 days.</span>}</span><a className="btn btn-soft btn-sm" href="/connections#ads">Manage</a></div>}
         <div className="strip">
-          <div className="card"><span>Spend <span className="demo">Demo</span></span><b>{inr(tot.spend)}</b><small>across {list?.length ?? 0} campaigns</small></div>
+          <div className="card"><span>Spend {mode.demo ? <span className="demo">Demo</span> : <span className="xs faint">7 days</span>}</span><b>{inr(tot.spend)}</b><small>across {list?.length ?? 0} campaigns</small></div>
           <div className="card"><span>Results</span><b>{tot.results.toLocaleString("en-IN")}</b><small>chats, leads, visits or sales</small></div>
           <div className="card"><span>Cost per result</span><b>{tot.results ? inr(tot.spend / tot.results) : "—"}</b><small>average across campaigns</small></div>
           <div className="card"><span>Active daily budget</span><b>{inr(tot.budget)}</b><small>{counts.ACTIVE ?? 0} active campaigns</small></div>
@@ -65,7 +73,7 @@ export function AdsClient({ initialStatus }: { initialStatus?: string | null }) 
                 {list && shown.length === 0 && <tr><td colSpan={8}><div className="empty"><p>No campaigns here.</p><div className="acts"><a className="btn btn-primary btn-sm" href="/ads/new">Create a campaign</a></div></div></td></tr>}
                 {shown.map((c, i) => (
                   <tr key={c.id} className={`crow${sel?.id === c.id ? " on" : ""}`} data-testid={`crow-${c.source}-${c.id}`} onClick={() => setSel(c)}>
-                    <td><div className="row" style={{ gap: 10 }}><span className={`thumb ${THUMB[i % 4]}`}><Icon name={c.destination === "whatsapp" ? "whatsapp-logo" : "image"} /></span><span className="cname"><b>{c.name}</b><small>{c.source === "demo" ? "Demo campaign" : "Your draft"}</small></span></div></td>
+                    <td><div className="row" style={{ gap: 10 }}><span className={`thumb ${THUMB[i % 4]}`}><Icon name={c.destination === "whatsapp" ? "whatsapp-logo" : "image"} /></span><span className="cname"><b>{c.name}</b><small>{c.source === "demo" ? "Demo campaign" : c.source === "live" ? "On Meta" : "Draft in NextBiz One"}</small></span></div></td>
                     <td><span className={`pill sm ${ST[c.status]?.[0] ?? "neutral"}`}>{ST[c.status]?.[1] ?? c.status}</span></td>
                     <td className="col-obj small muted" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{OBJ[c.objective] ?? c.objective}</td>
                     <td className="col-bud"><div className="bud numc">{inr(c.daily_budget)}<div className="meter"><span style={{ width: `${c.daily_budget ? Math.min(100, (c.insights.spend / Math.max(1, c.daily_budget * 30)) * 100) : 0}%` }} /></div></div></td>
@@ -73,7 +81,7 @@ export function AdsClient({ initialStatus }: { initialStatus?: string | null }) 
                     <td className="r numc col-res">{c.insights.results ? c.insights.results.toLocaleString("en-IN") : "—"}</td>
                     <td className="r numc col-cpr">{c.insights.cost_per_result ? inr(c.insights.cost_per_result) : "—"}</td>
                     <td className="r" onClick={(e) => e.stopPropagation()}>
-                      {c.source === "draft" && (c.status === "ACTIVE" || c.status === "PAUSED")
+                      {c.source !== "demo" && (c.status === "ACTIVE" || c.status === "PAUSED")
                         ? <button className={`tog${c.status === "ACTIVE" ? " on" : ""}`} role="switch" aria-checked={c.status === "ACTIVE"} aria-label={c.status === "ACTIVE" ? "Pause" : "Resume"} onClick={() => void setStatus(c, c.status === "ACTIVE" ? "paused" : "active")} />
                         : <Icon name="caret-right" style={{ color: "var(--ink-4)" }} />}
                     </td>
@@ -91,11 +99,11 @@ export function AdsClient({ initialStatus }: { initialStatus?: string | null }) 
             <div className="dh cd-head" style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: 18, borderBottom: "1px solid var(--line)" }}>
               <span className="icon-tile lg orange"><Icon name="megaphone" /></span>
               <div className="grow tt"><b style={{ display: "block", fontSize: "var(--fs-xl)", fontWeight: 800, letterSpacing: "-.02em" }}>{sel.name}</b><span className="small muted" style={{ fontWeight: 600 }}>{OBJ[sel.objective]} · {sel.destination === "whatsapp" ? "opens a WhatsApp chat" : "sends people to your website"}</span></div>
-              <span className={`pill ${ST[sel.status][0]}`}>{ST[sel.status][1]}</span><span className="demo">Demo</span>
+              <span className={`pill ${ST[sel.status][0]}`}>{ST[sel.status][1]}</span>{sel.source === "demo" && <span className="demo">Demo</span>}{sel.source === "live" && <span className="pill sm ok">On Meta</span>}
               <button className="btn btn-ghost btn-icon" onClick={() => setSel(null)} aria-label="Close"><Icon name="x" /></button>
             </div>
             <div className="cd-body" style={{ flex: 1, overflow: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
-              <div className="eyebrow">Insights · last 30 days</div>
+              <div className="eyebrow">Insights · last {sel.source === "live" ? "7" : "30"} days</div>
               <div className="mini" data-testid="insights-wells" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 {([["Spend", inr(sel.insights.spend)], ["Reach", sel.insights.reach.toLocaleString("en-IN")], ["Clicks", sel.insights.clicks.toLocaleString("en-IN")], ["Results", sel.insights.results.toLocaleString("en-IN")]] as const).map(([k, v]) => (
                   <div key={k} className="well" style={{ padding: 12 }}><span className="eyebrow">{k}</span><div className="d h2 num">{v}</div></div>))}
@@ -108,7 +116,8 @@ export function AdsClient({ initialStatus }: { initialStatus?: string | null }) 
               <a className="btn btn-soft btn-sm" href="/ads/performance"><Icon name="chart-line-up" />Performance</a><span className="sp" />
               {sel.source === "demo" ? <span className="xs faint" style={{ fontWeight: 600 }}>Demo campaigns are read-only</span> : (
                 <>
-                  {sel.status !== "CANCELLED" && <button className="btn btn-danger btn-sm" onClick={() => void setStatus(sel, "cancelled")}>Cancel campaign</button>}
+                  {sel.source !== "live" && sel.status !== "CANCELLED" && <button className="btn btn-danger btn-sm" onClick={() => void setStatus(sel, "cancelled")}>Cancel campaign</button>}
+                  {sel.source === "live" && <a className="btn btn-ghost btn-sm" href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${(mode.account?.id ?? "").replace("act_", "")}&selected_campaign_ids=${sel.id}`} target="_blank" rel="noreferrer"><Icon name="arrow-square-out" />Ads Manager</a>}
                   {sel.status === "ACTIVE" && <button className="btn btn-soft btn-sm" onClick={() => void setStatus(sel, "paused")}><Icon name="pause" />Pause</button>}
                   {sel.status === "PAUSED" && <button className="btn btn-primary btn-sm" onClick={() => void setStatus(sel, "active")}><Icon name="play" />Resume</button>}
                 </>
@@ -117,6 +126,14 @@ export function AdsClient({ initialStatus }: { initialStatus?: string | null }) 
           </>
         )}
       </aside>
+      {confirmRun && (
+        <div className="confirm-run" role="alertdialog" aria-label="Start spending?" data-testid="confirm-run">
+          <span className="icon-tile orange"><Icon name="currency-inr" /></span>
+          <span className="grow"><b>Resume “{confirmRun.name}”?</b><small>It starts spending up to {inr(confirmRun.daily_budget)} a day from {mode.account?.name ?? "your ad account"}. Meta bills the ad account directly.</small></span>
+          <button className="btn btn-ghost btn-sm" onClick={() => setConfirmRun(null)}>Keep paused</button>
+          <button className="btn btn-primary btn-sm" onClick={() => void setStatus(confirmRun, "active")} data-testid="confirm-run-yes"><Icon name="play" />Resume</button>
+        </div>
+      )}
       {note && <div role="status" style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "var(--surface)", border: `1px solid ${note.kind === "ok" ? "var(--chat-line)" : "var(--danger-line)"}`, color: note.kind === "ok" ? "var(--chat-deep)" : "var(--danger-deep)", boxShadow: "var(--shadow-2)", borderRadius: 999, padding: "9px 16px", fontSize: 12, fontWeight: 700, zIndex: 95 }}>{note.text}</div>}
     </div>
   );

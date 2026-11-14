@@ -14,6 +14,7 @@ export type ShellData = {
   /** Which channels this workspace has connected — pages show a guided setup state for the missing ones. */
   channels: { whatsapp: boolean; instagram: boolean; ads: boolean };
   ig: { username: string | null; picture: string | null } | null;
+  adAccount: { id: string; name: string | null } | null;
 };
 
 export function initialsOf(name: string) {
@@ -27,7 +28,7 @@ export async function getShellData(): Promise<ShellData> {
   const wsId = user?.workspaceId ?? null;
   const p = getPool();
   const none = { rows: [] as Record<string, never>[] };
-  const [unread, ws, wa, ig] = wsId ? await Promise.all([
+  const [unread, ws, wa, ig, ads] = wsId ? await Promise.all([
     p.query(
       `SELECT count(*)::int AS n FROM messages m
          JOIN conversations c ON c.id = m.conversation_id
@@ -36,7 +37,8 @@ export async function getShellData(): Promise<ShellData> {
     p.query(`SELECT name FROM workspaces WHERE id = $1`, [wsId]).catch(() => none),
     p.query(`SELECT display_name, status FROM waba_connections WHERE workspace_id = $1 ORDER BY (status = 'connected') DESC, created_at DESC LIMIT 1`, [wsId]).catch(() => none),
     p.query(`SELECT username, profile_picture_url FROM ig_accounts WHERE workspace_id = $1 AND live ORDER BY updated_at DESC LIMIT 1`, [wsId]).catch(() => none),
-  ]) : [{ rows: [{ n: 0 }] }, none, none, none];
+    p.query(`SELECT ad_account_id, name FROM ads_connections WHERE workspace_id = $1`, [wsId]).catch(() => none),
+  ]) : [{ rows: [{ n: 0 }] }, none, none, none, none];
   const w = wa.rows[0] as { display_name: string | null; status: string } | undefined;
   const waConnected = w?.status === "connected";
   return {
@@ -48,8 +50,8 @@ export async function getShellData(): Promise<ShellData> {
     // the business name customers know comes from the WhatsApp connection; else the workspace name
     workspaceName: w?.display_name?.replace(/\s*\(.*\)\s*$/, "").trim() || (ws.rows[0] as { name?: string } | undefined)?.name || "My workspace",
     wa: w ? { displayName: w.display_name ?? null, connected: waConnected } : null,
-    // Ads: no live ad-account connection exists yet (Marketing API pending) — always the guided state
-    channels: { whatsapp: waConnected, instagram: ig.rows.length > 0, ads: false },
+    channels: { whatsapp: waConnected, instagram: ig.rows.length > 0, ads: ads.rows.length > 0 },
+    adAccount: ads.rows[0] ? { id: (ads.rows[0] as { ad_account_id: string }).ad_account_id, name: (ads.rows[0] as { name: string | null }).name } : null,
     ig: ig.rows[0] ? { username: (ig.rows[0] as { username: string | null }).username, picture: (ig.rows[0] as { profile_picture_url: string | null }).profile_picture_url } : null,
   };
 }

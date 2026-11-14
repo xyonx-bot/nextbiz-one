@@ -37,7 +37,7 @@ export type AdsCampaign = {
   start_time: string | null;
   stop_time: string | null;
   destination: "whatsapp" | "website" | null;
-  source: "demo" | "draft"; // demo fixtures are read-only; drafts are user rows
+  source: "demo" | "draft" | "live"; // demo fixtures are read-only; drafts are user rows; live = the connected Meta ad account
   insights: {
     spend: number; impressions: number; reach: number; clicks: number;
     results: number; cost_per_result: number; // INR, 2dp
@@ -129,7 +129,7 @@ export type PerformanceReport = {
   prev_totals: { spend: number; impressions: number; reach: number; clicks: number; results: number; cost_per_result: number };
   series: PerformancePoint[];
   currency: "INR";
-  demo: true;
+  demo: boolean;
 };
 
 /** Aggregate performance (P2.3) over the last N days, deterministic split. */

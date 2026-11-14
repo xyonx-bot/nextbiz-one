@@ -113,6 +113,12 @@ test.describe.serial("workspace isolation", () => {
     await expect(page.getByTestId("cc-instagram")).toBeVisible();
     await expect(page.getByTestId("cc-ads")).toBeVisible();
     await expect(page.getByTestId("cc-whatsapp")).toHaveAttribute("data-state", /ready|soon/);
+    // a client can't borrow the platform's own ad account access
+    const sys = await page.request.post("/api/ads/connection", { data: { mode: "system", adAccountId: "act_1724784822411857" } });
+    expect(sys.status()).toBe(403);
+    const ac = (await (await page.request.get("/api/ads/connection")).json()) as { connected: boolean; canUseSystem: boolean; systemAccounts: unknown[] };
+    expect(ac).toMatchObject({ connected: false, canUseSystem: false });
+    expect(ac.systemAccounts).toEqual([]);
     // Embedded Signup completion refuses without config / with junk input — never touches another workspace
     const es = await page.request.post("/api/whatsapp/embedded-signup", { data: { code: "x".repeat(20) } });
     expect([409, 502]).toContain(es.status());

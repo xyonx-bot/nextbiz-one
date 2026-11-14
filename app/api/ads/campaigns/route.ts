@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
 import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 import { draftToCampaign, filterCampaigns, seedCampaigns } from "@/lib/ads";
+import { adsConnection, liveCampaigns } from "@/lib/meta-ads";
 
 
 const Create = z.object({
@@ -31,6 +32,15 @@ export async function GET(req: Request) {
     `SELECT id, name, objective, status, daily_budget, start_time, stop_time, destination
        FROM ads_mock_campaigns WHERE workspace_id=$1 ORDER BY created_at DESC`, [ws],
   )).rows;
+  const conn = await adsConnection(ws);
+  if (conn) {
+    // live: the connected Meta ad account (+ this workspace's unpublished drafts)
+    const live = await liveCampaigns(conn, p.get("range") === "30d" ? 30 : 7);
+    if (!live.ok) return NextResponse.json({ error: live.error, account: { id: conn.ad_account_id, name: conn.name } }, { status: 502 });
+    const campaigns = filterCampaigns([...drafts.map(draftToCampaign), ...live.campaigns], p.get("q") ?? "", p.get("status"));
+    return NextResponse.json({ ok: true, demo: false, account: { id: conn.ad_account_id, name: conn.name, currency: conn.currency }, campaigns },
+      { headers: { "Cache-Control": "no-store" } });
+  }
   const campaigns = filterCampaigns(
     [...drafts.map(draftToCampaign), ...seedCampaigns(ws)],
     p.get("q") ?? "", p.get("status"),
