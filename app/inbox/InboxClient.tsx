@@ -66,6 +66,8 @@ const MEDIA: Record<string, [string, string]> = { image: ["image", "Photo"], vid
 
 export function InboxClient() {
   const [filter, setFilter] = useState<"all" | "unread" | "wa" | "ig">("all");
+  // deep links: /inbox?ch=ig (NextBiz Social → Instagram DMs), /inbox?ch=wa
+  useEffect(() => { const ch = new URLSearchParams(window.location.search).get("ch"); if (ch === "ig" || ch === "wa") setFilter(ch); }, []);
   const [q, setQ] = useState("");
   const [convs, setConvs] = useState<Conv[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);

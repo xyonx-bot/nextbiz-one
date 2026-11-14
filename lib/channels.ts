@@ -47,6 +47,12 @@ export const FEATURES = {
     blurb: "Welcome messages, away replies and keyword rules answer customers instantly on WhatsApp and Instagram — connect one to switch them on.",
     perks: [["hand", "Welcome every new customer automatically"], ["clock", "Away message outside business hours"], ["chat-text", "Keyword replies for DMs and Instagram comments"]],
   },
+  social: {
+    needs: ["instagram"], name: "NextBiz Social", preview: "list",
+    title: "Connect Instagram to open NextBiz Social",
+    blurb: "See every comment on your posts, reply publicly or by DM in one click, and let keyword rules answer the common questions for you.",
+    perks: [["chat-teardrop-text", "Every comment from every post in one list"], ["paper-plane-tilt", "Reply publicly or send a private DM"], ["lightning", "Auto-reply to comments and DMs by keyword"]],
+  },
   ads: {
     needs: ["ads"], name: "NextBiz Ads", preview: "chart",
     title: "Connect your Meta ad account",
