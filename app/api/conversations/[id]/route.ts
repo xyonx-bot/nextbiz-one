@@ -3,21 +3,21 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 
 /** GET thread — messages in order + contact + 24h-window state. 401-gated. */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const { id } = await ctx.params;
+  if (!isUuid(id)) return notFound();
   const p = getPool();
   const conv = await p.query(
     `SELECT c.id, c.last_inbound_at, c.automation_paused, c.automation_paused_at, c.welcome_sent_at, ct.created_at AS contact_created_at, ct.id AS contact_id, ct.wa_id, ct.name, ct.opt_in,
             ct.tags, ct.company, ct.location, ct.interested_in, ct.budget
        FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
-      WHERE c.id = $1`,
-    [id],
+      WHERE c.id = $1 AND c.workspace_id = $2`,
+    [id, tn.wsId],
   );
   if (conv.rows.length === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
   const msgs = await p.query(

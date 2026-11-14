@@ -13,6 +13,8 @@ import { exchangeIgCode, igLive } from "@/lib/instagram";
  * `code` → IG user token → long-lived → /me, stores ig_accounts row (live),
  * redirects to /settings?ig=connected.
  */
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
 function html(body: string, status = 200) {
   return new NextResponse(
     `<!doctype html><html><head><meta charset="utf-8"><title>Instagram connect</title>
@@ -29,10 +31,10 @@ export async function GET(req: Request) {
   const token = (await cookies()).get("nbo_session")?.value;
   const u = await getSessionUser(token);
   const base = process.env.PUBLIC_URL ?? url.origin;
-  if (!u) return NextResponse.redirect(`${base}/login`);
+  if (!u?.workspaceId) return NextResponse.redirect(`${base}/login`);
 
   const err = url.searchParams.get("error");
-  if (err) return html(`<h1>Instagram connect failed</h1><p>Meta returned: ${err}</p><a class="b" href="/settings">Back to Settings</a>`, 200);
+  if (err) return html(`<h1>Instagram connect failed</h1><p>Meta returned: ${esc(err)}</p><a class="b" href="/settings">Back to Settings</a>`, 200);
 
   const code = url.searchParams.get("code");
   if (!code) return html(`<h1>Missing code</h1><p>The callback needs a ?code= from Meta.</p><a class="b" href="/settings">Back to Settings</a>`, 400);
@@ -47,8 +49,8 @@ export async function GET(req: Request) {
   }
   const redirectUri = `${base}/api/auth/instagram/callback`;
   try {
-    const { account } = await exchangeIgCode(code, redirectUri);
-    const res = NextResponse.redirect(`${base}/settings?ig=connected#channels`);
+    const { account } = await exchangeIgCode(u.workspaceId, code, redirectUri);
+    const res = NextResponse.redirect(`${base}/connections?ig=connected#instagram`);
     res.cookies.delete("ig_oauth_state");
     console.log(`[ig] connected @${account.username ?? account.ig_user_id} via Instagram Login (webhooks ${account.webhook_subscribed ? "subscribed" : "NOT subscribed"})`);
     return res;
@@ -57,6 +59,6 @@ export async function GET(req: Request) {
     // "Bad Gateway" page and the real error is lost. Log server-side and
     // show the message so the failure is debuggable from the browser.
     console.error("[ig] callback exchange failed:", (e as Error).message);
-    return html(`<h1>Connect failed</h1><p>${(e as Error).message}</p><a class="b" href="/settings">Back to Settings</a>`, 200);
+    return html(`<h1>Connect failed</h1><p>${esc((e as Error).message)}</p><a class="b" href="/settings">Back to Settings</a>`, 200);
   }
 }

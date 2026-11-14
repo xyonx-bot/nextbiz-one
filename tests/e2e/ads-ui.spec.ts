@@ -22,6 +22,8 @@ async function login(page: import("@playwright/test").Page) {
 const T = Date.now();
 
 test.describe("Ads UI (design v2)", () => {
+  // no ad account is connected in the test workspace — explore NextBiz Ads in demo mode (what the gate's button sets)
+  test.beforeEach(async ({ context, baseURL }) => { await context.addCookies([{ name: "nbo_ads_demo", value: "1", url: baseURL ?? "http://localhost:3210" }]); });
   test("/ads — status pills with counts, demo banner, rows, detail drawer is read-only for demo", async ({ page }) => {
     await login(page);
     await page.goto("/ads");

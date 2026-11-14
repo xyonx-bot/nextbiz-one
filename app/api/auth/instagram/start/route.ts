@@ -19,11 +19,11 @@ export async function GET(req: Request) {
   const token = (await cookies()).get("nbo_session")?.value;
   const u = await getSessionUser(token);
   const base = publicBase(req);
-  if (!u) return NextResponse.redirect(`${base}/login`);
+  if (!u?.workspaceId) return NextResponse.redirect(`${base}/login`);
   const { appId } = igAppCreds();
   if (!/^\d{6,}$/.test(appId)) {
     // placeholder / missing Instagram app id → don't send people to an Instagram error page
-    return NextResponse.redirect(`${base}/settings?ig=err-noappid#channels`);
+    return NextResponse.redirect(`${base}/connections?ig=err-noappid#instagram`);
   }
   const redirectUri = `${base}/api/auth/instagram/callback`;
   const state = randomBytes(16).toString("hex");

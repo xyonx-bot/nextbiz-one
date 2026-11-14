@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default function NewCampaignPage() {
   return (
-    <AppShell active="ads-new" title="Create campaign" actions={<a className="btn btn-ghost" href="/ads"><span className="lbl">Cancel</span></a>}>
+    <AppShell active="ads-new" requires="ads" title="Create campaign" actions={<a className="btn btn-ghost" href="/ads"><span className="lbl">Cancel</span></a>}>
       <NewCampaignClient />
     </AppShell>
   );

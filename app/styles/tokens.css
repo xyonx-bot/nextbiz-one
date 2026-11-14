@@ -287,3 +287,16 @@ input, select, textarea { font: inherit; color: var(--ink); }
 @media (max-width: 767px) {
   .btn { --h: 36px; } .btn-sm { --h: 30px; } .chip { height: 28px; } .input, .select, .search { height: 38px; } .pi { height: 40px; }
 }
+
+/* ── resizable panels (components/Resizer.tsx) — a candy grip that lights up in the module accent ── */
+.rz { position: absolute; z-index: 6; width: 12px; display: flex; justify-content: center; cursor: col-resize; touch-action: none; outline: none; }
+.rz .grip { position: relative; width: 3px; height: 100%; border-radius: 3px; background: transparent; transition: background .15s var(--ease); }
+.rz .grip::after { content: ""; position: absolute; top: 50%; left: 50%; width: 6px; height: 34px; transform: translate(-50%, -50%) scale(.85); border-radius: 6px; background: var(--acc); box-shadow: var(--clay); opacity: 0; transition: opacity .15s var(--ease), transform .15s var(--ease); }
+.rz:hover .grip, .rz.on .grip, .rz:focus-visible .grip { background: var(--acc-line); }
+.rz:hover .grip::after, .rz.on .grip::after, .rz:focus-visible .grip::after { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+html.is-resizing, html.is-resizing * { cursor: col-resize !important; user-select: none !important; }
+html.is-resizing .drawer { transition: none; }
+@media (hover: none) { .rz .grip::after { opacity: .55; transform: translate(-50%, -50%) scale(1); } }
+.drawer.resizable > .rz-drawer { left: 0; top: 0; bottom: 0; }
+.drawer.resizable > .rz-drawer .grip { height: 100%; }
+@media (max-width: 699px) { .drawer.resizable { width: calc(100vw - 2 * var(--g)) !important; } .drawer > .rz { display: none; } }

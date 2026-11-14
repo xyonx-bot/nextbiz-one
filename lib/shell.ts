@@ -5,11 +5,14 @@ import { getPool } from "./db";
 /** Everything the app shell shows on every page — one round trip, read on the server. */
 export type ShellData = {
   user: SessionUser | null;
+  wsId: string | null;
   initials: string;
   userName: string;
   unread: number;
   workspaceName: string;
   wa: { displayName: string | null; connected: boolean } | null;
+  /** Which channels this workspace has connected — pages show a guided setup state for the missing ones. */
+  channels: { whatsapp: boolean; instagram: boolean; ads: boolean };
 };
 
 export function initialsOf(name: string) {
@@ -20,24 +23,31 @@ export async function getShellData(): Promise<ShellData> {
   const token = (await cookies()).get("nbo_session")?.value;
   const user = await getSessionUser(token);
   const userName = user?.displayName ?? "Operator";
+  const wsId = user?.workspaceId ?? null;
   const p = getPool();
-  const [unread, ws, wa] = await Promise.all([
+  const none = { rows: [] as Record<string, never>[] };
+  const [unread, ws, wa, ig] = wsId ? await Promise.all([
     p.query(
       `SELECT count(*)::int AS n FROM messages m
          JOIN conversations c ON c.id = m.conversation_id
-        WHERE m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0))`,
+        WHERE c.workspace_id = $1 AND m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0))`, [wsId],
     ).catch(() => ({ rows: [{ n: 0 }] })),
-    p.query(`SELECT name FROM workspaces WHERE name = 'NextBiz One' LIMIT 1`).catch(() => ({ rows: [] as { name: string }[] })),
-    p.query(`SELECT display_name, status FROM waba_connections LIMIT 1`).catch(() => ({ rows: [] as { display_name: string | null; status: string }[] })),
-  ]);
-  const w = wa.rows[0];
+    p.query(`SELECT name FROM workspaces WHERE id = $1`, [wsId]).catch(() => none),
+    p.query(`SELECT display_name, status FROM waba_connections WHERE workspace_id = $1 ORDER BY (status = 'connected') DESC, created_at DESC LIMIT 1`, [wsId]).catch(() => none),
+    p.query(`SELECT 1 FROM ig_accounts WHERE workspace_id = $1 AND live LIMIT 1`, [wsId]).catch(() => none),
+  ]) : [{ rows: [{ n: 0 }] }, none, none, none];
+  const w = wa.rows[0] as { display_name: string | null; status: string } | undefined;
+  const waConnected = w?.status === "connected";
   return {
     user,
+    wsId,
     initials: initialsOf(userName),
     userName,
-    unread: unread.rows[0]?.n ?? 0,
-    // v1 is single-workspace ("NextBiz One" row); the business name customers know comes from the WhatsApp connection
-    workspaceName: w?.display_name?.replace(/\s*\(.*\)\s*$/, "").trim() || ws.rows[0]?.name || "My workspace",
-    wa: w ? { displayName: w.display_name ?? null, connected: w.status === "connected" } : null,
+    unread: (unread.rows[0] as { n?: number } | undefined)?.n ?? 0,
+    // the business name customers know comes from the WhatsApp connection; else the workspace name
+    workspaceName: w?.display_name?.replace(/\s*\(.*\)\s*$/, "").trim() || (ws.rows[0] as { name?: string } | undefined)?.name || "My workspace",
+    wa: w ? { displayName: w.display_name ?? null, connected: waConnected } : null,
+    // Ads: no live ad-account connection exists yet (Marketing API pending) — always the guided state
+    channels: { whatsapp: waConnected, instagram: ig.rows.length > 0, ads: false },
   };
 }

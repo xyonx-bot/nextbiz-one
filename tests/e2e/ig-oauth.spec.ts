@@ -71,9 +71,9 @@ test.describe("Instagram Login OAuth", () => {
     await page.getByTestId("rail-ads").click();
     await page.waitForURL("**/ads**");
     expect(page.url()).toContain("/ads");
-    // social chip -> settings channels section with the connect CTA (no dead button)
+    // social chip -> Connections, Instagram card with the login CTA (no dead button)
     await page.getByTestId("rail-social").click();
-    await page.waitForURL("**/settings**");
-    await expect(page.getByTestId("ig-oauth")).toBeVisible();
+    await page.waitForURL("**/connections**");
+    await expect(page.getByTestId("ig-connect")).toBeVisible();
   });
 });

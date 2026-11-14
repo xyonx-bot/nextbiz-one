@@ -31,7 +31,18 @@ async function login(page: import("@playwright/test").Page) {
   await Promise.all([page.click("button[type=submit]"), page.waitForURL("**/")]);
 }
 
+/** Webhooks only route to accounts connected to a workspace — seed the test account on the operator's workspace. */
+async function seedIgAccount(pool: import("pg").Pool, igUserId: string) {
+  await pool.query(
+    `INSERT INTO ig_accounts (workspace_id, ig_user_id, username, live)
+     SELECT workspace_id, $1, 'e2e_shop', false FROM users WHERE lower(email) = lower($2) AND workspace_id IS NOT NULL LIMIT 1
+     ON CONFLICT (workspace_id, ig_user_id) DO NOTHING`,
+    [igUserId, process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one"]);
+}
+
 test.describe("IG access prep (r-nbo-ig-access-prep)", () => {
+  test.beforeAll(async () => { await seedIgAccount(pool, "ig-user-e2e"); });
+
   test("webhook GET: echoes hub.challenge on valid verify token, 403 otherwise", async ({ request }) => {
     const ok = await request.get(`/api/webhooks/instagram?hub.mode=subscribe&hub.verify_token=${VT}&hub.challenge=IG-CH-42`);
     expect(ok.status()).toBe(200);

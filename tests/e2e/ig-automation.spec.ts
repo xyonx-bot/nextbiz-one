@@ -51,8 +51,22 @@ async function messagesOf(page: import("@playwright/test").Page, id: string) {
   return d;
 }
 
+/** Webhooks only route to accounts connected to a workspace — seed the test account on the operator's workspace. */
+async function seedIgAccount(pool: import("pg").Pool, igUserId: string) {
+  await pool.query(
+    `INSERT INTO ig_accounts (workspace_id, ig_user_id, username, live)
+     SELECT workspace_id, $1, 'e2e_shop', false FROM users WHERE lower(email) = lower($2) AND workspace_id IS NOT NULL LIMIT 1
+     ON CONFLICT (workspace_id, ig_user_id) DO NOTHING`,
+    [igUserId, process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one"]);
+}
+
 test.describe.serial("Instagram automation (mock mode)", () => {
   let ruleId = "";
+  test.beforeAll(async () => {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    try { await seedIgAccount(pool, ACCT); } finally { await pool.end(); }
+  });
 
   test("rule for Instagram DMs + comments can be created", async ({ page }) => {
     await login(page);

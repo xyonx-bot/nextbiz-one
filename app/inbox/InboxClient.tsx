@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { Resizer, useStoredWidth } from "@/components/Resizer";
 import { avatarClass, fmtPhone, initials } from "@/lib/ui";
 
 /**
@@ -79,6 +80,23 @@ export function InboxClient() {
   const [hasIg, setHasIg] = useState(false);
   const [, tick] = useState(0);
   const streamRef = useRef<HTMLDivElement>(null);
+  // resizable columns: list width + details width, remembered per browser
+  const ibRef = useRef<HTMLDivElement>(null), lRef = useRef<HTMLElement>(null), dRef = useRef<HTMLElement>(null);
+  const [lw, setLw] = useStoredWidth("nbo.inbox.listW");
+  const [dw, setDw] = useStoredWidth("nbo.inbox.detailsW");
+  const [geo, setGeo] = useState({ ib: 0, l: 0, d: 0, dDocked: true });
+  useEffect(() => {
+    const ib = ibRef.current; if (!ib || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const d = dRef.current, cs = d ? getComputedStyle(d) : null;
+      setGeo({ ib: ib.clientWidth, l: lRef.current?.offsetWidth ?? 0, d: d?.offsetWidth ?? 0, dDocked: !!cs && cs.position !== "absolute" && cs.display !== "none" });
+    };
+    const ro = new ResizeObserver(measure);
+    [ib, lRef.current, dRef.current].forEach((el) => el && ro.observe(el));
+    measure();
+    return () => ro.disconnect();
+  }, []);
+  const THREAD_MIN = 380, GAP = 12;
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const loadList = useCallback(async () => {
@@ -213,10 +231,24 @@ export function InboxClient() {
 
   return (
     <div className="pg-inbox" style={{ height: "100%" }}>
-      <div className={`ib${viewThread ? " view-thread" : ""}${details === "hidden" ? " details-hidden" : ""}${details === "open" ? " details-open" : ""}`}
+      <div ref={ibRef} className={`ib${viewThread ? " view-thread" : ""}${details === "hidden" ? " details-hidden" : ""}${details === "open" ? " details-open" : ""}`}
+        style={{ ...(lw ? { "--lw": `${lw}px` } : {}), ...(dw ? { "--dw": `${dw}px` } : {}) } as React.CSSProperties}
         data-win={win.state} data-data={empty ? "empty" : convs === null ? "loading" : "full"} data-testid="inbox">
 
-        <section className="card lcard" aria-label="Conversations">
+        <Resizer edge="right" label="Conversation list width" className="rz-list" testId="rz-list"
+          style={{ left: geo.l }}
+          width={() => lRef.current?.offsetWidth ?? 320}
+          min={240} max={() => Math.max(240, geo.ib - (geo.dDocked ? geo.d + GAP : 0) - GAP - THREAD_MIN)}
+          onResize={setLw} onReset={() => setLw(null)} />
+        {geo.dDocked && (
+          <Resizer edge="left" label="Contact details width" className="rz-det" testId="rz-details"
+            style={{ right: geo.d }}
+            width={() => dRef.current?.offsetWidth ?? 320}
+            min={260} max={() => Math.max(260, Math.min(560, geo.ib - geo.l - GAP * 2 - THREAD_MIN))}
+            onResize={setDw} onReset={() => setDw(null)} />
+        )}
+
+        <section ref={lRef} className="card lcard" aria-label="Conversations">
           <div className="lhead">
             <div className="chips">
               <button className={`chip${filter === "all" ? " on" : ""}`} onClick={() => setFilter("all")}>All {filter === "all" && convs && <span className="n">{convs.length}</span>}</button>
@@ -331,7 +363,7 @@ export function InboxClient() {
           )}
         </section>
 
-        <aside className="card dpanel" aria-label="Contact details">
+        <aside ref={dRef} className="card dpanel" aria-label="Contact details">
           <div className="tabs" style={{ paddingRight: 8 }}>
             <span className="tab on">Contact</span><span className="sp" />
             <button className="btn btn-ghost btn-icon btn-sm dclose" onClick={() => setDetails("auto")} aria-label="Close details" style={{ alignSelf: "center" }}><Icon name="x" /></button>

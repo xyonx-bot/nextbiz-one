@@ -90,6 +90,7 @@ test("S1 inbox: list + thread + composer (P1.6)", async ({ page }) => {
   const body = JSON.stringify({
     object: "whatsapp_business_account",
     entry: [{ id: "W", changes: [{ value: {
+      metadata: { display_phone_number: "91111", phone_number_id: "PNID" }, // routes to the workspace that owns the number
       contacts: [{ wa_id: "919000000001", profile: { name: "E2E Tester" } }],
       messages: [{ from: "919000000001", id: `wamid.s1-${Date.now()}`, timestamp: String(Math.floor(Date.now() / 1000)), type: "text", text: { body: "s1 inbox test" } }],
     } }] }],

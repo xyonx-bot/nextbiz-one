@@ -121,24 +121,11 @@ export type IgAccountRow = {
 };
 const ACCT_COLS = "id, workspace_id, ig_user_id, username, display_name, profile_picture_url, scopes, expires_at, live, webhook_subscribed, last_error, updated_at";
 
-async function ensureWs(): Promise<string> {
+/** The connected account a webhook belongs to — and through it, the workspace. Unknown accounts are ignored. */
+async function accountForIgUser(igUserId: string): Promise<{ id: string; workspaceId: string } | null> {
   const { rows } = await getPool().query(
-    `INSERT INTO workspaces (name) VALUES ('NextBiz One') ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
-  );
-  return rows[0].id as string;
-}
-export async function ensureWorkspace(): Promise<string> { return ensureWs(); }
-
-async function ensureIgAccount(wsId: string, igUserId: string): Promise<string> {
-  const p = getPool();
-  const ex = await p.query(`SELECT id FROM ig_accounts WHERE ig_user_id = $1 ORDER BY live DESC, updated_at DESC LIMIT 1`, [igUserId]);
-  if (ex.rows[0]) return ex.rows[0].id as string;
-  const { rows } = await p.query(
-    `INSERT INTO ig_accounts (workspace_id, ig_user_id, live) VALUES ($1, $2, false)
-     ON CONFLICT (workspace_id, ig_user_id) DO UPDATE SET updated_at = ig_accounts.updated_at RETURNING id`,
-    [wsId, igUserId],
-  );
-  return rows[0].id as string;
+    `SELECT id, workspace_id FROM ig_accounts WHERE ig_user_id = $1 ORDER BY live DESC, updated_at DESC LIMIT 1`, [igUserId]);
+  return rows[0] ? { id: rows[0].id as string, workspaceId: rows[0].workspace_id as string } : null;
 }
 
 /** The workspace's current account (the live one when there is one). */
@@ -188,7 +175,7 @@ export async function subscribeIgWebhooks(token: string): Promise<{ ok: boolean;
 }
 
 /** code → short token → long-lived token → /me → store live account → subscribe webhooks. */
-export async function exchangeIgCode(code: string, redirectUri: string): Promise<{ account: IgAccountRow; mock: boolean }> {
+export async function exchangeIgCode(wsId: string, code: string, redirectUri: string): Promise<{ account: IgAccountRow; mock: boolean }> {
   if (!igLive()) throw new Error("IG_LIVE is not true — mock mode, no Graph call");
   const { appId, appSecret } = igAppCreds();
   if (!/^\d{6,}$/.test(appId) || appSecret.length < 16) throw new Error("Instagram app ID / secret are not configured on this server");
@@ -212,7 +199,9 @@ export async function exchangeIgCode(code: string, redirectUri: string): Promise
 
   const granted = Array.isArray(short.permissions) ? short.permissions : String(short.permissions ?? IG_SCOPES.join(",")).split(",");
   const p = getPool();
-  const wsId = await ensureWs();
+  // the same Instagram account can only feed one workspace — webhooks are routed by it
+  const other = await p.query(`SELECT 1 FROM ig_accounts WHERE ig_user_id = $1 AND workspace_id <> $2 AND live`, [igUserId, wsId]);
+  if (other.rows.length) throw new Error(`@${me.username ?? igUserId} is already connected to another NextBiz One workspace`);
   const expiresAt = long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString() : null;
   // one live Instagram account per workspace: retire any other live row
   await p.query(`UPDATE ig_accounts SET live = false, access_token = NULL, updated_at = now() WHERE workspace_id = $1 AND ig_user_id <> $2 AND live`, [wsId, igUserId]);
@@ -356,8 +345,9 @@ export async function processIgInbound(body: unknown, signatureValid: boolean): 
       await p.query(`UPDATE ig_webhook_events SET body = $2::jsonb, signature_valid = true, processed = false WHERE ig_event_id = $1`, [e.eventId, JSON.stringify(body)]);
     }
     if (!signatureValid) continue;
-    const wsId = await ensureWs();
-    const acctId = await ensureIgAccount(wsId, e.igUserId);
+    const acct = await accountForIgUser(e.igUserId);
+    if (!acct) { console.warn(`[ig] webhook for unknown account ${e.igUserId} — skipped`); await p.query(`UPDATE ig_webhook_events SET processed = true WHERE ig_event_id = $1`, [e.eventId]); continue; }
+    const wsId = acct.workspaceId, acctId = acct.id;
     const fresh: { threadId: string; text: string; created: boolean }[] = [];
 
     for (const m of e.messages) {

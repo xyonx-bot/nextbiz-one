@@ -37,7 +37,7 @@ describe("exchangeIgCode", () => {
     vi.stubEnv("IG_LIVE", "");
     const fetchSpy = vi.fn(); vi.stubGlobal("fetch", fetchSpy);
     const { exchangeIgCode } = await import("@/lib/instagram");
-    await expect(exchangeIgCode("code", "https://x/cb")).rejects.toThrow(/mock mode/);
+    await expect(exchangeIgCode("ws-1", "code", "https://x/cb")).rejects.toThrow(/mock mode/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -54,7 +54,7 @@ describe("exchangeIgCode", () => {
       return new Response("{}", { status: 404 });
     }));
     const { exchangeIgCode } = await import("@/lib/instagram");
-    const r = await exchangeIgCode("abc#_", "https://x/cb");
+    const r = await exchangeIgCode("ws-1", "abc#_", "https://x/cb");
     expect(r.mock).toBe(false);
     expect(r.account.webhook_subscribed).toBe(true);
     expect(calls[0]).toBe("https://api.instagram.com/oauth/access_token");

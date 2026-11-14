@@ -3,16 +3,17 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { submitTemplate } from "@/lib/wa-client";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getWaCreds, submitTemplate } from "@/lib/wa-client";
 
 /** GET — list templates (status counts derive client-side per wireframe pills). */
 export async function GET() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const t = await getTenant();
+  if (!t) return unauthorized();
   const { rows } = await getPool().query(
     `SELECT t.id, t.name, t.meta_name, t.category, t.language, t.body, t.variables,
             t.status, t.rejection_reason, t.updated_at
-       FROM templates t ORDER BY t.updated_at DESC LIMIT 500`,
+       FROM templates t WHERE t.workspace_id = $1 ORDER BY t.updated_at DESC LIMIT 500`, [t.wsId],
   );
   return NextResponse.json({ ok: true, templates: rows });
 }
@@ -28,14 +29,14 @@ const Create = z.object({
 
 /** POST — create (draft) and optionally submit straight to Meta. */
 export async function POST(req: Request) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const t = await getTenant();
+  if (!t) return unauthorized();
   const b = Create.safeParse(await req.json().catch(() => null));
   if (!b.success) {
     return NextResponse.json({ error: b.error.issues[0]?.message ?? "Invalid template" }, { status: 400 });
   }
   const p = getPool();
-  const ws = (await p.query(`SELECT id FROM workspaces WHERE name='NextBiz One' LIMIT 1`)).rows[0].id;
+  const ws = t.wsId;
   const name = b.data.name;
   try {
     const r = await p.query(
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
     );
     if (!b.data.submit) return NextResponse.json({ ok: true, template: r.rows[0] }, { status: 201 });
 
-    const sub = await submitTemplate({ name, language: b.data.language, category: b.data.category, bodyText: b.data.body });
+    const sub = await submitTemplate(await getWaCreds(t.wsId), { name, language: b.data.language, category: b.data.category, bodyText: b.data.body });
     if (!sub.ok) {
       return NextResponse.json({ ok: false, error: sub.error, template: r.rows[0] }, { status: 502 });
     }

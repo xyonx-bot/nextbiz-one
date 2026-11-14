@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 
 const Set = z.object({
   welcomeEnabled: z.boolean().optional(),
@@ -14,12 +15,12 @@ const Set = z.object({
 
 /** PUT — upsert automation settings (welcome / away / hours). */
 export async function PUT(req: Request) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const b = Set.safeParse(await req.json().catch(() => null));
   if (!b.success) return NextResponse.json({ error: "Invalid settings" }, { status: 400 });
   const p = getPool();
-  const ws = (await p.query(`SELECT id FROM workspaces WHERE name='NextBiz One' LIMIT 1`)).rows[0].id;
+  const ws = tn.wsId;
   await p.query(
     `INSERT INTO automation_settings (workspace_id, welcome_enabled, welcome_text, away_enabled, away_text, business_hours)
      VALUES ($1, COALESCE($2, true), COALESCE($3, 'Hi! Thanks for reaching out — we usually reply within a day.'),

@@ -1,5 +1,5 @@
 import { getPool } from "./db";
-import { sendText } from "./wa-client";
+import { getWaCreds, sendText } from "./wa-client";
 
 /**
  * P1.10 automation engine — contains-match only, case-insensitive, no regex/AI
@@ -42,11 +42,12 @@ export async function maybeAutoReply(
     const st = await p.query(`SELECT * FROM automation_settings WHERE workspace_id = $1`, [wsId]);
     if (st.rows.length === 0) return;
     const cfg = st.rows[0];
+    const creds = await getWaCreds(wsId);
 
     // away message wins when business is closed
     if (cfg.away_enabled && !inBusinessHours(cfg.business_hours)) {
       if (cfg.away_text) {
-        const s = await sendText(waId, cfg.away_text);
+        const s = await sendText(creds, waId, cfg.away_text);
         await log(p, wsId, contactId, "away", null, `away reply: ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
       }
       return;
@@ -54,7 +55,7 @@ export async function maybeAutoReply(
 
     // welcome — once per conversation
     if (cfg.welcome_enabled && !conv.rows[0].welcome_sent_at) {
-      const s = await sendText(waId, cfg.welcome_text);
+      const s = await sendText(creds, waId, cfg.welcome_text);
       if (s.ok) await p.query(`UPDATE conversations SET welcome_sent_at = now() WHERE id = $1`, [convId]);
       await log(p, wsId, contactId, "welcome", null, `welcome ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
     }
@@ -73,7 +74,7 @@ export async function maybeAutoReply(
           `SELECT 1 FROM automation_log WHERE contact_id = $1 AND rule_id = $2 AND status = 'sent' LIMIT 1`, [contactId, r.id]);
         if (prior.rows.length) { await log(p, wsId, contactId, "keyword", r.id, `rule "${r.name}" already answered this chat`, "skipped"); return; }
       }
-      const s = await sendText(waId, r.reply);
+      const s = await sendText(creds, waId, r.reply);
       await p.query(
         `UPDATE keyword_rules SET fired_count = fired_count + 1, last_fired_at = now() WHERE id = $1`, [r.id]);
       await log(p, wsId, contactId, "keyword", r.id, `rule "${r.name}" ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");

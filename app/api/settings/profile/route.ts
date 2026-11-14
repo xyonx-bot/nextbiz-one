@@ -3,14 +3,15 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 
 /** GET — workspace profile (display phone comes FROM the connection). */
 export async function GET() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const p = getPool();
-  const ws = (await p.query(`SELECT w.name, w.about FROM workspaces w WHERE w.name='NextBiz One' LIMIT 1`)).rows[0];
-  const conn = (await p.query(`SELECT display_name, status FROM waba_connections LIMIT 1`)).rows[0] ?? null;
+  const ws = (await p.query(`SELECT w.name, w.about FROM workspaces w WHERE w.id = $1`, [tn.wsId])).rows[0];
+  const conn = (await p.query(`SELECT display_name, status FROM waba_connections WHERE workspace_id = $1 ORDER BY (status = 'connected') DESC, created_at DESC LIMIT 1`, [tn.wsId])).rows[0] ?? null;
   return NextResponse.json({ ok: true, profile: { ...ws, connection: conn } }, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -20,16 +21,15 @@ const Up = z.object({
 });
 
 export async function PUT(req: Request) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const b = Up.safeParse(await req.json().catch(() => null));
   if (!b.success) return NextResponse.json({ error: "Invalid profile" }, { status: 400 });
   const p = getPool();
-  // The workspace row's name is the v1 single-workspace key ('NextBiz One') that every route looks up by —
-  // never rename it. The business name customers see comes from the WhatsApp connection (Meta-managed).
+  // The business name customers see comes from the WhatsApp connection (Meta-managed).
   if (b.data.businessName !== undefined && b.data.about === undefined) {
     return NextResponse.json({ error: "The business name comes from your WhatsApp profile and is changed in Meta." }, { status: 400 });
   }
-  await p.query(`UPDATE workspaces SET about = $1 WHERE name = 'NextBiz One'`, [b.data.about ?? null]);
+  await p.query(`UPDATE workspaces SET about = $1 WHERE id = $2`, [b.data.about ?? null, tn.wsId]);
   return NextResponse.json({ ok: true });
 }

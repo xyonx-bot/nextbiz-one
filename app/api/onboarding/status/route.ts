@@ -2,15 +2,15 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 
 /** P1.4 — wizard state: connection + display-name-review + live-test rows. */
 export async function GET() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  const u = await getSessionUser(token);
-  if (!u) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const p = getPool();
 
-  const wc = await p.query(`SELECT phone_number_id, display_name, status FROM waba_connections LIMIT 1`);
+  const wc = await p.query(`SELECT phone_number_id, display_name, status FROM waba_connections WHERE workspace_id = $1 ORDER BY (status = 'connected') DESC, created_at DESC LIMIT 1`, [tn.wsId]);
   const w = wc.rows[0] ?? null;
   const connected = !!w && w.status === "connected";
 
@@ -21,18 +21,18 @@ export async function GET() {
     const t = await p.query(
       `SELECT (SELECT count(*)::int FROM messages m JOIN conversations c ON c.id=m.conversation_id
                 JOIN contacts ct ON ct.id=c.contact_id
-                WHERE ct.wa_id=$1 AND m.direction='in' AND m.created_at > now() - interval '30 minutes') AS recv,
+                WHERE ct.wa_id=$1 AND ct.workspace_id=$2 AND m.direction='in' AND m.created_at > now() - interval '30 minutes') AS recv,
               (SELECT max(m.created_at)::text FROM messages m JOIN conversations c ON c.id=m.conversation_id
                 JOIN contacts ct ON ct.id=c.contact_id
-                WHERE ct.wa_id=$1 AND m.direction='out' AND m.created_at > now() - interval '30 minutes') AS sent`,
-      [own],
+                WHERE ct.wa_id=$1 AND ct.workspace_id=$2 AND m.direction='out' AND m.created_at > now() - interval '30 minutes') AS sent`,
+      [own, tn.wsId],
     );
     testReceived = (t.rows[0]?.recv ?? 0) > 0;
     testSentAt = t.rows[0]?.sent ?? null;
   }
   const counts = (await p.query(
-    `SELECT (SELECT count(*)::int FROM messages WHERE direction = 'in') AS inbound,
-            (SELECT count(*)::int FROM templates WHERE lower(status) = 'approved') AS approved`,
+    `SELECT (SELECT count(*)::int FROM messages WHERE workspace_id = $1 AND direction = 'in') AS inbound,
+            (SELECT count(*)::int FROM templates WHERE workspace_id = $1 AND lower(status) = 'approved') AS approved`, [tn.wsId],
   )).rows[0];
   return NextResponse.json({
     ok: true, connected, displayName: w?.display_name ?? null,

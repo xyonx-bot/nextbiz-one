@@ -2,23 +2,25 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { submitTemplate } from "@/lib/wa-client";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getWaCreds, submitTemplate } from "@/lib/wa-client";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** PATCH — edit body/name (draft state) or { action: "submit" | "refresh-status" | "duplicate" }. */
 export async function PATCH(req: Request, ctx: Ctx) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const { id } = await ctx.params;
+  if (!isUuid(id)) return notFound();
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const p = getPool();
-  const cur = await p.query(`SELECT * FROM templates WHERE id = $1`, [id]);
+  const cur = await p.query(`SELECT * FROM templates WHERE id = $1 AND workspace_id = $2`, [id, tn.wsId]);
   if (cur.rows.length === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
   const t = cur.rows[0];
 
   if (body.action === "submit") {
-    const sub = await submitTemplate({
+    const sub = await submitTemplate(await getWaCreds(tn.wsId), {
       name: t.meta_name ?? t.name, language: t.language, category: t.category, bodyText: t.body,
     });
     if (!sub.ok) return NextResponse.json({ error: sub.error }, { status: 502 });

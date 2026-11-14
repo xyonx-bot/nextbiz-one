@@ -11,7 +11,7 @@ import type { ShellData } from "@/lib/shell";
  * One gutter everywhere. ≥1280 panel docked · 768–1279 panel flyout · <768 bottom tab bar + "More" sheet.
  */
 export type ShellActive =
-  | "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts" | "automation" | "settings"
+  | "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts" | "automation" | "settings" | "connections"
   | "ads" | "ads-new" | "ads-perf";
 
 type Item = { key: ShellActive; label: string; icon: string; href: string };
@@ -73,7 +73,7 @@ export function ShellClient({
   const items = mod === "ads" ? ADS : CHAT;
   const modName = mod === "ads" ? "NextBiz Ads" : "NextBiz Chat";
   const waNumber = data.wa?.displayName?.match(/\(([^)]+)\)/)?.[1] ?? null;
-  const inMore = ["templates", "automation", "settings", "ads", "ads-new", "ads-perf"].includes(active);
+  const inMore = ["templates", "automation", "settings", "connections", "ads", "ads-new", "ads-perf"].includes(active);
 
   return (
     <div
@@ -88,8 +88,9 @@ export function ShellClient({
           <Icon name="chat-circle-dots" />{data.unread > 0 && <span className="badge red">{data.unread > 99 ? "99+" : data.unread}</span>}<span className="tip">NextBiz Chat</span>
         </a>
         <a className={`ri m-ads${mod === "ads" ? " on" : ""}`} href="/ads" aria-label="NextBiz Ads" data-testid="rail-ads"><Icon name="megaphone" /><span className="dot" /><span className="tip">NextBiz Ads</span></a>
-        <a className="ri m-social" href="/settings#channels" aria-label="NextBiz Social" data-testid="rail-social"><Icon name="images" /><span className="tip">NextBiz Social · Instagram</span></a>
+        <a className="ri m-social" href="/connections#instagram" aria-label="NextBiz Social" data-testid="rail-social"><Icon name="images" /><span className="tip">NextBiz Social · Instagram</span></a>
         <span className="sp" />
+        <a className={`ri${active === "connections" ? " on" : ""}`} href="/connections" aria-label="Connections" data-testid="rail-connections"><Icon name="plugs-connected" /><span className="tip">Connections</span></a>
         <a className={`ri${active === "settings" ? " on" : ""}`} href="/settings" aria-label="Settings"><Icon name="gear" /><span className="tip">Settings</span></a>
         <button className="av sm c2 me" title={data.userName} onClick={() => setMe((v) => !v)} aria-label="Account menu" data-testid="account-btn">{data.initials}</button>
         {me && (
@@ -148,9 +149,9 @@ export function ShellClient({
           <div className="acts">
             {actions && <span className="page-acts row">{actions}</span>}
             <span className="vsep" />
-            <span className="conn" title={data.wa?.connected ? "WhatsApp connected" : "WhatsApp not connected"} style={data.wa?.connected ? undefined : { background: "var(--banana-tint)", color: "var(--banana-deep)", borderColor: "var(--banana-line)" }}>
+            <a href="/connections" className="conn" title={data.wa?.connected ? "WhatsApp connected — manage channels" : "WhatsApp not connected — open Connections"} style={data.wa?.connected ? undefined : { background: "var(--banana-tint)", color: "var(--banana-deep)", borderColor: "var(--banana-line)" }}>
               <span className="pulse" style={data.wa?.connected ? undefined : { background: "var(--banana)" }} /><span className="txt">{data.wa?.connected ? "Connected" : "Not connected"}</span>
-            </span>
+            </a>
             <a className="btn btn-ghost btn-icon bell" href="/inbox" aria-label="Notifications">
               <Icon name="bell" />{data.unread > 0 && <span className="ndot" />}
             </a>
@@ -176,6 +177,7 @@ export function ShellClient({
         <div className="sgrp eyebrow">NextBiz Ads <span className="demo" style={{ marginLeft: 6 }}>Demo</span></div>
         {ADS.map((i) => <a key={i.key} className={`pi${i.key === active ? " on" : ""}`} href={i.href}><Icon name={i.icon} /><span>{i.label}</span></a>)}
         <div className="sgrp eyebrow">Workspace</div>
+        <a className={`pi${active === "connections" ? " on" : ""}`} href="/connections"><Icon name="plugs-connected" /><span>Connections</span></a>
         <a className={`pi${active === "settings" ? " on" : ""}`} href="/settings"><Icon name="gear" /><span>Settings</span></a>
         <button className="pi" style={{ width: "100%" }} onClick={signOut}><Icon name="sign-out" /><span>Sign out</span></button>
       </div>

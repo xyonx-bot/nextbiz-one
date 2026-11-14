@@ -1,4 +1,4 @@
-import { ensureDefaultWorkspace } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { getPool } from "@/lib/db";
 import { draftToCampaign, performance, seedCampaigns } from "@/lib/ads";
 import { getShellData } from "@/lib/shell";
@@ -33,32 +33,34 @@ function since(iso: string | Date | null) {
 
 export default async function HomePage() {
   const p = getPool();
-  const [shell, wsId] = await Promise.all([getShellData(), ensureDefaultWorkspace()]);
-  const q = <T = Record<string, unknown>>(sql: string) => p.query(sql).then((r) => r.rows as T[]).catch(() => [] as T[]);
+  const shell = await getShellData();
+  if (!shell.wsId) redirect("/login");
+  const wsId = shell.wsId;
+  const q = <T = Record<string, unknown>>(sql: string) => p.query(sql, [wsId]).then((r) => r.rows as T[]).catch(() => [] as T[]);
   const [msgs14, msgTrend, convTrend, contacts30, contacts14, active24, unreadConvs, closing, rejected, approvedTpl, recents, lastBc, autoLog, autoSet, lastIn, anyIn, contactsTotal, adDrafts] = await Promise.all([
-    q<{ d: Date; direction: string; n: number }>(`SELECT date_trunc('day', created_at)::date AS d, direction, count(*)::int AS n FROM messages WHERE created_at > now() - interval '14 days' GROUP BY 1,2`),
-    q<{ cur: number; prev: number }>(`SELECT (SELECT count(*)::int FROM messages WHERE created_at > now() - interval '14 days') AS cur,
-            (SELECT count(*)::int FROM messages WHERE created_at > now() - interval '28 days' AND created_at <= now() - interval '14 days') AS prev`),
-    q<{ cur: number; prev: number }>(`SELECT (SELECT count(DISTINCT conversation_id)::int FROM messages WHERE created_at > now() - interval '14 days') AS cur,
-            (SELECT count(DISTINCT conversation_id)::int FROM messages WHERE created_at > now() - interval '28 days' AND created_at <= now() - interval '14 days') AS prev`),
-    q<{ cur: number; prev: number; opted: number }>(`SELECT (SELECT count(*)::int FROM contacts WHERE created_at > now() - interval '30 days') AS cur,
-            (SELECT count(*)::int FROM contacts WHERE created_at > now() - interval '60 days' AND created_at <= now() - interval '30 days') AS prev,
-            (SELECT count(*)::int FROM contacts WHERE opt_in) AS opted`),
-    q<{ d: Date; n: number }>(`SELECT date_trunc('day', created_at)::date AS d, count(*)::int AS n FROM contacts WHERE created_at > now() - interval '14 days' GROUP BY 1`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM conversations WHERE last_inbound_at > now() - interval '24 hours'`),
+    q<{ d: Date; direction: string; n: number }>(`SELECT date_trunc('day', created_at)::date AS d, direction, count(*)::int AS n FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '14 days' GROUP BY 1,2`),
+    q<{ cur: number; prev: number }>(`SELECT (SELECT count(*)::int FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '14 days') AS cur,
+            (SELECT count(*)::int FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '28 days' AND created_at <= now() - interval '14 days') AS prev`),
+    q<{ cur: number; prev: number }>(`SELECT (SELECT count(DISTINCT conversation_id)::int FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '14 days') AS cur,
+            (SELECT count(DISTINCT conversation_id)::int FROM messages WHERE workspace_id = $1 AND created_at > now() - interval '28 days' AND created_at <= now() - interval '14 days') AS prev`),
+    q<{ cur: number; prev: number; opted: number }>(`SELECT (SELECT count(*)::int FROM contacts WHERE workspace_id = $1 AND created_at > now() - interval '30 days') AS cur,
+            (SELECT count(*)::int FROM contacts WHERE workspace_id = $1 AND created_at > now() - interval '60 days' AND created_at <= now() - interval '30 days') AS prev,
+            (SELECT count(*)::int FROM contacts WHERE workspace_id = $1 AND opt_in) AS opted`),
+    q<{ d: Date; n: number }>(`SELECT date_trunc('day', created_at)::date AS d, count(*)::int AS n FROM contacts WHERE workspace_id = $1 AND created_at > now() - interval '14 days' GROUP BY 1`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM conversations WHERE workspace_id = $1 AND last_inbound_at > now() - interval '24 hours'`),
     q<{ n: number; oldest: Date | null }>(`SELECT count(*)::int AS n, min(first_unread) AS oldest FROM (
             SELECT c.id, min(m.created_at) AS first_unread FROM conversations c JOIN messages m ON m.conversation_id = c.id
-             WHERE m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0)) GROUP BY c.id) u`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM conversations c WHERE c.last_inbound_at BETWEEN now() - interval '24 hours' AND now() - interval '21 hours'
+             WHERE c.workspace_id = $1 AND m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0)) GROUP BY c.id) u`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM conversations c WHERE c.workspace_id = $1 AND c.last_inbound_at BETWEEN now() - interval '24 hours' AND now() - interval '21 hours'
             AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.direction = 'out' AND m.created_at > c.last_inbound_at)`),
-    q<{ name: string }>(`SELECT name FROM templates WHERE lower(status) = 'rejected' ORDER BY updated_at DESC`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM templates WHERE lower(status) = 'approved'`),
+    q<{ name: string }>(`SELECT name FROM templates WHERE workspace_id = $1 AND lower(status) = 'rejected' ORDER BY updated_at DESC`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM templates WHERE workspace_id = $1 AND lower(status) = 'approved'`),
     q<{ id: string; name: string | null; wa_id: string; body: string | null; created_at: Date; direction: string; unread: number }>(
       `SELECT c.id, ct.name, ct.wa_id, lm.body, lm.created_at, lm.direction,
               (SELECT count(*)::int FROM messages m WHERE m.conversation_id = c.id AND m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0))) AS unread
          FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
          JOIN LATERAL (SELECT body, created_at, direction FROM messages m WHERE m.conversation_id = c.id ORDER BY created_at DESC LIMIT 1) lm ON true
-        ORDER BY lm.created_at DESC LIMIT 5`),
+        WHERE c.workspace_id = $1 ORDER BY lm.created_at DESC LIMIT 5`),
     q<{ id: string; name: string; sent_at: Date | null; created_at: Date; total: number; sent: number; delivered: number; read: number; failed: number; replied: number }>(
       `SELECT b.id, b.name, b.sent_at, b.created_at,
               count(br.id)::int AS total,
@@ -70,13 +72,13 @@ export default async function HomePage() {
                 WHERE m.direction = 'in' AND b.sent_at IS NOT NULL AND m.created_at > b.sent_at
                   AND c.contact_id IN (SELECT contact_id FROM broadcast_recipients WHERE broadcast_id = b.id)) AS replied
          FROM broadcasts b LEFT JOIN broadcast_recipients br ON br.broadcast_id = b.id
-        WHERE b.sent_at IS NOT NULL GROUP BY b.id ORDER BY b.sent_at DESC LIMIT 1`),
-    q<{ type: string; n: number }>(`SELECT type, count(*)::int AS n FROM automation_log WHERE created_at > now() - interval '7 days' GROUP BY 1`),
-    q<{ welcome_enabled: boolean; away_enabled: boolean }>(`SELECT welcome_enabled, away_enabled FROM automation_settings LIMIT 1`),
-    q<{ at: Date | null }>(`SELECT max(created_at) AS at FROM messages WHERE direction = 'in'`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM messages WHERE direction = 'in'`),
-    q<{ n: number }>(`SELECT count(*)::int AS n FROM contacts`),
-    q(`SELECT id, name, objective, status, daily_budget, start_time, stop_time, destination FROM ads_mock_campaigns ORDER BY created_at DESC`),
+        WHERE b.workspace_id = $1 AND b.sent_at IS NOT NULL GROUP BY b.id ORDER BY b.sent_at DESC LIMIT 1`),
+    q<{ type: string; n: number }>(`SELECT type, count(*)::int AS n FROM automation_log WHERE workspace_id = $1 AND created_at > now() - interval '7 days' GROUP BY 1`),
+    q<{ welcome_enabled: boolean; away_enabled: boolean }>(`SELECT welcome_enabled, away_enabled FROM automation_settings WHERE workspace_id = $1`),
+    q<{ at: Date | null }>(`SELECT max(created_at) AS at FROM messages WHERE workspace_id = $1 AND direction = 'in'`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM messages WHERE workspace_id = $1 AND direction = 'in'`),
+    q<{ n: number }>(`SELECT count(*)::int AS n FROM contacts WHERE workspace_id = $1`),
+    q(`SELECT id, name, objective, status, daily_budget, start_time, stop_time, destination FROM ads_mock_campaigns WHERE workspace_id = $1 ORDER BY created_at DESC`),
   ]);
 
   // 14-day series
@@ -91,7 +93,7 @@ export default async function HomePage() {
   const mt = msgTrend[0] ?? { cur: 0, prev: 0 }, ct = convTrend[0] ?? { cur: 0, prev: 0 }, c30 = contacts30[0] ?? { cur: 0, prev: 0, opted: 0 };
   const un = unreadConvs[0] ?? { n: 0, oldest: null };
   const setup = [
-    { done: connected, t: "Connect WhatsApp", s: connected ? shell.wa?.displayName ?? "Connected" : "Link your business number", href: "/onboarding" },
+    { done: connected, t: "Connect WhatsApp", s: connected ? shell.wa?.displayName ?? "Connected" : "Link your business number", href: "/connections#whatsapp" },
     { done: (anyIn[0]?.n ?? 0) > 0, t: "Receive your first message", s: (anyIn[0]?.n ?? 0) > 0 ? "Messages are flowing" : "Send “Hi” from your phone to test", href: "/onboarding" },
     { done: !!autoSet[0]?.welcome_enabled, t: "Turn on a welcome message", s: "Instant reply for every new customer · 1 min", href: "/automation" },
     { done: (contactsTotal[0]?.n ?? 0) >= 10, t: "Add your contacts", s: "Customers are added automatically when they message you", href: "/contacts" },
