@@ -75,7 +75,7 @@ export async function syncIgComments(accountId: string, opts: { posts?: number }
 /* ───────────────────────── DMs ───────────────────────── */
 
 type GMsg = { id: string; created_time?: string; message?: string; from?: { id?: string; username?: string }; to?: { data?: { id?: string; username?: string }[] };
-  attachments?: { data?: { image_data?: unknown; video_data?: unknown; file_url?: string }[] }; story?: unknown; is_unsupported?: boolean };
+  attachments?: { data?: { image_data?: unknown; video_data?: unknown; file_url?: string }[] }; story?: unknown; shares?: { data?: { link?: string }[] }; is_unsupported?: boolean };
 type GConv = { id: string; updated_time?: string; participants?: { data?: { id?: string; username?: string }[] } };
 const runningDm = new Set<string>();
 
@@ -84,7 +84,8 @@ function msgBody(m: GMsg): string | null {
   const a = m.attachments?.data?.[0];
   if (a) return a.video_data ? "[video]" : a.image_data ? "[photo]" : "[attachment]";
   if (m.story) return "[story reply]";
-  return m.is_unsupported ? "[unsupported message]" : null;
+  if (m.shares?.data?.length) return "[shared post]";
+  return m.is_unsupported ? "[unsupported message]" : "[shared content]"; // reels, profiles, stickers… Instagram doesn't expose them
 }
 
 /**
@@ -111,7 +112,7 @@ export async function syncIgDms(accountId: string, opts: { conversations?: numbe
     for (const c of changed) {
       const other = (c.participants?.data ?? []).find((x) => !isMe(x));
       if (!other?.id) continue;
-      const full = await gget<{ messages?: { data?: GMsg[] } }>(`/${c.id}?fields=messages.limit(${opts.messages ?? 25}){id,created_time,from,to,message,attachments,story,is_unsupported}`, a.access_token);
+      const full = await gget<{ messages?: { data?: GMsg[] } }>(`/${c.id}?fields=messages.limit(${opts.messages ?? 25}){id,created_time,from,to,message,attachments,story,shares,is_unsupported}`, a.access_token);
       const msgs = (full?.messages?.data ?? []).slice().reverse(); // oldest first
       if (!msgs.length) continue;
       const th = await ensureThread(a.workspace_id, a.id, other.id, other.username ?? null);
