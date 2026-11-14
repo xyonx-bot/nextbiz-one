@@ -42,6 +42,10 @@ services:
       IG_APP_SECRET: ${IG_APP_SECRET:-}
       IG_WEBHOOK_VERIFY_TOKEN: ${IG_WEBHOOK_VERIFY_TOKEN:-}
       IG_CONFIG_ID: ${IG_CONFIG_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
+      WA_ES_CONFIG_ID: ${WA_ES_CONFIG_ID:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       NODE_ENV: production
     networks: [joyverse_main_network]
 
