@@ -51,7 +51,7 @@ export async function searchInterests(c: AdsConnection, q: string): Promise<Inte
 
 /* ── identity (who the ad is from) ── */
 
-export type Identity = { pages: { id: string; name: string }[]; instagram: { id: string; username: string }[]; pageError: string | null };
+export type Identity = { pages: { id: string; name: string; whatsapp: boolean | null }[]; instagram: { id: string; username: string }[]; pageError: string | null };
 export async function identities(c: AdsConnection): Promise<Identity> {
   const t = tok(c);
   const acct = await gget<{ business?: { id: string } }>(`/${c.ad_account_id}?fields=business`, t);
@@ -64,12 +64,18 @@ export async function identities(c: AdsConnection): Promise<Identity> {
     biz ? gget<{ data: { id: string; username: string }[] }>(`/${biz}/instagram_accounts?fields=id,username&limit=50`, t) : Promise.resolve(null),
   ]);
   const uniq = <T extends { id: string }>(xs: (T[] | undefined)[]) => [...new Map(xs.flat().filter(Boolean).map((x) => [x!.id, x!])).values()];
-  const pages = uniq([promote.ok ? promote.data.data : [], mine.ok ? mine.data.data : [], owned?.ok ? owned.data.data : []]);
-  const promotable = promote.ok ? promote.data.data.length > 0 : false;
+  const found = uniq([promote.ok ? promote.data.data : [], mine.ok ? mine.data.data : [], owned?.ok ? owned.data.data : []]);
+  // is a WhatsApp number linked to the Page? (click-to-WhatsApp ads need it) — null when Meta won't say
+  const pages = await Promise.all(found.map(async (pg) => {
+    const r = await gget<{ whatsapp_number?: string }>(`/${pg.id}?fields=whatsapp_number`, t);
+    return { id: pg.id, name: pg.name, whatsapp: r.ok ? !!r.data.whatsapp_number : null };
+  }));
+  // system users often see an empty promote_pages list even with "Create ads" on the Page — only warn when the Page can't be read at all
+  const readable = pages.some((p) => p.whatsapp !== null);
   return {
     pages,
     instagram: uniq([actIg.ok ? actIg.data.data : [], bizIg?.ok ? bizIg.data.data : []]),
-    pageError: pages.length === 0 ? "No Facebook Page found for this ad account." : !promotable
+    pageError: pages.length === 0 ? "No Facebook Page found for this ad account." : !readable
       ? "This ad account isn't allowed to advertise for your Page yet. In Meta Business Settings → Users → System users (or People), give it access to the Page with “Create ads”." : null,
   };
 }

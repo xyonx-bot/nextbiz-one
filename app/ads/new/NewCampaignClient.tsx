@@ -15,7 +15,7 @@ import { Icon } from "@/components/Icon";
 type Goal = "whatsapp" | "instagram_dm" | "website";
 type Loc = { key: string; name: string; type: string; region?: string; country_code?: string; country_name?: string; radiusKm?: number };
 type Interest = { id: string; name: string; audience_size_upper_bound?: number; path?: string[] };
-type Ident = { connected: boolean; account?: { id: string; name: string | null }; pages: { id: string; name: string }[]; instagram: { id: string; username: string }[]; pageError: string | null };
+type Ident = { connected: boolean; account?: { id: string; name: string | null }; pages: { id: string; name: string; whatsapp?: boolean | null }[]; instagram: { id: string; username: string }[]; pageError: string | null };
 type Media = { kind: "image"; hash: string | null; preview: string; uploading: boolean; error?: string } | { kind: "video"; id: string | null; preview: string; thumb: string | null; ready: boolean; uploading: boolean; error?: string };
 
 const GOALS: [Goal, string, string, string, string][] = [
@@ -147,6 +147,7 @@ export function NewCampaignClient() {
     [!!primary.trim() && !!headline.trim(), "Text and headline written"],
     [goal !== "website" || /^https?:\/\/\S+\.\S+/.test(url), "Website address added"],
     [budget >= 100, "Budget ₹100/day or more"],
+    [goal !== "whatsapp" || ident?.pages.find((p) => p.id === pageId)?.whatsapp !== false, "Page linked to WhatsApp"],
   ];
   const ready = live && checks.every(([ok]) => ok) && !ident?.pageError;
 
@@ -194,7 +195,9 @@ export function NewCampaignClient() {
                   </div>
                 ))}
               </div>
-              {goal === "whatsapp" && <span className="hint"><Icon name="info" size="xs" /> Your Facebook Page must be linked to your WhatsApp Business number (Page settings → Linked accounts → WhatsApp).</span>}
+              {goal === "whatsapp" && (ident?.pages.find((p) => p.id === pageId)?.whatsapp === false
+                ? <div className="note warn" data-testid="wa-unlinked"><Icon name="warning" /><span><b>{ident?.pages.find((p) => p.id === pageId)?.name} isn&apos;t linked to WhatsApp yet.</b> Meta only runs click-to-WhatsApp ads from a Page linked to your WhatsApp Business number: on Facebook, open the Page → Settings → Linked accounts → WhatsApp, and enter the number. Or choose Instagram DMs or Website visits.</span></div>
+                : <span className="hint"><Icon name="info" size="xs" /> Your Facebook Page must be linked to your WhatsApp Business number (Page settings → Linked accounts → WhatsApp).</span>)}
               {goal === "website" && (
                 <div className="g2">
                   <div className="field"><label htmlFor="f-url">Website address</label><input id="f-url" className="input" value={url} onChange={(e) => setUrl(e.target.value.trim())} placeholder="https://yourshop.in/offer" /></div>

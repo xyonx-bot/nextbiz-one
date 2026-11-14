@@ -44,9 +44,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, account: a });
   }
   const ll = await longLivedUserToken(b.data.accessToken);
-  if (!ll.ok) return NextResponse.json({ error: ll.error }, { status: 502 });
+  if (!ll.ok) return NextResponse.json({ error: ll.error }, { status: 422 });
   const list = await listAdAccounts(ll.token);
-  if (!list.ok) return NextResponse.json({ error: list.error }, { status: 502 });
+  if (!list.ok) return NextResponse.json({ error: list.error }, { status: 422 });
   if (!b.data.adAccountId) return NextResponse.json({ ok: true, pick: list.accounts });
   const a = list.accounts.find((x) => x.id === b.data.adAccountId);
   if (!a) return NextResponse.json({ error: "That ad account isn't available to this Facebook login." }, { status: 400 });

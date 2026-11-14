@@ -53,7 +53,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (!conn) return NextResponse.json({ error: "No ad account connected." }, { status: 409 });
     if (b.data.status === "cancelled") return NextResponse.json({ error: "Delete or archive live campaigns in Meta Ads Manager." }, { status: 409 });
     const r = await setLiveStatus(conn, id, b.data.status === "active" ? "ACTIVE" : "PAUSED");
-    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 502 });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 422 });
     console.log(`[ads] ${tn.user.email} set campaign ${id} → ${b.data.status} on ${conn.ad_account_id}`);
     return NextResponse.json({ ok: true, demo: false });
   }

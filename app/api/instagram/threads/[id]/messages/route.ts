@@ -27,7 +27,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const s = await igSendDm(t.ig_account_id, t.igsid, b.data.body);
   if (!s.ok) {
     await recordOutbound(t.workspace_id, t.ig_account_id, t.id, `failed-${Date.now()}`, b.data.body, "app", "failed", s.error);
-    return NextResponse.json({ error: s.error }, { status: 502 });
+    return NextResponse.json({ error: s.error }, { status: 422 });
   }
   await recordOutbound(t.workspace_id, t.ig_account_id, t.id, s.mid, b.data.body, "app", "sent");
   await p.query(`UPDATE ig_threads SET automation_paused = true, automation_paused_at = now(), last_read_at = now() WHERE id = $1`, [id]);

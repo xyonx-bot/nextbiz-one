@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   if (!c) return NextResponse.json({ error: "Connect an ad account to publish." }, { status: 409 });
   if (s.locations.some((l) => l.key.startsWith("demo-"))) return NextResponse.json({ error: "Pick locations again — the demo list can't be published." }, { status: 400 });
   const r = await publishCampaign(c, s);
-  if (!r.ok) return NextResponse.json({ error: `Meta didn't accept the ${r.step}: ${r.error}`, step: r.step }, { status: 502 });
+  if (!r.ok) return NextResponse.json({ error: `Meta didn't accept the ${r.step}: ${r.error}`, step: r.step }, { status: 422 });
   await save("paused", r.campaignId);
   console.log(`[ads] ${t.user.email} published campaign ${r.campaignId} (PAUSED) on ${c.ad_account_id}`);
   return NextResponse.json({ ok: true, campaignId: r.campaignId });

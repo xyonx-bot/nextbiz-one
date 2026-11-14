@@ -48,7 +48,7 @@ export async function POST(req: Request) {
 
     const sub = await submitTemplate(await getWaCreds(t.wsId), { name, language: b.data.language, category: b.data.category, bodyText: b.data.body });
     if (!sub.ok) {
-      return NextResponse.json({ ok: false, error: sub.error, template: r.rows[0] }, { status: 502 });
+      return NextResponse.json({ ok: false, error: sub.error, template: r.rows[0] }, { status: 422 });
     }
     const upd = await p.query(
       `UPDATE templates SET status='pending', meta_template_id=$2, updated_at=now() WHERE id=$1 RETURNING *`,

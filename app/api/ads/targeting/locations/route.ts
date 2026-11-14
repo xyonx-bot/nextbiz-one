@@ -20,5 +20,5 @@ export async function GET(req: Request) {
   const c = await adsConnection(t.wsId);
   if (!c) return NextResponse.json({ ok: true, demo: true, locations: DEMO.filter((l) => l.name.toLowerCase().includes(q.toLowerCase())).slice(0, 10) });
   try { return NextResponse.json({ ok: true, locations: await searchLocations(c, q) }); }
-  catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 502 }); }
+  catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 422 }); }
 }

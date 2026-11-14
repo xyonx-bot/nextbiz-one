@@ -59,7 +59,7 @@ export async function completeEmbeddedSignup(
   // 1 · code → business integration system-user token (long-lived)
   const t = await gjson(`${GRAPH}/oauth/access_token?client_id=${appId}&client_secret=${encodeURIComponent(secret)}&code=${encodeURIComponent(input.code)}`);
   const token = t.data.access_token as string | undefined;
-  if (!t.ok || !token) return { ok: false, status: 502, error: `Meta didn't accept the sign-in: ${errOf(t.data, "code exchange failed")}` };
+  if (!t.ok || !token) return { ok: false, status: 422, error: `Meta didn't accept the sign-in: ${errOf(t.data, "code exchange failed")}` };
 
   // 2 · which WhatsApp account + number
   let wabaId = input.wabaId ?? null;
@@ -72,7 +72,7 @@ export async function completeEmbeddedSignup(
   }
   if (!pnid) return { ok: false, status: 400, error: "That WhatsApp account has no phone number yet — add one in the connect window." };
   const info = await gjson(`${GRAPH}/${pnid}?fields=display_phone_number,verified_name&access_token=${encodeURIComponent(token)}`);
-  if (!info.ok) return { ok: false, status: 502, error: `Couldn't read the number: ${errOf(info.data, "phone lookup failed")}` };
+  if (!info.ok) return { ok: false, status: 422, error: `Couldn't read the number: ${errOf(info.data, "phone lookup failed")}` };
   const display = `${String(info.data.verified_name ?? "WhatsApp Business")} (${String(info.data.display_phone_number ?? "").trim()})`;
 
   // one number feeds one workspace — webhooks are routed by it
@@ -82,7 +82,7 @@ export async function completeEmbeddedSignup(
 
   // 3 · our app receives this WABA's webhooks
   const sub = await gjson(`${GRAPH}/${wabaId}/subscribed_apps`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-  if (!sub.ok) return { ok: false, status: 502, error: `Couldn't subscribe to the number's messages: ${errOf(sub.data, "subscribe failed")}` };
+  if (!sub.ok) return { ok: false, status: 422, error: `Couldn't subscribe to the number's messages: ${errOf(sub.data, "subscribe failed")}` };
 
   // 4 · register the number on Cloud API (a number that is already registered answers with an error we can ignore)
   const reg = await gjson(`${GRAPH}/${pnid}/register`, {

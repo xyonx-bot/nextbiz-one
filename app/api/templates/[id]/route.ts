@@ -23,7 +23,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const sub = await submitTemplate(await getWaCreds(tn.wsId), {
       name: t.meta_name ?? t.name, language: t.language, category: t.category, bodyText: t.body,
     });
-    if (!sub.ok) return NextResponse.json({ error: sub.error }, { status: 502 });
+    if (!sub.ok) return NextResponse.json({ error: sub.error }, { status: 422 });
     const r = await p.query(
       `UPDATE templates SET status='pending', meta_template_id=$2, rejection_reason=NULL, updated_at=now() WHERE id=$1 RETURNING *`,
       [id, sub.id],
