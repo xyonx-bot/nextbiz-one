@@ -21,6 +21,12 @@ export async function GET(req: Request) {
   const base = publicBase(req);
   if (!u?.workspaceId) return NextResponse.redirect(`${base}/login`);
   const { appId } = igAppCreds();
+  // Instagram Login needs the *Instagram* app ID (Instagram → API setup with Instagram login), not the Facebook app ID —
+  // Instagram answers the Facebook one with "Invalid platform app".
+  if (appId && appId === process.env.META_APP_ID) {
+    console.error("[ig] IG_APP_ID is set to the Facebook app ID — use the Instagram app ID from API setup with Instagram login");
+    return NextResponse.redirect(`${base}/connections?ig=err-fbappid#instagram`);
+  }
   if (!/^\d{6,}$/.test(appId)) {
     // placeholder / missing Instagram app id → don't send people to an Instagram error page
     return NextResponse.redirect(`${base}/connections?ig=err-noappid#instagram`);

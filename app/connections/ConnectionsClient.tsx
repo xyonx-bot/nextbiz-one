@@ -50,6 +50,7 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("ig");
     if (q === "connected") setNote({ kind: "ok", text: "Instagram connected — DMs and comments now arrive in your inbox" });
+    else if (q === "err-fbappid") setNote({ kind: "bad", text: "Instagram login is misconfigured on this server (Facebook app ID used instead of the Instagram app ID)." });
     else if (q === "err-noappid") setNote({ kind: "bad", text: "Instagram login isn't switched on for this server yet." });
     else if (q?.startsWith("err")) setNote({ kind: "bad", text: "Instagram connection failed — try again." });
     const h = window.location.hash.slice(1);
