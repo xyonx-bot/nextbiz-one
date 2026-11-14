@@ -114,6 +114,30 @@ test.describe.serial("NextBiz Social", () => {
     expect((await comments(page, "needs")).counts.needs).toBe(1);
   });
 
+  test("Instagram DMs and Auto-replies stay inside NextBiz Social", async ({ page }) => {
+    await login(page);
+    await page.goto("/social");
+    await page.getByTestId("nav-social-dms").click();
+    await page.waitForURL("**/social/dms");
+    await expect(page.locator("[data-testid=nav-panel] .pmod .eyebrow")).toHaveText("NextBiz Social");
+    await expect(page.getByTestId("filter-wa")).toHaveCount(0); // no WhatsApp in the Instagram inbox
+    await expect(page.getByTestId("crow").first()).toBeVisible(); // the DM opened by the private reply
+    await page.getByTestId("nav-social-auto").click();
+    await page.waitForURL("**/social/automation");
+    await expect(page.locator("[data-testid=nav-panel] .pmod .eyebrow")).toHaveText("NextBiz Social");
+    await expect(page.locator(".kw")).toContainText(`Menu ${T}`); // the Instagram comment rule
+    // Instagram's welcome DM is its own switch — WhatsApp's stays as it was
+    const before = (await pool.query(`SELECT welcome_enabled, ig_welcome_enabled FROM automation_settings WHERE workspace_id = $1`, [wsId])).rows[0];
+    await page.getByTestId("welcome-toggle").click();
+    await expect.poll(async () => (await pool.query(`SELECT ig_welcome_enabled FROM automation_settings WHERE workspace_id = $1`, [wsId])).rows[0]?.ig_welcome_enabled).toBe(!(before?.ig_welcome_enabled ?? false));
+    const after = (await pool.query(`SELECT welcome_enabled FROM automation_settings WHERE workspace_id = $1`, [wsId])).rows[0];
+    if (before) expect(after.welcome_enabled).toBe(before.welcome_enabled);
+    // Chat's automation page doesn't list the Instagram-only rule
+    await page.goto("/automation");
+    await expect(page.locator("[data-testid=automation]")).toBeVisible();
+    await expect(page.locator(".kw")).toHaveCount(0);
+  });
+
   test("another workspace sees none of it", async ({ page }) => {
     await login(page);
     const id = (await comments(page)).comments[0].id;

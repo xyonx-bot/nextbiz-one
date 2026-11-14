@@ -68,23 +68,25 @@ export type CommentRow = {
   id: string; comment_id: string; from_id: string | null; from_name: string | null; media_id: string | null; text: string | null;
   created_at: string; dm_status: string | null; public_status: string | null; handled_at: string | null;
   reply_text: string | null; reply_kind: string | null; replied_at: string | null; hidden_at: string | null;
-  rule_name: string | null; rule_reply: string | null; rule_public: string | null; state: "needs" | "auto" | "replied" | "dismissed";
+  rule_name: string | null; rule_reply: string | null; rule_public: string | null; owner_reply_text: string | null; owner_replied_at: string | null; source: string;
+  state: "needs" | "auto" | "replied" | "dismissed" | "old";
 };
 
-const STATE = `CASE WHEN c.replied_at IS NOT NULL THEN 'replied'
+const STATE = `CASE WHEN c.replied_at IS NOT NULL OR c.owner_replied_at IS NOT NULL THEN 'replied'
                     WHEN c.dm_status = 'sent' OR c.public_status = 'sent' THEN 'auto'
-                    WHEN c.hidden_at IS NOT NULL THEN 'dismissed' ELSE 'needs' END`;
+                    WHEN c.hidden_at IS NOT NULL THEN 'dismissed'
+                    WHEN c.created_at < now() - interval '7 days' THEN 'old' ELSE 'needs' END`;
 const BASE = `FROM ig_comments c JOIN ig_accounts a ON a.id = c.ig_account_id
               LEFT JOIN keyword_rules r ON r.id = c.rule_id
              WHERE a.workspace_id = $1 AND a.live AND (c.from_id IS NULL OR c.from_id <> a.ig_user_id)`;
 const COLS = `c.id, c.comment_id, c.from_id, c.from_name, c.media_id, c.text, c.created_at, c.dm_status, c.public_status, c.handled_at,
-              c.reply_text, c.reply_kind, c.replied_at, c.hidden_at, r.name AS rule_name, r.reply AS rule_reply, r.comment_public_reply AS rule_public,
+              c.reply_text, c.reply_kind, c.replied_at, c.hidden_at, c.owner_reply_text, c.owner_replied_at, c.source, r.name AS rule_name, r.reply AS rule_reply, r.comment_public_reply AS rule_public,
               ${STATE} AS state`;
 
 export async function commentCounts(wsId: string): Promise<Record<CommentFilter, number>> {
   const { rows } = await getPool().query(`SELECT ${STATE} AS state, count(*)::int AS n ${BASE} GROUP BY 1`, [wsId]);
   const m = Object.fromEntries(rows.map((r) => [r.state, r.n])) as Record<string, number>;
-  return { needs: m.needs ?? 0, auto: m.auto ?? 0, replied: m.replied ?? 0, all: (m.needs ?? 0) + (m.auto ?? 0) + (m.replied ?? 0) + (m.dismissed ?? 0) };
+  return { needs: m.needs ?? 0, auto: m.auto ?? 0, replied: m.replied ?? 0, all: (m.needs ?? 0) + (m.auto ?? 0) + (m.replied ?? 0) + (m.dismissed ?? 0) + (m.old ?? 0) };
 }
 
 export async function listComments(wsId: string, opts: { filter?: CommentFilter; media?: string | null; limit?: number } = {}): Promise<CommentRow[]> {

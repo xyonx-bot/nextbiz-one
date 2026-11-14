@@ -49,15 +49,17 @@ export async function igAutoReplyDm(wsId: string, acctId: string, threadId: stri
     if (th.automation_paused) { await log(wsId, "paused", null, "a person replied — automation stays quiet for this chat", "paused"); return; }
     const cfg = (await p.query(`SELECT * FROM automation_settings WHERE workspace_id = $1`, [wsId])).rows[0];
 
-    if (cfg?.away_enabled && !inBusinessHours(cfg.business_hours)) {
-      if (cfg.away_text) {
-        const s = await dm(wsId, acctId, threadId, th.igsid, cfg.away_text);
+    // Instagram has its own welcome/away switches (ig_*); business hours are shared with WhatsApp
+    if (cfg?.ig_away_enabled && !inBusinessHours(cfg.business_hours)) {
+      const away = cfg.ig_away_text || cfg.away_text;
+      if (away) {
+        const s = await dm(wsId, acctId, threadId, th.igsid, away);
         await log(wsId, "away", null, `away reply ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
       }
       return;
     }
-    if (cfg?.welcome_enabled && !th.welcome_sent_at) {
-      const s = await dm(wsId, acctId, threadId, th.igsid, cfg.welcome_text);
+    if (cfg?.ig_welcome_enabled && !th.welcome_sent_at) {
+      const s = await dm(wsId, acctId, threadId, th.igsid, cfg.ig_welcome_text || cfg.welcome_text);
       if (s.ok) await p.query(`UPDATE ig_threads SET welcome_sent_at = now() WHERE id = $1`, [threadId]);
       await log(wsId, "welcome", null, `welcome ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
     }

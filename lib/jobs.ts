@@ -124,4 +124,8 @@ export function startWorker() {
   const igRefresh = () => import("./instagram").then((m) => m.refreshIgTokens(15)).then((r) => { if (r.refreshed || r.failed) console.log(`[ig] token refresh: ${r.refreshed} refreshed, ${r.failed} failed`); }).catch(() => {});
   void igRefresh();
   setInterval(() => void igRefresh(), 6 * 3600_000).unref();
+  // Instagram comments: pull from the API every 5 min (webhooks alone miss comments before App Review)
+  const igSync = () => import("./ig-sync").then((m) => m.syncAllIgComments()).catch(() => {});
+  setTimeout(() => void igSync(), 30_000).unref();
+  setInterval(() => void igSync(), 5 * 60_000).unref();
 }

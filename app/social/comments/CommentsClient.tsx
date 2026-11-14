@@ -11,11 +11,11 @@ import { avatarClass } from "@/lib/ui";
  * the rest waits in "Needs reply" until someone replies publicly, sends the one allowed private DM,
  * or dismisses it. Same layout language as the chat inbox: resizable columns, container-query breakpoints.
  */
-type State = "needs" | "auto" | "replied" | "dismissed";
+type State = "needs" | "auto" | "replied" | "dismissed" | "old";
 type C = {
   id: string; comment_id: string; from_id: string | null; from_name: string | null; media_id: string | null; text: string | null; created_at: string;
   dm_status: string | null; public_status: string | null; reply_text: string | null; reply_kind: string | null; replied_at: string | null; hidden_at: string | null;
-  rule_name: string | null; rule_reply: string | null; rule_public: string | null; state: State;
+  rule_name: string | null; rule_reply: string | null; rule_public: string | null; owner_reply_text: string | null; owner_replied_at: string | null; source: string; state: State;
 };
 type Media = { id: string; permalink: string | null; thumb: string | null; caption: string | null; type: string | null };
 type Detail = { comment: C; onPost: C[]; person: { comments: number; since: string }; thread: { id: string } | null; media: Media | null };
@@ -40,7 +40,9 @@ function Badges({ c }: { c: C }) {
       {c.public_status === "sent" && <span className="cb auto"><Icon name="lightning" size="xs" />Public reply</span>}
       {c.replied_at && <span className="cb you"><Icon name="check" size="xs" />{c.reply_kind === "private" ? "You DM'd" : "You replied"}</span>}
       {c.dm_status === "failed" && <span className="cb bad"><Icon name="warning" size="xs" />DM failed</span>}
+      {c.owner_replied_at && !c.replied_at && <span className="cb you"><Icon name="instagram-logo" size="xs" />Answered in Instagram</span>}
       {c.state === "dismissed" && <span className="cb muted">Dismissed</span>}
+      {c.state === "old" && <span className="cb muted">Older than 7 days</span>}
     </span>
   );
 }
@@ -60,6 +62,13 @@ export function CommentsClient({ username }: { username: string | null }) {
   const [note, setNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const [view, setView] = useState<"list" | "detail">("list");
   const booted = useRef(false);
+  const [sync, setSync] = useState<"idle" | "busy" | "done" | "fail">("idle");
+  const runSync = useCallback(async (force: boolean) => {
+    setSync("busy");
+    const r = await fetch("/api/instagram/comments/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force }) }).then((x) => x.json()).catch(() => null);
+    setSync(r?.ok && (r.error == null) ? "done" : "fail");
+    return r;
+  }, []);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   // resizable columns (same mechanics as the chat inbox)
@@ -99,11 +108,14 @@ export function CommentsClient({ username }: { username: string | null }) {
     const f = (s.get("filter") as Filter) || (s.get("media") || s.get("c") ? "all" : "needs");
     const m = s.get("media"); const c = s.get("c");
     setFilter(FILTERS.some(([k]) => k === f) ? f : "needs"); setMediaF(m);
-    void load(FILTERS.some(([k]) => k === f) ? f : "needs", m).then((rows) => {
+    const f2: Filter = FILTERS.some(([k]) => k === f) ? f : "needs";
+    void load(f2, m).then((rows) => {
       const first = c ?? (window.innerWidth >= 900 ? rows[0]?.id : undefined);
       if (first) void open(first, !!c);
     });
-  }, [load, open]);
+    // then pull fresh comments from Instagram and refresh the list if anything came in
+    void runSync(false).then((r) => { if (r?.synced) void load(f2, m); });
+  }, [load, open, runSync]);
 
   const pick = (f: Filter) => { setFilter(f); const u = new URL(window.location.href); u.searchParams.set("filter", f); history.replaceState(null, "", u); void load(f, mediaF); };
   const clearMedia = () => { setMediaF(null); const u = new URL(window.location.href); u.searchParams.delete("media"); history.replaceState(null, "", u); void load(filter, null); };
@@ -163,14 +175,21 @@ export function CommentsClient({ username }: { username: string | null }) {
                 <button className="btn btn-ghost btn-icon btn-sm" onClick={clearMedia} aria-label="Show all posts"><Icon name="x" /></button>
               </div>
             )}
-            <label className="search"><Icon name="magnifying-glass" size="sm" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search comments or people" aria-label="Search comments" /></label>
+            <div className="row gap-6">
+              <label className="search grow"><Icon name="magnifying-glass" size="sm" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search comments or people" aria-label="Search comments" /></label>
+              <button className={`btn btn-ghost btn-icon syncb${sync === "busy" ? " spin" : ""}`} disabled={sync === "busy"} data-testid="comments-sync"
+                title={sync === "busy" ? "Syncing with Instagram…" : sync === "fail" ? "Couldn't reach Instagram — try again" : "Sync comments from Instagram"}
+                onClick={async () => { const r = await runSync(true); if (r?.ok) await load(filter, mediaF); }}><Icon name="arrows-clockwise" /></button>
+            </div>
+            {sync === "busy" && list !== null && <span className="syncing"><span className="pulse" />Syncing with Instagram…</span>}
           </div>
           <div className="clist2">
             {list === null && Array.from({ length: 6 }).map((_, i) => <div key={i} className="skrow"><span className="sk av" /><span className="grow col gap-6"><span className="sk" style={{ height: 10, width: "40%" }} /><span className="sk" style={{ height: 10, width: "85%" }} /></span></div>)}
             {list !== null && shown.length === 0 && (
               <div className="empty" style={{ padding: "36px 18px" }}><div className="art"><Icon name={filter === "needs" ? "check-circle" : "chat-teardrop-text"} /></div>
-                <h3>{filter === "needs" ? "All caught up" : "No comments here"}</h3>
-                <p>{filter === "needs" ? "Every comment has an answer. New ones that no rule handles will appear here." : "Try another filter."}</p></div>
+                <h3>{mediaF ? "No comments in this view" : filter === "needs" ? "All caught up" : "No comments here"}</h3>
+                <p>{mediaF ? "Switch to All, or clear the post filter." : filter === "needs" ? "Every recent comment has an answer — including ones you answered in the Instagram app. Older ones are under All." : "Try another filter."}</p>
+                {filter !== "all" && <div className="acts"><button className="btn btn-soft btn-sm" onClick={() => pick("all")}>Show all comments</button></div>}</div>
             )}
             {shown.map((x) => {
               const m = x.media_id ? media[x.media_id] : null;
@@ -224,6 +243,7 @@ export function CommentsClient({ username }: { username: string | null }) {
                       <span className="meta">{ago(x.created_at)}{x.state === "needs" && <span className="cb needs" style={{ marginLeft: 6 }}><span className="d" />Needs reply</span>}</span>
                       {x.public_status === "sent" && x.rule_public && <div className="ig-r"><span className="av xs me">{ini(username)}</span><p><b>{handle(username)}</b> {x.rule_public}</p><span className="tagx auto"><Icon name="lightning" size="xs" />Auto · {x.rule_name}</span></div>}
                       {x.dm_status === "sent" && x.reply_kind !== "private" && x.rule_reply && <div className="ig-r dm"><Icon name="paper-plane-tilt" size="sm" /><p>Private DM: “{x.rule_reply}”</p><span className="tagx auto"><Icon name="lightning" size="xs" />Auto · {x.rule_name}</span></div>}
+                      {x.owner_reply_text && <div className="ig-r"><span className="av xs me">{ini(username)}</span><p><b>{handle(username)}</b> {x.owner_reply_text}</p><span className="tagx you"><Icon name="instagram-logo" size="xs" />In Instagram · {x.owner_replied_at ? ago(x.owner_replied_at) : ""}</span></div>}
                       {x.reply_text && x.reply_kind === "public" && <div className="ig-r"><span className="av xs me">{ini(username)}</span><p><b>{handle(username)}</b> {x.reply_text}</p><span className="tagx you"><Icon name="check" size="xs" />You · {x.replied_at ? ago(x.replied_at) : ""}</span></div>}
                       {x.reply_text && x.reply_kind === "private" && <div className="ig-r dm"><Icon name="paper-plane-tilt" size="sm" /><p>Private DM: “{x.reply_text}”</p><span className="tagx you"><Icon name="check" size="xs" />You · {x.replied_at ? ago(x.replied_at) : ""}</span></div>}
                     </div>
@@ -259,7 +279,7 @@ export function CommentsClient({ username }: { username: string | null }) {
                 <b>{handle(c.from_name)}</b>
                 <small>{d.person.comments} comment{d.person.comments === 1 ? "" : "s"} since {new Date(d.person.since).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</small>
                 <div className="row gap-6" style={{ marginTop: 10 }}>
-                  {d.thread ? <a className="btn btn-soft btn-sm" href="/inbox?ch=ig"><Icon name="paper-plane-tilt" />Open DM</a> : <span className="pill neutral sm">No DM yet</span>}
+                  {d.thread ? <a className="btn btn-soft btn-sm" href={`/social/dms?open=ig:${d.thread.id}`}><Icon name="paper-plane-tilt" />Open DM</a> : <span className="pill neutral sm">No DM yet</span>}
                   {c.from_name && <a className="btn btn-ghost btn-sm" href={`https://www.instagram.com/${c.from_name.replace(/^@/, "")}/`} target="_blank" rel="noreferrer"><Icon name="arrow-square-out" />Profile</a>}
                 </div>
               </div>
@@ -274,20 +294,21 @@ export function CommentsClient({ username }: { username: string | null }) {
                   {c.dm_status === "failed" && <li><span className="k red"><Icon name="warning" size="xs" /></span><span><b>Private DM failed</b><small>Reply by hand</small></span></li>}
                   {c.public_status === "sent" && <li><span className="k green"><Icon name="chat-circle-dots" size="xs" /></span><span><b>Public reply posted</b><small>Automatically</small></span></li>}
                   {c.replied_at && <li><span className="k green"><Icon name="check" size="xs" /></span><span><b>{c.reply_kind === "private" ? "You sent a private DM" : "You replied publicly"}</b><small>{when(c.replied_at)}</small></span></li>}
+                  {c.owner_replied_at && <li><span className="k green"><Icon name="instagram-logo" size="xs" /></span><span><b>Answered from Instagram</b><small>{when(c.owner_replied_at)}</small></span></li>}
                   {c.hidden_at && !c.replied_at && <li><span className="k"><Icon name="check" size="xs" /></span><span><b>Dismissed</b><small>{when(c.hidden_at)}</small></span></li>}
                 </ol>
-                <div className="note info" style={{ fontSize: "var(--fs-xs)" }}><Icon name="lightbulb" /><span>Comments asking the same thing? <a href="/automation" style={{ textDecoration: "underline", fontWeight: 700 }}>Add a keyword rule</a> with “Instagram comment” on and it answers for you.</span></div>
+                <div className="note info" style={{ fontSize: "var(--fs-xs)" }}><Icon name="lightbulb" /><span>Comments asking the same thing? <a href="/social/automation" style={{ textDecoration: "underline", fontWeight: 700 }}>Add a keyword rule</a> with “Instagram comment” on and it answers for you.</span></div>
               </div>
             </>
           ) : <div className="empty" style={{ margin: "auto" }}><p>The person behind a comment shows here.</p></div>}
         </aside>
 
-        <section className="zero" aria-label="No comments yet">
+        <section className="zero" aria-label="No comments yet" data-testid="comments-zero">
           <div className="empty" style={{ maxWidth: 420 }}>
             <div className="art"><Icon name="chat-teardrop-text" /></div>
             <h3>No comments yet</h3>
             <p>When people comment on {username ? `@${username.replace(/^@/, "")}` : "your"} posts, they appear here within seconds. Keyword rules can answer them automatically.</p>
-            <div className="acts"><a className="btn btn-primary" href="/automation"><Icon name="lightning" />Set up comment auto-replies</a></div>
+            <div className="acts"><a className="btn btn-primary" href="/social/automation"><Icon name="lightning" />Set up comment auto-replies</a></div>
           </div>
         </section>
       </div>
