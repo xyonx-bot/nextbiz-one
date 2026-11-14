@@ -44,9 +44,13 @@ export async function syncIgComments(accountId: string, opts: { posts?: number }
       comments: (await gget<{ data?: GComment[] }>(`/${m.id}/comments?fields=id,text,timestamp,username,from,replies{id,text,timestamp,username,from}&limit=50`, a.access_token))?.data ?? [],
     })));
     for (const { mediaId, comments } of lists) {
+      // Instagram leaves the author off nested replies, but lists those replies again at the top level WITH it —
+      // so a reply is ours when its id matches one of our own top-level items.
+      const ownIds = new Map(comments.filter(isOwner).map((c) => [c.id, c]));
       for (const c of comments) {
-        if (isOwner(c)) continue; // our own top-level comments aren't customer comments
-        const ownerReplies = (c.replies?.data ?? []).filter(isOwner).sort((x, y) => String(x.timestamp).localeCompare(String(y.timestamp)));
+        if (isOwner(c)) continue; // our own comments/replies aren't customer comments
+        const ownerReplies = (c.replies?.data ?? []).map((r) => ownIds.get(r.id) ?? (isOwner(r) ? r : null)).filter((r): r is GComment => !!r)
+          .sort((x, y) => String(x.timestamp).localeCompare(String(y.timestamp)));
         const last = ownerReplies[ownerReplies.length - 1];
         const r = await p.query(
           `INSERT INTO ig_comments (ig_account_id, comment_id, from_id, from_name, media_id, text, raw, created_at, source, owner_reply_text, owner_replied_at)

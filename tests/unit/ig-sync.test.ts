@@ -27,10 +27,11 @@ describe("syncIgComments", () => {
     vi.stubEnv("IG_LIVE", "true");
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const json = (o: unknown) => new Response(JSON.stringify(o), { status: 200 });
-      if (url.includes("/me/media")) return json({ data: [{ id: "M1", comments_count: 3 }, { id: "M2", comments_count: 0 }] });
+      if (url.includes("/me/media")) return json({ data: [{ id: "M1", comments_count: 4 }, { id: "M2", comments_count: 0 }] });
       if (url.includes("/M1/comments")) return json({ data: [
         { id: "c1", text: "price?", timestamp: "2026-11-14T10:00:00+0000", from: { id: "U1", username: "priya" },
-          replies: { data: [{ id: "r1", text: "DM'd you!", timestamp: "2026-11-14T10:05:00+0000", from: { id: "OWNER", username: "mango.bakes" } }] } },
+          replies: { data: [{ id: "r1", text: "DM'd you!", timestamp: "2026-11-14T10:05:00+0000" }] } }, // nested replies come WITHOUT an author
+        { id: "r1", text: "DM'd you!", timestamp: "2026-11-14T10:05:00+0000", username: "mango.bakes", from: { id: "OWNER", username: "mango.bakes" } }, // …and again top-level WITH it
         { id: "c2", text: "love it", timestamp: "2026-11-14T11:00:00+0000", username: "rahul", from: { id: "U2", username: "rahul" } },
         { id: "c3", text: "thanks all!", timestamp: "2026-11-14T12:00:00+0000", username: "mango.bakes", from: { id: "OWNER" } },
       ] });
