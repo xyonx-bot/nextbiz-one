@@ -7,7 +7,7 @@ export default async function BroadcastsPage({ searchParams }: { searchParams: P
   const { new: isNew, to } = await searchParams;
   const preselect = (to ?? "").split(",").filter((s) => /^[0-9a-f-]{36}$/i.test(s));
   return (
-    <AppShell active="broadcasts" title="Broadcasts">
+    <AppShell active="broadcasts" requires="broadcasts" title="Broadcasts">
       <BroadcastsClient startNew={isNew === "1"} preselect={preselect} />
     </AppShell>
   );

@@ -3,22 +3,21 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 
-async function auth() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  return getSessionUser(token);
-}
 
 /** GET — broadcasts + per-recipient rollups for the list view. */
 export async function GET() {
-  if (!(await auth())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const { rows } = await getPool().query(
     `SELECT b.id, b.name, b.status, b.scheduled_at, b.sent_at, t.name AS template_name,
             (SELECT count(*)::int FROM broadcast_recipients r WHERE r.broadcast_id=b.id) AS total,
             (SELECT count(*)::int FROM broadcast_recipients r WHERE r.broadcast_id=b.id AND r.status='sent') AS sent,
             (SELECT count(*)::int FROM broadcast_recipients r WHERE r.broadcast_id=b.id AND r.status='failed') AS failed
        FROM broadcasts b JOIN templates t ON t.id=b.template_id
-      ORDER BY COALESCE(b.scheduled_at, b.created_at) DESC LIMIT 200`,
+      WHERE b.workspace_id = $1
+      ORDER BY COALESCE(b.scheduled_at, b.created_at) DESC LIMIT 200`, [tn.wsId],
   );
   return NextResponse.json({ ok: true, broadcasts: rows });
 }
@@ -41,7 +40,8 @@ const Create = z.object({
  *  Audience: mode "all" = every opted-in contact; mode "contacts" = only the
  *  picked ids — ALWAYS intersected with opt_in=true (the rule is not bypassable). */
 export async function POST(req: Request) {
-  if (!(await auth())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const b = Create.safeParse(await req.json().catch(() => null));
   if (!b.success) return NextResponse.json({ error: "Invalid broadcast" }, { status: 400 });
   const mode = b.data.audience?.mode ?? "all";
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   if (mode === "contacts" && contactIds.length === 0)
     return NextResponse.json({ error: "Select at least one contact." }, { status: 400 });
   const p = getPool();
-  const ws = (await p.query(`SELECT id FROM workspaces WHERE name='NextBiz One' LIMIT 1`)).rows[0].id;
+  const ws = tn.wsId;
 
   const tpl = await p.query(`SELECT id, status, name FROM templates WHERE id=$1 AND workspace_id=$2`, [b.data.templateId, ws]);
   if (tpl.rows.length === 0) return NextResponse.json({ error: "Template not found" }, { status: 404 });

@@ -9,6 +9,8 @@ export type SessionUser = {
   email: string;
   displayName: string;
   isOperator: boolean;
+  /** the business workspace this login belongs to — every tenant query is scoped to it */
+  workspaceId: string | null;
 };
 
 function eq(a: string, b: string): boolean {
@@ -39,7 +41,7 @@ export async function login(email: string, password: string): Promise<SessionUse
   const p = getPool();
   const norm = email.trim().toLowerCase();
   const { rows } = await p.query(
-    `SELECT u.id, u.email, u.password_hash, u.display_name, u.is_operator, u.is_approved,
+    `SELECT u.id, u.email, u.password_hash, u.display_name, u.is_operator, u.is_approved, u.workspace_id,
             COALESCE(w.revoked, false) AS ws_revoked
        FROM users u LEFT JOIN workspaces w ON w.id = u.workspace_id
       WHERE u.email = $1`,
@@ -60,7 +62,7 @@ export async function login(email: string, password: string): Promise<SessionUse
       [ws, norm, await hash(opPass, 10), display],
     );
     const u = ins.rows[0];
-    return { id: u.id, email: u.email, displayName: u.display_name, isOperator: true };
+    return { id: u.id, email: u.email, displayName: u.display_name, isOperator: true, workspaceId: ws };
   }
 
   const u = rows[0];
@@ -84,6 +86,7 @@ export async function login(email: string, password: string): Promise<SessionUse
     email: u.email,
     displayName: u.display_name || u.email.split("@")[0],
     isOperator: u.is_operator,
+    workspaceId: u.workspace_id ?? null,
   };
 }
 
@@ -100,7 +103,7 @@ export async function createSession(userId: string): Promise<{ token: string; ex
 export async function getSessionUser(token: string | undefined | null): Promise<SessionUser | null> {
   if (!token) return null;
   const { rows } = await getPool().query(
-    `SELECT u.id, u.email, u.display_name, u.is_operator, s.expires_at
+    `SELECT u.id, u.email, u.display_name, u.is_operator, u.workspace_id, s.expires_at
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token = $1 AND s.expires_at > now()`,
     [token],
@@ -112,6 +115,7 @@ export async function getSessionUser(token: string | undefined | null): Promise<
     email: u.email,
     displayName: u.display_name || u.email.split("@")[0],
     isOperator: u.is_operator,
+    workspaceId: u.workspace_id ?? null,
   };
 }
 

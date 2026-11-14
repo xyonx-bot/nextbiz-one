@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { Resizer, useStoredWidth } from "@/components/Resizer";
 import { avatarClass, fmtPhone, initials } from "@/lib/ui";
 
 /**
@@ -36,6 +37,8 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
   const [seg, setSeg] = useState("all");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<Ct | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+  const [drawerW, setDrawerW] = useStoredWidth("nbo.contacts.drawerW");
   const [history, setHistory] = useState<HMsg[] | null>(null);
 
   const load = useCallback(async () => {
@@ -144,9 +147,14 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
       </div>
 
       <div className={`scrim${sel ? " open" : ""}`} onClick={() => setSel(null)} />
-      <aside className={`drawer${sel ? " open" : ""}`} aria-label="Contact profile" aria-hidden={!sel}>
+      <aside ref={drawerRef} className={`drawer resizable${sel ? " open" : ""}`} aria-label="Contact profile" aria-hidden={!sel}
+        style={drawerW ? { width: `min(${drawerW}px, calc(100vw - 24px))` } : undefined}>
         {sel && (
           <>
+            <Resizer edge="left" label="Profile width" className="rz-drawer" testId="rz-drawer"
+              width={() => drawerRef.current?.offsetWidth ?? 440}
+              min={360} max={() => Math.min(860, window.innerWidth - 120)}
+              onResize={setDrawerW} onReset={() => setDrawerW(null)} />
             <div className="pf-h">
               <span className={`av xl ${avatarClass(sel.wa_id)}`}>{initials(sel.name, sel.wa_id)}</span>
               <div className="grow"><h2 className="nm" data-testid="contact-name">{sel.name ?? fmtPhone(sel.wa_id)}</h2><div className="small muted num" style={{ fontWeight: 600 }}>{fmtPhone(sel.wa_id)}</div>

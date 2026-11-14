@@ -36,7 +36,7 @@ test.describe("S4 automation + settings", () => {
     expect(await exp.text()).toContain("wa_id");
 
     const wrongDel = await page.request.post("/api/settings/delete-workspace", { data: { confirmName: "wrong-name-xyz" } });
-    expect(wrongDel.status()).toBe(400); // type-to-confirm gate holds
+    expect([400, 403]).toContain(wrongDel.status()); // type-to-confirm gate holds (the operator workspace is never deletable here)
   });
 
   test("unauthenticated automation endpoints are 401", async ({ request }) => {

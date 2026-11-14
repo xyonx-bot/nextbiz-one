@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default function AutomationPage() {
   return (
-    <AppShell active="automation" title="Automation">
+    <AppShell active="automation" requires="automation" title="Automation">
       <AutomationClient />
     </AppShell>
   );

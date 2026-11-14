@@ -1,12 +1,12 @@
 import { getPool } from "@/lib/db";
-import { sendText, pollTemplates } from "@/lib/wa-client";
+import { getWaCreds, pollTemplates, sendTemplate } from "@/lib/wa-client";
 
 /** S2 in-app scheduler (plan D2 — no Redis). Single-container worker tick. */
 
 async function runBroadcastSend(payload: { broadcastId: string }) {
   const p = getPool();
   const b = await p.query(
-    `SELECT b.*, t.body AS tpl_body, t.status AS tpl_status, t.name AS tpl_name
+    `SELECT b.*, t.body AS tpl_body, t.status AS tpl_status, t.name AS tpl_name, t.meta_name AS tpl_meta, t.language AS tpl_lang
        FROM broadcasts b JOIN templates t ON t.id = b.template_id
       WHERE b.id = $1 FOR UPDATE OF b`,
     [payload.broadcastId],
@@ -17,7 +17,10 @@ async function runBroadcastSend(payload: { broadcastId: string }) {
   if (bc.tpl_status !== "approved") {
     throw new Error(`template ${bc.tpl_name} is ${bc.tpl_status} — broadcast blocked`);
   }
+  const creds = await getWaCreds(bc.workspace_id);
+  if (!creds) throw new Error("WhatsApp isn't connected for this workspace — broadcast blocked");
   await p.query(`UPDATE broadcasts SET status='sending' WHERE id=$1`, [bc.id]);
+  const varCount = new Set((bc.tpl_body.match(/\{\{\d+\}\}/g) ?? []) as string[]).size;
 
   // remaining queued recipients (opt-in snapshotted at create time)
   const rcpt = await p.query(
@@ -27,9 +30,11 @@ async function runBroadcastSend(payload: { broadcastId: string }) {
     [bc.id],
   );
   for (const r of rcpt.rows) {
-    const body = bc.tpl_body.replace(/\{\{1\}\}/g, r.name || "there");
+    // real template message (plain text is only delivered inside the 24h window): {{1}} = first name
+    const first = String(r.name || "there").split(" ")[0];
+    const params = Array.from({ length: varCount }, (_, k) => (k === 0 ? first : "-"));
     try {
-      const res = await sendText(r.wa_id, body);
+      const res = await sendTemplate(creds, r.wa_id, { metaName: bc.tpl_meta || bc.tpl_name, language: bc.tpl_lang || "en", params });
       if (res.ok) {
         await p.query(
           `UPDATE broadcast_recipients SET status='sent', wa_message_id=$2, sent_at=now() WHERE id=$1`,
@@ -51,17 +56,24 @@ async function runBroadcastSend(payload: { broadcastId: string }) {
   }
 }
 
-async function runTemplateStatusPoll() {
-  const poll = await pollTemplates();
-  if (!poll.ok) throw new Error(poll.error);
+/** Poll Meta for template review results — every connected workspace, its own templates only. */
+export async function runTemplateStatusPoll(onlyWs?: string): Promise<number> {
   const p = getPool();
-  for (const t of poll.templates) {
-    await p.query(
-      `UPDATE templates SET status=$2, rejection_reason=$3, updated_at=now()
-        WHERE meta_name=$1 AND status <> $2`,
-      [t.metaName, t.status, t.rejectedReason ?? null],
-    );
+  const wss = onlyWs ? [onlyWs] : (await p.query(`SELECT DISTINCT workspace_id FROM waba_connections WHERE status = 'connected'`)).rows.map((r) => r.workspace_id as string);
+  let updated = 0;
+  for (const ws of wss) {
+    const poll = await pollTemplates(await getWaCreds(ws));
+    if (!poll.ok) continue;
+    for (const t of poll.templates) {
+      const r = await p.query(
+        `UPDATE templates SET status=$3, rejection_reason=$4, updated_at=now()
+          WHERE workspace_id=$1 AND meta_name=$2 AND status <> $3`,
+        [ws, t.metaName, t.status, t.rejectedReason ?? null],
+      );
+      updated += r.rowCount ?? 0;
+    }
   }
+  return updated;
 }
 
 /** Claim + run one due job. Returns true if a job ran (for drain-on-start). */

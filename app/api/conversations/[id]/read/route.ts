@@ -3,17 +3,17 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 
 /** POST — mark the conversation read (advances the unread pointer). */
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const t = await getTenant();
+  if (!t) return unauthorized();
   const { id } = await ctx.params;
+  if (!isUuid(id)) return notFound();
   const r = await getPool().query(
-    `UPDATE conversations SET last_read_at = now() WHERE id = $1 RETURNING id`,
-    [id],
+    `UPDATE conversations SET last_read_at = now() WHERE id = $1 AND workspace_id = $2 RETURNING id`,
+    [id, t.wsId],
   );
   if (r.rows.length === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ ok: true });

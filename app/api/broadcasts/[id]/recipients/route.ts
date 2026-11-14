@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -18,10 +19,13 @@ const DECODE: Record<number, string> = {
 
 /** GET — per-recipient report rows (+ rollups). ?format=csv streams a CSV. */
 export async function GET(req: Request, ctx: Ctx) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const t = await getTenant();
+  if (!t) return unauthorized();
   const { id } = await ctx.params;
+  if (!isUuid(id)) return notFound();
   const p = getPool();
+  const own = await p.query(`SELECT 1 FROM broadcasts WHERE id = $1 AND workspace_id = $2`, [id, t.wsId]);
+  if (own.rows.length === 0) return notFound();
   const { rows } = await p.query(
     `SELECT r.status, r.sent_at, r.error_raw, r.wa_message_id,
             c.name, c.wa_id

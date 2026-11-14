@@ -27,6 +27,8 @@ type C = { id: string; name: string; status: string; source: string; insights: {
 type List = { ok: boolean; demo: boolean; campaigns: C[] };
 
 test.describe("Ads module (P2 mock)", () => {
+  // no ad account is connected in the test workspace — explore NextBiz Ads in demo mode (what the gate's button sets)
+  test.beforeEach(async ({ context, baseURL }) => { await context.addCookies([{ name: "nbo_ads_demo", value: "1", url: baseURL ?? "http://localhost:3210" }]); });
   test("unauthenticated ads endpoints are 401", async ({ request }) => {
     expect((await request.get("/api/ads/campaigns")).status()).toBe(401);
     expect((await request.get("/api/ads/performance")).status()).toBe(401);

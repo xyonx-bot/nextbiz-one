@@ -3,12 +3,9 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 import { draftToCampaign, filterCampaigns, seedCampaigns } from "@/lib/ads";
 
-async function auth() {
-  const token = (await cookies()).get("nbo_session")?.value;
-  return getSessionUser(token);
-}
 
 const Create = z.object({
   name: z.string().trim().min(1).max(80),
@@ -26,9 +23,10 @@ const Create = z.object({
 /** GET — campaign list (P2.1): deterministic demo fixtures + this workspace's
  *  drafts, searched/filtered. demo:true = mock-badged (Meta audit Oct 27). */
 export async function GET(req: Request) {
-  if (!(await auth())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const p = new URL(req.url).searchParams;
-  const ws = (await getPool().query(`SELECT id FROM workspaces WHERE name='NextBiz One' LIMIT 1`)).rows[0].id;
+  const ws = tn.wsId;
   const drafts = (await getPool().query(
     `SELECT id, name, objective, status, daily_budget, start_time, stop_time, destination
        FROM ads_mock_campaigns WHERE workspace_id=$1 ORDER BY created_at DESC`, [ws],
@@ -44,10 +42,11 @@ export async function GET(req: Request) {
 /** POST — guided-creation submit (P2.2): persists a draft (or submits for
  *  "review"). Mock-badged; the review status mirrors Meta's flow shape. */
 export async function POST(req: Request) {
-  if (!(await auth())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const b = Create.safeParse(await req.json().catch(() => null));
   if (!b.success) return NextResponse.json({ error: "Invalid campaign" }, { status: 400 });
-  const ws = (await getPool().query(`SELECT id FROM workspaces WHERE name='NextBiz One' LIMIT 1`)).rows[0].id;
+  const ws = tn.wsId;
   const d = b.data;
   const { rows } = await getPool().query(
     `INSERT INTO ads_mock_campaigns

@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { getPool } from "./db";
 import { maybeAutoReply } from "./automation";
+import { workspaceForPhoneNumber } from "./wa-client";
 
 /** X-Hub-Signature-256 = "sha256=" + hex HMAC of the raw body. */
 export function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
@@ -35,7 +36,6 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
   const entries = (body as { entry?: unknown[] }).entry;
   if (!Array.isArray(entries)) return { stored: 0 };
 
-  const wsId = await ensureWs();
   let stored = 0;
 
   for (const entry of entries) {
@@ -44,6 +44,11 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
     for (const change of changes) {
       const value = (change as { value?: Record<string, unknown> }).value;
       if (!value) continue;
+      // route to the workspace that owns this phone number; the platform owner's own number (server env) maps to
+      // its default workspace. Unknown numbers are stored raw above but never land in anyone's inbox.
+      const pnid = (value.metadata as { phone_number_id?: string } | undefined)?.phone_number_id;
+      let wsId = await workspaceForPhoneNumber(pnid);
+      if (!wsId && pnid && process.env.PHONE_NUMBER_ID && pnid === process.env.PHONE_NUMBER_ID) wsId = await ensureWs();
           const statuses = value.statuses as { id?: string; status?: string }[] | undefined;
           // Meta delivery/read receipts — update the sent message rows
           if (Array.isArray(statuses)) {
@@ -65,6 +70,7 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
       const msgs = value.messages as WaMessage[] | undefined;
       const contacts = value.contacts as { wa_id?: string; name?: string }[] | undefined;
       if (!Array.isArray(msgs)) continue;
+      if (!wsId) { console.warn(`[wa] inbound for unknown phone_number_id ${pnid ?? "?"} — stored raw, not routed`); continue; }
       for (const m of msgs) {
         if (!m.from || !m.id) continue;
         // Meta nests the profile name: contacts[].profile.name

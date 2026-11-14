@@ -120,12 +120,12 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
                 <div><span>Templates</span><b>Meta-reviewed</b><small>Needed outside the window</small></div>
               </div>
             </div>
-            {!connected && <div className="frow"><div><b>Connect your number</b><small>Takes about 3 minutes with Facebook login</small></div><div><a className="btn btn-primary btn-sm" href="/onboarding"><Icon name="plugs-connected" />Connect WhatsApp</a></div></div>}
+            {!connected && <div className="frow"><div><b>Connect your number</b><small>Takes about 3 minutes with Facebook login</small></div><div><a className="btn btn-primary btn-sm" href="/connections#whatsapp"><Icon name="plugs-connected" />Connect WhatsApp</a></div></div>}
             <div className="frow"><div><b>Change number</b><small>A number can serve one workspace</small></div><div className="xs muted" style={{ fontWeight: 600, alignSelf: "center" }}>Contact support to move to a different number.</div></div>
           </section>
 
           <section className="card sec" id="channels">
-            <div className="card-h"><span className="grow"><span className="h2">Other channels</span><small>More ways to reach customers — rolling out during early access.</small></span></div>
+            <div className="card-h"><span className="grow"><span className="h2">Other channels</span><small>More ways to reach customers — rolling out during early access.</small></span><a className="btn btn-soft btn-sm" href="/connections"><Icon name="plugs-connected" />All connections</a></div>
             <div className="chan">
               <div className="ch" data-testid="ig-acct" style={ig?.account ? { borderStyle: "solid", background: "var(--surface)" } : undefined}>
                 <span className="icon-tile pink lg"><Icon name="instagram-logo" /></span>

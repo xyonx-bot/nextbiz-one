@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { sendText } from "@/lib/wa-client";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getWaCreds, sendText } from "@/lib/wa-client";
 
 /**
  * POST — free-text reply. The 24h messaging window is enforced SERVER-side
@@ -13,11 +14,10 @@ import { sendText } from "@/lib/wa-client";
 const Body = z.object({ body: z.string().trim().min(1).max(4096) });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const t = await getTenant();
+  if (!t) return unauthorized();
   const { id } = await ctx.params;
+  if (!isUuid(id)) return notFound();
   let parsed: unknown;
   try { parsed = await req.json(); } catch { return NextResponse.json({ error: "malformed" }, { status: 400 }); }
   const b = Body.safeParse(parsed);
@@ -27,8 +27,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const conv = await p.query(
     `SELECT c.id, c.last_inbound_at, ct.wa_id, ct.opt_in
        FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
-      WHERE c.id = $1`,
-    [id],
+      WHERE c.id = $1 AND c.workspace_id = $2`,
+    [id, t.wsId],
   );
   if (conv.rows.length === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
   const c = conv.rows[0];
@@ -51,7 +51,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (wsr.rows[0]?.rev) {
     return NextResponse.json({ error: "Workspace messaging is paused — contact support." }, { status: 403 });
   }
-  const send = await sendText(c.wa_id, b.data.body);
+  const send = await sendText(await getWaCreds(t.wsId), c.wa_id, b.data.body);
   if (!send.ok) return NextResponse.json({ error: send.error, metaCode: send.metaCode }, { status: 502 });
 
   // human reply = automation pauses for this conversation (P1.10 contract)
@@ -62,8 +62,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
      VALUES ($1, $2, 'out', $3, 'text', $4, 'sent', '{}'::jsonb)
      ON CONFLICT DO NOTHING
      RETURNING id, created_at, status`,
-    [(await p.query(`SELECT workspace_id FROM conversations WHERE id = $1`, [id])).rows[0].workspace_id,
-     id, send.waMessageId, b.data.body],
+    [t.wsId, id, send.waMessageId, b.data.body],
   );
   return NextResponse.json({ ok: true, message: r.rows[0] });
 }

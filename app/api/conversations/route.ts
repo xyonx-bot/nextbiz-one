@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
+import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
 
 /**
  * GET /api/conversations?q=<search>&unread=1 — P1.6 inbox list:
@@ -10,10 +11,8 @@ import { getPool } from "@/lib/db";
  * than the operator's read pointer), ordered by recency. Self-gated 401.
  */
 export async function GET(req: Request) {
-  const token = (await cookies()).get("nbo_session")?.value;
-  if (!(await getSessionUser(token))) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const tn = await getTenant();
+  if (!tn) return unauthorized();
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
   const unreadOnly = url.searchParams.get("unread") === "1";
@@ -30,8 +29,9 @@ export async function GET(req: Request) {
        JOIN contacts ct ON ct.id = c.contact_id
        LEFT JOIN LATERAL (SELECT body, direction, status, created_at FROM messages m
                            WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) lm ON true
+      WHERE c.workspace_id = $1
       ORDER BY COALESCE(lm.created_at, c.last_inbound_at) DESC NULLS LAST
-      LIMIT 200`,
+      LIMIT 200`, [tn.wsId],
   );
   const out = rows
     .filter((r) => (unreadOnly ? r.unread > 0 : true))

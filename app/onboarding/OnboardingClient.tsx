@@ -71,7 +71,8 @@ export function OnboardingClient() {
                     <div><span className="icon-tile sm green"><Icon name="whatsapp-logo" /></span><span><b>A business phone number</b><small>Already on the WhatsApp Business app? It can move over.</small></span></div>
                     <div><span className="icon-tile sm" style={{ background: "#E7F0FE", color: "#1877F2" }}><Icon name="facebook-logo" /></span><span><b>A Facebook account</b><small>That manages your business page or portfolio.</small></span></div>
                   </div>
-                  <div className="note info"><Icon name="info" /><span>During early access our team connects your number with you on a short call — <b>reply to your approval email</b> and we&apos;ll set it up together.</span></div>
+                  <a className="btn btn-primary" href="/connections#whatsapp" style={{ alignSelf: "flex-start" }} data-testid="onb-connect"><Icon name="facebook-logo" />Connect with Facebook</a>
+                  <div className="note info"><Icon name="info" /><span>Prefer a hand? Our team can connect your number with you on a short call — <b>reply to your approval email</b>. Only using Instagram? <a href="/connections#instagram" style={{ textDecoration: "underline" }}>Connect Instagram instead</a>.</span></div>
                 </>
               )}
               <div className="mfoot"><span className="sp" /><button className="btn btn-primary" onClick={() => setStep(1)} disabled={!st?.connected} data-testid="onb-next">Continue<Icon name="arrow-right" /></button></div>
