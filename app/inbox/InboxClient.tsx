@@ -160,6 +160,14 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
     if (want && convs.some((c) => c.id === want)) { void open(want); return; }
     if (window.matchMedia("(min-width: 768px)").matches) void open(convs[0].id, { focusThread: false, markRead: false });
   }, [convs, selected, open]);
+  // Instagram DMs: pull from Instagram on open and every minute (server-throttled; live webhooks need App Review)
+  useEffect(() => {
+    const pull = () => fetch("/api/instagram/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ what: "dms" }) })
+      .then((r) => r.json()).then((d) => { if (d?.imported > 0) void loadList(); }).catch(() => {});
+    void pull();
+    const t = setInterval(() => { if (document.visibilityState === "visible") void pull(); }, 60_000);
+    return () => clearInterval(t);
+  }, [loadList]);
   // keep list fresh + window countdown ticking
   useEffect(() => {
     const t = setInterval(() => { void loadList(); tick((n) => n + 1); }, 30000);

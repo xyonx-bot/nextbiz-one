@@ -8,7 +8,7 @@
  * · Idempotent on Meta's comment id; webhook rows keep their automation status.
  */
 import { getPool } from "./db";
-import { igLive } from "./instagram";
+import { ensureThread, igLive } from "./instagram";
 
 const G = "https://graph.instagram.com/v21.0";
 type GComment = { id: string; text?: string; timestamp?: string; username?: string; from?: { id?: string; username?: string };
@@ -72,18 +72,85 @@ export async function syncIgComments(accountId: string, opts: { posts?: number }
   } finally { running.delete(accountId); }
 }
 
-/** Sync a workspace's account if it hasn't been synced for `staleMs`. */
-export async function syncIfStale(wsId: string, staleMs = 3 * 60_000) {
-  const a = (await getPool().query(
-    `SELECT id, comments_synced_at FROM ig_accounts WHERE workspace_id = $1 AND live ORDER BY updated_at DESC LIMIT 1`, [wsId])).rows[0];
-  if (!a) return null;
-  if (a.comments_synced_at && Date.now() - new Date(a.comments_synced_at).getTime() < staleMs) return null;
-  return syncIgComments(a.id);
+/* ───────────────────────── DMs ───────────────────────── */
+
+type GMsg = { id: string; created_time?: string; message?: string; from?: { id?: string; username?: string }; to?: { data?: { id?: string; username?: string }[] };
+  attachments?: { data?: { image_data?: unknown; video_data?: unknown; file_url?: string }[] }; story?: unknown; is_unsupported?: boolean };
+type GConv = { id: string; updated_time?: string; participants?: { data?: { id?: string; username?: string }[] } };
+const runningDm = new Set<string>();
+
+function msgBody(m: GMsg): string | null {
+  if (m.message) return m.message;
+  const a = m.attachments?.data?.[0];
+  if (a) return a.video_data ? "[video]" : a.image_data ? "[photo]" : "[attachment]";
+  if (m.story) return "[story reply]";
+  return m.is_unsupported ? "[unsupported message]" : null;
 }
 
-/** Background job: every live account, every few minutes. */
+/**
+ * Pull recent Instagram conversations into the inbox (live webhooks don't arrive before App Review).
+ * Never triggers automation. Threads first seen through sync start as read, so history isn't a wall of unread;
+ * messages that arrive after that are unread as usual. Idempotent on Meta's message id.
+ */
+export async function syncIgDms(accountId: string, opts: { conversations?: number; messages?: number } = {}): Promise<{ ok: boolean; threads: number; imported: number; error?: string }> {
+  if (!igLive()) return { ok: true, threads: 0, imported: 0 };
+  if (runningDm.has(accountId)) return { ok: true, threads: 0, imported: 0 };
+  runningDm.add(accountId);
+  try {
+    const p = getPool();
+    const a = (await p.query(`SELECT id, workspace_id, ig_user_id, username, access_token, live, dms_synced_at FROM ig_accounts WHERE id = $1`, [accountId])).rows[0];
+    if (!a?.live || !a.access_token) return { ok: false, threads: 0, imported: 0, error: "Instagram isn't connected" };
+    const me = String(a.username ?? "").replace(/^@/, "").toLowerCase();
+    const isMe = (x?: { id?: string; username?: string }) => !!x && (x.id === a.ig_user_id || (x.username ?? "").toLowerCase() === me);
+
+    const convs = await gget<{ data?: GConv[] }>(`/me/conversations?platform=instagram&fields=id,updated_time,participants&limit=${opts.conversations ?? 25}`, a.access_token);
+    if (!convs) return { ok: false, threads: 0, imported: 0, error: "Couldn't read Instagram conversations" };
+    const since = a.dms_synced_at ? new Date(a.dms_synced_at).getTime() - 10 * 60_000 : 0; // small overlap
+    const changed = (convs.data ?? []).filter((c) => !c.updated_time || new Date(c.updated_time).getTime() >= since);
+    let imported = 0;
+    for (const c of changed) {
+      const other = (c.participants?.data ?? []).find((x) => !isMe(x));
+      if (!other?.id) continue;
+      const full = await gget<{ messages?: { data?: GMsg[] } }>(`/${c.id}?fields=messages.limit(${opts.messages ?? 25}){id,created_time,from,to,message,attachments,story,is_unsupported}`, a.access_token);
+      const msgs = (full?.messages?.data ?? []).slice().reverse(); // oldest first
+      if (!msgs.length) continue;
+      const th = await ensureThread(a.workspace_id, a.id, other.id, other.username ?? null);
+      if (th.created) await p.query(`UPDATE ig_threads SET last_read_at = now() WHERE id = $1`, [th.id]);
+      let lastIn: string | null = null;
+      for (const m of msgs) {
+        const mine = isMe(m.from);
+        const r = await p.query(
+          `INSERT INTO ig_messages (workspace_id, ig_account_id, thread_id, mid, sender_id, sender_name, body, raw, direction, status, origin, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, COALESCE($12::timestamptz, now())) ON CONFLICT (mid) DO NOTHING`,
+          [a.workspace_id, a.id, th.id, m.id, m.from?.id ?? "", m.from?.username ?? null, msgBody(m), JSON.stringify(m),
+           mine ? "out" : "in", mine ? "sent" : "received", mine ? "ig_app" : "customer", m.created_time ?? null]);
+        if (r.rowCount) imported++;
+        if (!mine && m.created_time) lastIn = m.created_time;
+      }
+      if (lastIn) await p.query(`UPDATE ig_threads SET last_inbound_at = GREATEST(COALESCE(last_inbound_at, to_timestamp(0)), $2::timestamptz) WHERE id = $1`, [th.id, lastIn]);
+    }
+    await p.query(`UPDATE ig_accounts SET dms_synced_at = now() WHERE id = $1`, [accountId]);
+    return { ok: true, threads: changed.length, imported };
+  } finally { runningDm.delete(accountId); }
+}
+
+/** Sync a workspace's account (comments + DMs) if it hasn't been synced for `staleMs`. */
+export async function syncIfStale(wsId: string, staleMs = 3 * 60_000, what: "comments" | "dms" | "both" = "comments") {
+  const a = (await getPool().query(
+    `SELECT id, comments_synced_at, dms_synced_at FROM ig_accounts WHERE workspace_id = $1 AND live ORDER BY updated_at DESC LIMIT 1`, [wsId])).rows[0];
+  if (!a) return null;
+  const stale = (t: string | null) => !t || Date.now() - new Date(t).getTime() >= staleMs;
+  const [c, d] = await Promise.all([
+    what !== "dms" && stale(a.comments_synced_at) ? syncIgComments(a.id) : null,
+    what !== "comments" && stale(a.dms_synced_at) ? syncIgDms(a.id) : null,
+  ]);
+  if (!c && !d) return null;
+  return { ok: (c?.ok ?? true) && (d?.ok ?? true), posts: c?.posts ?? 0, imported: (c?.imported ?? 0) + (d?.imported ?? 0), answered: c?.answered ?? 0, threads: d?.threads ?? 0, error: c?.error ?? d?.error };
+}
+
+/** Background job: every live account, every few minutes — comments and DMs. */
 export async function syncAllIgComments() {
   if (!igLive()) return;
   const { rows } = await getPool().query(`SELECT id FROM ig_accounts WHERE live AND access_token IS NOT NULL`);
-  for (const r of rows) await syncIgComments(r.id).catch(() => null);
+  for (const r of rows) { await syncIgComments(r.id).catch(() => null); await syncIgDms(r.id).catch(() => null); }
 }

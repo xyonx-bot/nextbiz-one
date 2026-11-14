@@ -1,19 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const inserts: unknown[][] = [];
+const msgs: unknown[][] = [];
+const sqls: string[] = [];
 vi.mock("@/lib/db", () => ({
   getPool: () => ({
     query: async (sql: string, params: unknown[] = []) => {
-      if (/FROM ig_accounts WHERE id/.test(sql)) return { rows: [{ id: "acct", ig_user_id: "OWNER", username: "mango.bakes", access_token: "tok", live: true }] };
+      sqls.push(sql);
+      if (/FROM ig_accounts WHERE id/.test(sql)) return { rows: [{ id: "acct", workspace_id: "ws", ig_user_id: "OWNER", username: "mango.bakes", access_token: "tok", live: true, dms_synced_at: null }] };
+      if (/INSERT INTO ig_threads/.test(sql)) return { rows: [{ id: "th1" }] };
+      if (/INSERT INTO ig_messages/.test(sql)) { msgs.push(params); return { rows: [], rowCount: 1 }; }
       if (/INSERT INTO ig_comments/.test(sql)) { inserts.push(params); return { rows: [{ inserted: true }] }; }
       return { rows: [], rowCount: 0 };
     },
   }),
 }));
 
-import { syncIgComments } from "@/lib/ig-sync";
+import { syncIgComments, syncIgDms } from "@/lib/ig-sync";
 
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); inserts.length = 0; });
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); inserts.length = 0; msgs.length = 0; sqls.length = 0; });
 
 describe("syncIgComments", () => {
   it("does nothing in mock mode (no Graph calls)", async () => {
@@ -43,5 +48,25 @@ describe("syncIgComments", () => {
     const c1 = inserts.find((p) => p[1] === "c1")!;
     expect(c1[8]).toBe("DM'd you!"); // owner_reply_text
     expect(inserts.find((p) => p[1] === "c2")![8]).toBeNull();
+  });
+});
+
+describe("syncIgDms", () => {
+  it("imports a conversation: customer messages in, ours out, new thread starts read, no automation", async () => {
+    vi.stubEnv("IG_LIVE", "true");
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const json = (o: unknown) => new Response(JSON.stringify(o), { status: 200 });
+      if (url.includes("/me/conversations")) return json({ data: [{ id: "CV1", updated_time: "2026-11-14T11:42:58+0000", participants: { data: [{ id: "OWNER", username: "mango.bakes" }, { id: "IGSID9", username: "mustafa" }] } }] });
+      if (url.includes("/CV1?")) return json({ messages: { data: [ // newest first, like the API
+        { id: "m3", created_time: "2026-11-14T11:42:56+0000", from: { id: "OWNER", username: "mango.bakes" }, attachments: { data: [{ image_data: {} }] } },
+        { id: "m2", created_time: "2026-11-14T11:42:53+0000", from: { id: "IGSID9", username: "mustafa" }, message: "Send me the access" },
+      ] } });
+      return new Response("{}", { status: 404 });
+    }));
+    const r = await syncIgDms("acct");
+    expect(r).toMatchObject({ ok: true, threads: 1, imported: 2 });
+    expect(msgs.map((m) => [m[3], m[8], m[6]])).toEqual([["m2", "in", "Send me the access"], ["m3", "out", "[photo]"]]); // oldest first
+    expect(sqls.some((q) => /SET last_read_at = now\(\)/.test(q))).toBe(true);
+    expect(sqls.some((q) => /keyword_rules|automation_settings/.test(q))).toBe(false);
   });
 });
