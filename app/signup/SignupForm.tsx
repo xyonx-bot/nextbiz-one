@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { StatusCard, type ReqStatus } from "../request-access/StatusCard";
 import { AuthBrand } from "@/components/AuthBrand";
 import { Icon } from "@/components/Icon";
 
 export function SignupForm() {
-  const [businessName, setBusinessName] = useState("");
-  const [email, setEmail] = useState("");
+  const qs = useSearchParams();
+  const [businessName, setBusinessName] = useState(qs.get("business") ?? "");
+  const [email, setEmail] = useState(qs.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);

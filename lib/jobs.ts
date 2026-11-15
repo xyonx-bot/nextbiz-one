@@ -119,6 +119,9 @@ export function startWorker() {
   const igRefresh = () => import("./instagram").then((m) => m.refreshIgTokens(15)).then((r) => { if (r.refreshed || r.failed) console.log(`[ig] token refresh: ${r.refreshed} refreshed, ${r.failed} failed`); }).catch(() => {});
   void igRefresh();
   setInterval(() => void igRefresh(), 6 * 3600_000).unref();
+  // morning summary emails (only acts between 09:00 and 11:00 IST, once per workspace per day)
+  const digest = () => import("./digest").then((m) => m.runDigests()).catch(() => {});
+  setInterval(() => void digest(), 15 * 60_000).unref();
   // Instagram comments: pull from the API every 5 min (webhooks alone miss comments before App Review)
   const igSync = () => import("./ig-sync").then((m) => m.syncAllIgComments()).catch(() => {});
   setTimeout(() => void igSync(), 30_000).unref();

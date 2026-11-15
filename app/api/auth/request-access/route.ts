@@ -1,3 +1,4 @@
+import { notifyNewRequest } from "@/lib/mail-notify";
 import { allow, clientIp, tooMany } from "@/lib/ratelimit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -33,5 +34,6 @@ export async function POST(req: Request) {
     `INSERT INTO audit_log (actor_email, action, target) VALUES ($1, 'request_received', $2)`,
     [b.data.email, b.data.businessName],
   );
+  void notifyNewRequest({ business: b.data.businessName, email: b.data.email, use: b.data.useDescription }).catch(() => {});
   return NextResponse.json({ ok: true, status: "pending" }, { status: 201 });
 }

@@ -25,6 +25,7 @@ const SECTIONS: [string, string, string, string][] = [
   ["Workspace", "profile", "Business profile", "storefront"],
   ["Workspace", "whatsapp", "WhatsApp", "whatsapp-logo"],
   ["Workspace", "channels", "Other channels", "plugs-connected"],
+  ["Account", "notifications", "Email", "envelope"],
   ["Account", "security", "Login & security", "shield-check"],
   ["Account", "data", "Your data", "database"],
 ];
@@ -74,6 +75,13 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
     setBusy(false); setNote(d?.ok ? { kind: "ok", text: "Profile saved" } : { kind: "bad", text: d?.error ?? "Couldn't save" }); if (d?.ok) await load();
   }
   const [allSess, setAllSess] = useState(false);
+  const [notif, setNotif] = useState<{ digest: boolean; emailOn: boolean } | null>(null);
+  useEffect(() => { fetch("/api/settings/notifications", { cache: "no-store" }).then((r) => r.json()).then((d) => d?.ok && setNotif({ digest: d.digest, emailOn: d.emailOn })).catch(() => {}); }, []);
+  async function setDigest(v: boolean) {
+    setNotif((n) => n && { ...n, digest: v });
+    const d = await fetch("/api/settings/notifications", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ digest: v }) }).then((x) => x.json()).catch(() => null);
+    setNote(d?.ok ? { kind: "ok", text: v ? "Morning summary on" : "Morning summary off" } : { kind: "bad", text: "Couldn't save — try again" });
+  }
   async function revokeOthers() {
     const d = await fetch("/api/settings/sessions", { method: "DELETE" }).then((x) => x.json()).catch(() => null);
     setNote(d?.ok ? { kind: "ok", text: `Signed out ${d.removed} other session${d.removed === 1 ? "" : "s"}` } : { kind: "bad", text: d?.error ?? "Couldn't sign them out — try again" }); await load();
@@ -160,6 +168,14 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
                 <button className="btn btn-soft btn-sm" data-testid="ig-oauth" onClick={() => { window.location.href = "/api/auth/instagram/start"; }}><Icon name="instagram-logo" />{ig?.account?.live ? "Reconnect" : "Login with Instagram"}</button>
                 {ig?.account && <button className="btn btn-ghost btn-sm" data-testid="ig-disconnect" onClick={async () => { await fetch("/api/instagram/connect", { method: "DELETE" }); setNote({ kind: "ok", text: "Instagram disconnected" }); await load(); }}>Disconnect</button>}
               </div></div>
+          </section>
+
+          <section className="card sec" id="notifications">
+            <div className="card-h"><span className="grow"><span className="h2">Email</span><small>Sent to {email}</small></span></div>
+            <div className="frow"><div><b>Morning summary</b><small>One email around 9 am when customers have been waiting for a reply. Nothing on quiet days.</small></div>
+              <div><button className={`tog${notif?.digest ? " on" : ""}`} role="switch" aria-checked={!!notif?.digest} aria-label="Morning summary email" disabled={!notif} onClick={() => notif && void setDigest(!notif.digest)} data-testid="digest-toggle" /></div></div>
+            <div className="frow" style={{ borderBottom: 0 }}><div><b>Account emails</b><small>Password resets and important notices about your workspace. These are always on.</small></div><div><span className="pill sm neutral nodot">Always on</span></div></div>
+            {notif && !notif.emailOn && <p className="xs faint" style={{ padding: "0 var(--pad) var(--pad)", fontWeight: 600 }}>Email sending is being set up — your choice is saved and applies as soon as it&apos;s live.</p>}
           </section>
 
           <section className="card sec" id="security">

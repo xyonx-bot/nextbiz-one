@@ -13,7 +13,7 @@ export async function GET() {
   const { rows } = await getPool().query(
     `SELECT pr.id, u.email, u.display_name, w.name AS workspace, pr.requested_at, pr.link_created_at, pr.expires_at
        FROM password_resets pr JOIN users u ON u.id = pr.user_id LEFT JOIN workspaces w ON w.id = u.workspace_id
-      WHERE pr.used_at IS NULL AND pr.requested_at > now() - interval '7 days' ORDER BY pr.requested_at DESC LIMIT 50`);
+      WHERE pr.used_at IS NULL AND pr.emailed_at IS NULL AND pr.requested_at > now() - interval '7 days' ORDER BY pr.requested_at DESC LIMIT 50`);
   return NextResponse.json({ ok: true, resets: rows }, { headers: { "Cache-Control": "no-store" } });
 }
 export async function POST(req: Request) {

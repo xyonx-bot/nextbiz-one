@@ -1,3 +1,5 @@
+import { queueMail } from "@/lib/mail";
+import { approvedEmail, rejectedEmail } from "@/lib/mail-templates";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPool } from "@/lib/db";
@@ -30,7 +32,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (r.user_id) {
       await p.query(`UPDATE users SET is_approved = true, workspace_id = $2 WHERE id = $1`, [r.user_id, wsId]);
     }
-    await p.query(`UPDATE access_requests SET status='approved', reviewed_at=now() WHERE id = $1`, [id]);
+    await p.query(`UPDATE access_requests SET status='approved', reviewed_at=now(), workspace_id=$2 WHERE id = $1`, [id, wsId]);
+    queueMail(approvedEmail(r.email, r.business_name, !!r.user_id));
     await p.query(
       `INSERT INTO audit_log (actor_email, action, target) VALUES ($1, 'approved', $2)`,
       [op.email, r.business_name],
@@ -42,6 +45,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const reason = (body.reason ?? "").trim();
     if (reason.length < 4) return NextResponse.json({ error: "A reason is required for rejections." }, { status: 400 });
     await p.query(`UPDATE access_requests SET status='rejected', reject_reason=$2, reviewed_at=now() WHERE id=$1`, [id, reason]);
+    queueMail(rejectedEmail(r.email, r.business_name, reason));
     await p.query(
       `INSERT INTO audit_log (actor_email, action, target, reason) VALUES ($1, 'rejected', $2, $3)`,
       [op.email, r.business_name, reason],

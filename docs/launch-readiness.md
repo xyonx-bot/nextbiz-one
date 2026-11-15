@@ -110,7 +110,7 @@ Use a phone for the customer side.
 
 | # | Feature | Why it matters | Size |
 |---|---|---|---|
-| 1 | **Automatic email** (reset links, approval notice, daily digest), e.g. via Resend or Amazon SES | Removes the manual reset step; needed for open sign-up | S |
+| 1 | ~~Automatic email~~ **done in v1.11.** Needs a provider key (see section 6). | | ✓ |
 | 2 | **Send photos and files in chat** (WhatsApp and Instagram) | Customers expect it; the most common request after text | M |
 | 3 | **Team members** (invite staff, roles: owner / agent) | Most businesses have more than one person replying | M |
 | 4 | **New-message alerts** (browser notifications and a sound; later a phone app) | Replies are slow if nobody notices new messages | S |
@@ -121,3 +121,27 @@ Use a phone for the customer side.
 | 9 | Message search across chats, and saved replies in the composer | Speed for busy inboxes | S |
 
 **Done in v1.10:** Privacy, Terms and Data-deletion pages; Meta deletion and deauthorize callbacks; password help (an operator-sent link); limits on login guessing; security headers; friendly 404 and error pages; robots.txt and sitemap; link-preview card; the 1024 app icon; extra ad permissions for client accounts; motion and polish.
+
+## 6. Turning on email (v1.11)
+
+The app sends these emails:
+- password reset links;
+- "request received" to the applicant, and "new request" to you;
+- "approved" (with a create-account or log-in link) and "not approved" (with your reason);
+- a once-a-day morning summary when customers are waiting. Each person can switch it off in Settings → Email.
+
+**Recommended provider: Resend.** The free plan covers 3,000 emails a month, enough for early access.
+1. Sign up at resend.com and add the domain **nextbizstudio.com**. Resend shows 3–4 DNS records (SPF, DKIM, and optionally DMARC).
+2. Add those records in Cloudflare DNS. Set each to **DNS only**, not proxied. Wait until Resend shows "Verified", usually a few minutes.
+3. Create an API key with "Sending access".
+4. Add these to the server's `.env`, and `.env.beta` if you want beta to send too. Keep the quotes on MAIL_FROM:
+   ```
+   RESEND_API_KEY=re_xxxxxxxx
+   MAIL_FROM="NextBiz One <hello@nextbizstudio.com>"
+   MAIL_REPLY_TO=privacy@nextbizstudio.com
+   ```
+5. Redeploy. Then go to Operator → **Email** and press **Send test email**.
+
+**Any SMTP service works instead** (Gmail Workspace, Zoho, Amazon SES): set `SMTP_URL=smtps://user:password@smtp.host:465` instead of `RESEND_API_KEY`.
+
+Until a key is set, nothing breaks: reset requests wait in Operator → Password help, as before.

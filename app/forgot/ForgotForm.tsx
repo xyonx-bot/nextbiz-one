@@ -5,19 +5,21 @@ import { Icon } from "@/components/Icon";
 
 /** Ask for a reset link. Our team sends it (to the account email) — there's no automatic email yet. */
 export function ForgotForm() {
-  const [email, setEmail] = useState(""); const [busy, setBusy] = useState(false); const [done, setDone] = useState(false); const [err, setErr] = useState("");
+  const [email, setEmail] = useState(""); const [busy, setBusy] = useState(false); const [done, setDone] = useState(false); const [emailed, setEmailed] = useState(false); const [err, setErr] = useState("");
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setErr("");
     const r = await fetch("/api/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }).catch(() => null);
-    const d = (await r?.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
-    setBusy(false); if (d?.ok) setDone(true); else setErr(d?.error ?? "Couldn't reach the server — try again.");
+    const d = (await r?.json().catch(() => null)) as { ok?: boolean; error?: string; emailed?: boolean } | null;
+    setBusy(false); if (d?.ok) { setEmailed(!!d.emailed); setDone(true); } else setErr(d?.error ?? "Couldn't reach the server — try again.");
   }
   if (done) return (
     <div className="apanel authcard" data-testid="forgot-done">
       <AuthBrand />
       <img className="st-art" src="/art/request-pending.webp" alt="" width={132} height={132} />
       <h2 className="center">Request received</h2>
-      <p className="sub center">If <b>{email}</b> has a NextBiz One account, our team will email you a reset link — usually within a few hours on business days. The link works once, for 24 hours.</p>
+      <p className="sub center">{emailed
+        ? <>If <b>{email}</b> has a NextBiz One account, a reset link is on its way. It works once, for 24 hours — check spam if you don&apos;t see it in a minute.</>
+        : <>If <b>{email}</b> has a NextBiz One account, our team will email you a reset link — usually within a few hours on business days. The link works once, for 24 hours.</>}</p>
       <a className="btn btn-soft btn-lg btn-full" href="/login">Back to log in</a>
     </div>
   );

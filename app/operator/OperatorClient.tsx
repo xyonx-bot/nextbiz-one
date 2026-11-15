@@ -12,9 +12,10 @@ import { avatarClass } from "@/lib/ui";
 type Req = { id: string; business_name: string; use_description: string; email: string; created_at: string };
 type Ws = { id: string; name: string; revoked: boolean; created_at: string; contact_count: number; user_count: number };
 type Entry = { actor_email: string; action: string; target: string; reason: string | null; created_at: string };
-type View = "overview" | "requests" | "workspaces" | "audit" | "ai" | "resets";
+type View = "overview" | "requests" | "workspaces" | "audit" | "ai" | "resets" | "email";
+type MailInfo = { provider: "resend" | "smtp" | "none"; from: string; week: Record<string, number>; log: { id: string; to_email: string; kind: string; subject: string; status: string; error: string | null; created_at: string }[] };
 type Reset = { id: string; email: string; display_name: string; workspace: string | null; requested_at: string; link_created_at: string | null; expires_at: string | null };
-const TITLES: Record<View, string> = { overview: "Overview", requests: "Access requests", workspaces: "Workspaces", audit: "Audit log", ai: "NextBiz AI", resets: "Password help" };
+const TITLES: Record<View, string> = { overview: "Overview", requests: "Access requests", workspaces: "Workspaces", audit: "Audit log", ai: "NextBiz AI", resets: "Password help", email: "Email" };
 type AiModel = { id: string; name: string; free: boolean; inPerM: number; outPerM: number; ctx: number };
 type AiCfg = { enabled: boolean; assistantModel: string; quickModel: string; fallbackModel: string; dailyLimit: number };
 type AiData = { keyPresent: boolean; config: AiCfg; models: AiModel[]; usage: { today: { calls: number; cost: number; failed: number }; month: { calls: number; cost: number; tokens: number }; byWorkspace: { name: string; calls: number; cost: number; last: string }[] } };
@@ -47,6 +48,15 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
   const [env, setEnv] = useState("Production");
   const [ai, setAi] = useState<AiData | null>(null);
   const [resets, setResets] = useState<Reset[] | null>(null);
+  const [mail, setMail] = useState<MailInfo | null>(null);
+  const [testTo, setTestTo] = useState(email);
+  const loadMail = useCallback(async () => { const d = await fetch("/api/operator/email", { cache: "no-store" }).then((x) => x.json()).catch(() => null); if (d?.ok) setMail(d); }, []);
+  useEffect(() => { if (view === "email") void loadMail(); }, [view, loadMail]);
+  async function sendTest() {
+    setBusy(true);
+    const d = await fetch("/api/operator/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: testTo }) }).then((x) => x.json()).catch(() => null);
+    setBusy(false); setNote(d?.ok ? { kind: "ok", text: `Test email sent to ${testTo}` } : { kind: "bad", text: d?.error ?? "Couldn't send" }); await loadMail();
+  }
   const [resetLink, setResetLink] = useState<{ id: string; url: string } | null>(null);
   const loadResets = useCallback(async () => { const d = await fetch("/api/operator/password-resets", { cache: "no-store" }).then((x) => x.json()).catch(() => null); setResets(d?.resets ?? []); }, []);
   useEffect(() => { void loadResets(); }, [loadResets]);
@@ -125,6 +135,7 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
           <a className={`ni${view === "workspaces" ? " on" : ""}`} onClick={() => go("workspaces")}><Icon name="buildings" />Workspaces<span className="badge soft">{live.length}</span></a>
           <span className="grp eyebrow">Records</span>
           <a className={`ni${view === "resets" ? " on" : ""}`} onClick={() => go("resets")} data-testid="op-resets"><Icon name="key" />Password help{(resets?.filter((r) => !r.link_created_at).length ?? 0) > 0 && <span className="badge">{resets!.filter((r) => !r.link_created_at).length}</span>}</a>
+          <a className={`ni${view === "email" ? " on" : ""}`} onClick={() => go("email")} data-testid="op-email"><Icon name="envelope" />Email</a>
           <a className={`ni${view === "audit" ? " on" : ""}`} onClick={() => go("audit")}><Icon name="list-checks" />Audit log</a>
           <a className={`ni${view === "ai" ? " on" : ""}`} onClick={() => go("ai")} data-testid="op-ai"><Icon name="sparkle" />NextBiz AI</a>
         </nav>
@@ -272,6 +283,29 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
                 </>
               )}
             </div>
+          )}
+
+          {view === "email" && (
+            <section className="view on" data-testid="op-email-view">
+              <div className="card" style={{ marginBottom: "var(--g)" }}>
+                <div className="card-h"><span className="h3">Email sending</span>{mail && <span className={`pill sm ${mail.provider === "none" ? "warn" : "ok"}`}>{mail.provider === "none" ? "Not set up" : mail.provider === "resend" ? "Resend" : "SMTP"}</span>}</div>
+                <div style={{ padding: "0 var(--pad) var(--pad)", display: "flex", flexDirection: "column", gap: 12 }}>
+                  {mail?.provider === "none"
+                    ? <div className="note warn"><Icon name="info" /><span>Nothing is emailed yet: password resets wait in <b>Password help</b> and approval notices aren&apos;t sent. Add <code>RESEND_API_KEY</code> (or <code>SMTP_URL</code>) and <code>MAIL_FROM</code> to the server&apos;s env file, then redeploy.</span></div>
+                    : <p className="small muted">Sending as <b>{mail?.from}</b>. Resets, request and approval notices, and morning summaries go out automatically.</p>}
+                  <div className="row gap-6 wrap"><input className="input" style={{ maxWidth: 320 }} value={testTo} onChange={(e) => setTestTo(e.target.value)} aria-label="Send test to" />
+                    <button className="btn btn-primary" disabled={busy || mail?.provider === "none"} onClick={() => void sendTest()} data-testid="mail-test"><Icon name="paper-plane-tilt" />Send test email</button>
+                    {mail && <span className="xs faint" style={{ fontWeight: 600 }}>Last 7 days: {mail.week.sent ?? 0} sent · {mail.week.failed ?? 0} failed · {mail.week.skipped ?? 0} skipped</span>}</div>
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-h"><span className="h3">Recent emails</span></div>
+                <div style={{ padding: "0 8px 8px", overflowX: "auto" }}><table className="dt lg"><thead><tr><th>When</th><th>To</th><th>Email</th><th>Status</th></tr></thead>
+                  <tbody>{mail?.log.length === 0 && <tr><td colSpan={4}><div className="empty"><p>Nothing sent yet.</p></div></td></tr>}
+                    {(mail?.log ?? []).map((m) => <tr key={m.id}><td className="small">{ago(m.created_at)}</td><td className="small">{m.to_email}</td><td className="small"><b>{m.subject}</b><div className="xs faint">{m.kind}</div></td>
+                      <td><span className={`pill sm ${m.status === "sent" ? "ok" : m.status === "failed" ? "bad" : "neutral"}`} title={m.error ?? undefined}>{m.status}</span>{m.error && <div className="xs faint" style={{ maxWidth: 260 }}>{m.error}</div>}</td></tr>)}</tbody></table></div>
+              </div>
+            </section>
           )}
 
           {view === "resets" && (

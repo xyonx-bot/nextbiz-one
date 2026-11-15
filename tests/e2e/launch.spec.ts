@@ -33,6 +33,7 @@ test.describe.serial("launch readiness", () => {
   });
 
   test("forgot → operator link → reset → log in with the new password", async ({ page, browser }) => {
+    test.skip(!!process.env.MAILPIT_URL, "email is set up in this run — the emailed-link path is covered by email.spec");
     await page.goto("/login"); await page.getByTestId("forgot-link").click();
     await page.getByTestId("forgot-email").fill(EMAIL); await page.getByTestId("forgot-submit").click();
     await expect(page.getByTestId("forgot-done")).toBeVisible();
