@@ -54,8 +54,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const send = await sendText(await getWaCreds(t.wsId), c.wa_id, b.data.body);
   if (!send.ok) return NextResponse.json({ error: send.error, metaCode: send.metaCode }, { status: 422 });
 
-  // human reply = automation pauses for this conversation (P1.10 contract)
-  await p.query(`UPDATE conversations SET automation_paused = true WHERE id = $1`, [id]);
+  // human reply = automation pauses for this conversation for HANDOFF_HOURS (lib/handoff.ts)
+  await p.query(`UPDATE conversations SET automation_paused = true, automation_paused_at = now() WHERE id = $1`, [id]);
 
   const r = await p.query(
     `INSERT INTO messages (workspace_id, conversation_id, direction, wa_message_id, type, body, status, raw)

@@ -1,4 +1,5 @@
 import { getPool } from "./db";
+import { handoffActive } from "./handoff";
 import { ensureThread, igPrivateReply, igPublicReply, igSendDm, recordOutbound } from "./instagram";
 
 /**
@@ -44,9 +45,10 @@ async function dm(wsId: string, acctId: string, threadId: string, igsid: string,
 export async function igAutoReplyDm(wsId: string, acctId: string, threadId: string, text: string): Promise<void> {
   try {
     const p = getPool();
-    const th = (await p.query(`SELECT igsid, automation_paused, welcome_sent_at FROM ig_threads WHERE id = $1`, [threadId])).rows[0];
+    const th = (await p.query(`SELECT igsid, automation_paused, automation_paused_at, welcome_sent_at FROM ig_threads WHERE id = $1`, [threadId])).rows[0];
     if (!th) return;
-    if (th.automation_paused) { await log(wsId, "paused", null, "a person replied — automation stays quiet for this chat", "paused"); return; }
+    if (handoffActive(th.automation_paused, th.automation_paused_at)) { await log(wsId, "paused", null, "a person replied recently — automation stays quiet for this chat for a few hours", "paused"); return; }
+    if (th.automation_paused) await p.query(`UPDATE ig_threads SET automation_paused = false WHERE id = $1`, [threadId]); // handoff expired → resume
     const cfg = (await p.query(`SELECT * FROM automation_settings WHERE workspace_id = $1`, [wsId])).rows[0];
 
     // Instagram has its own welcome/away switches (ig_*); business hours are shared with WhatsApp
