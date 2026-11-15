@@ -38,7 +38,7 @@ export function ChannelGate({ feature, channels }: { feature: FeatureKey; channe
         <div className={`gate-art art-${f.preview}`} aria-hidden="true">
           {f.needs[0] === "ads"
             ? <img className="ga-img wide" src="/art/ads-hero.webp" alt="" width={1100} height={733} />
-            : <img className="ga-img" src={`/art/${f.needs[0] === "instagram" ? "instagram" : "whatsapp"}.webp`} alt="" width={280} height={280} />}
+            : <img className="ga-img" src={`/art/${f.needs.length > 1 ? "connect" : f.needs[0] === "instagram" ? "instagram" : "whatsapp"}.webp`} alt="" width={280} height={280} />}
           <span className="ga-blob b1" /><span className="ga-blob b2" />
         </div>
       </section>

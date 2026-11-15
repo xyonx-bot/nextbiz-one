@@ -14,6 +14,8 @@ export function AuthBrand() {
  * Auth layout — design v2 (nextbiz-one-v2/auth): product story on the left (hidden <900px), form on the right.
  * Illustrative bubbles/numbers on the story side are clearly decorative examples, not account data.
  */
+// each illustration's own background, so the panel and the art read as one surface
+const ART_BG = { login: "#FBF3EC", signup: "#FDF2EA", request: "#F9F0EA" } as const;
 const COPY = {
   login: { h: <>WhatsApp, Instagram and Meta Ads — <em>in one place</em>.</>, p: "Answer every customer, run ads that start conversations, and let AI take the busywork. One suite for your whole business on Meta." },
   signup: { h: <>One suite to <em>grow</em> your business on Meta.</>, p: "Chats, comments, broadcasts and ads — set up in minutes, managed from one screen. Start with the channel you use most." },
@@ -27,7 +29,7 @@ export function AuthLayout({ children, art = "login" }: { children: React.ReactN
   const c = COPY[art];
   return (
     <div className="pg-auth">
-      <section className={`story art-${art}`} aria-hidden="true" style={{ ["--art" as string]: `url(/art/auth-${art}.webp)` }}>
+      <section className={`story art-${art}`} aria-hidden="true" style={{ ["--art" as string]: `url(/art/auth-${art}.webp)`, ["--art-bg" as string]: ART_BG[art] }}>
         <div className="brand"><img src="/logo.png" alt="" />NextBiz One</div>
         <h1>{c.h}</h1>
         <p>{c.p}</p>

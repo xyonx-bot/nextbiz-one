@@ -1531,7 +1531,13 @@ a.post:hover img { transform: scale(1.05); } a.post:hover .ov { opacity: 1; }
 .closed-box .tsend .ts-tpl small, .closed-box .tsend p { margin: 0; }
 
 /* auth: illustrated story panel (art fills the lower part; copy + two live-looking cards sit on the calm top) */
-.pg-auth .story { background: linear-gradient(180deg, #FBF8F2 0%, rgba(251,248,242,.92) 30%, rgba(251,248,242,0) 52%), var(--art) center bottom / cover no-repeat, #FBF8F2; }
+.pg-auth .story { background: var(--art-bg, #FBF8F2); }
+.pg-auth .story > * { position: relative; z-index: 1; }
+/* the whole illustration fits under the copy (never cropped into it); a soft top fade blends it in */
+.pg-auth .story::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 86%; z-index: 0; pointer-events: none;
+  background: var(--art) center bottom / contain no-repeat;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 18%); mask-image: linear-gradient(to bottom, transparent 0%, #000 18%); }
+@media (max-height: 820px) { .pg-auth .story::after { height: 78%; } }
 .pg-auth .story h1 { margin-top: 40px; }
 .pg-auth .story .trust { margin-top: 16px; }
 .pg-auth .story .trust span { padding: 5px 10px 5px 8px; border-radius: 999px; background: rgba(255,255,255,.75); border: 1px solid var(--line); }
@@ -1609,3 +1615,5 @@ a.post:hover img { transform: scale(1.05); } a.post:hover .ov { opacity: 1; }
 .pg-oops h1 { font-size: clamp(26px, 4vw, 34px); font-weight: 800; letter-spacing: -.03em; }
 .pg-oops p { color: var(--ink-2); max-width: 44ch; line-height: 1.6; margin-bottom: 8px; }
 .pg-oops code { font-family: ui-monospace, Menlo, monospace; font-size: var(--fs-xs); padding: 3px 8px; border-radius: 6px; background: var(--sunken); }
+/* the request-access envelope art was drawn edge-to-edge: let it fill the panel, faded under the copy */
+.pg-auth .story.art-request::after { height: 100%; background-size: cover; -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 34%, #000 56%); mask-image: linear-gradient(to bottom, transparent 0%, transparent 34%, #000 56%); }
