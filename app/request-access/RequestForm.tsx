@@ -36,7 +36,7 @@ export function RequestForm() {
       <span className="ea"><Icon name="sparkle" size="xs" />Early access · free</span>
       <h2>Request early access</h2><p className="sub lede">Tell us about your business — we review in about a day.</p>
       <div className="field"><label htmlFor="bn">Business name</label><input id="bn" className="input" type="text" placeholder="Sweet Crumbs Bakery" value={businessName} onChange={(e) => setBusinessName(e.target.value)} required minLength={2} /></div>
-      <div className="field"><label htmlFor="use">What will you use WhatsApp for?</label><textarea id="use" className="textarea" rows={3} placeholder="Reply to customer enquiries, share quotes, send order updates…" value={useDescription} onChange={(e) => setUseDescription(e.target.value)} required minLength={10} /></div>
+      <div className="field"><label htmlFor="use">What would you like to use NextBiz One for?</label><textarea id="use" className="textarea" rows={3} placeholder="e.g. answer WhatsApp and Instagram enquiries in one place, send offers to past customers, run ads that bring new chats…" value={useDescription} onChange={(e) => setUseDescription(e.target.value)} required minLength={10} /></div>
       <div className="field"><label htmlFor="em">Email for updates</label><input id="em" className="input" type="email" placeholder="you@business.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></div>
       {err && <p className="aerr" role="alert"><Icon name="warning-circle" size="sm" />{err}</p>}
       <button className="btn btn-primary btn-lg btn-full" type="submit" disabled={busy}>{busy ? "Sending…" : "Request access"}</button>

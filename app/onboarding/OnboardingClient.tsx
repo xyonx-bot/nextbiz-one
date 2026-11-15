@@ -63,6 +63,13 @@ export function OnboardingClient() {
               <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Step 1 of 3</span>
               <h1>{st?.connected ? "Your WhatsApp is connected" : "Connect your WhatsApp Business number"}</h1>
               <p className="lead">{st?.connected ? "This is the number your customers message. Everything they send lands in your inbox." : "Link the number your customers already message. One number serves one workspace."}</p>
+              {st && !st.connected && (
+                <div className="onb-chans" aria-label="Start with any channel">
+                  <span className="onb-chan on"><span className="icon-tile sm green"><Icon name="whatsapp-logo" /></span><span><b>WhatsApp</b><small>Set up below · recommended</small></span></span>
+                  <a className="onb-chan" href="/connections#instagram"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span><b>Instagram</b><small>DMs and comments</small></span><Icon name="arrow-right" size="sm" /></a>
+                  <a className="onb-chan" href="/connections#ads"><span className="icon-tile sm orange"><Icon name="megaphone" /></span><span><b>Meta Ads</b><small>Ads that start chats</small></span><Icon name="arrow-right" size="sm" /></a>
+                </div>
+              )}
               {st === null ? <span className="sk" style={{ height: 64 }} /> : st.connected ? (
                 <div className="ck ok" style={{ borderColor: "var(--chat-line)", background: "var(--chat-tint)" }}><span className="ic"><Icon name="check" size="xs" /></span>
                   <span><b>{st.displayName ?? "WhatsApp number"}</b><small>Connected to this workspace</small></span></div>
@@ -73,7 +80,7 @@ export function OnboardingClient() {
                     <div><span className="icon-tile sm" style={{ background: "#E7F0FE", color: "#1877F2" }}><Icon name="facebook-logo" /></span><span><b>A Facebook account</b><small>That manages your business page or portfolio.</small></span></div>
                   </div>
                   <a className="btn btn-primary" href="/connections#whatsapp" style={{ alignSelf: "flex-start" }} data-testid="onb-connect"><Icon name="facebook-logo" />Connect with Facebook</a>
-                  <div className="note info"><Icon name="info" /><span>Prefer a hand? Our team can connect your number with you on a short call — <b>reply to your approval email</b>. Only using Instagram? <a href="/connections#instagram" style={{ textDecoration: "underline" }}>Connect Instagram instead</a>.</span></div>
+                  <div className="note info"><Icon name="info" /><span>Prefer a hand? Our team can connect your number with you on a short call — <b>reply to your approval email</b>. You can add Instagram and Meta Ads any time from <a href="/connections" style={{ textDecoration: "underline" }}>Connections</a>.</span></div>
                 </>
               )}
               <div className="mfoot"><span className="sp" /><button className="btn btn-primary" onClick={() => setStep(1)} disabled={!st?.connected} data-testid="onb-next">Continue<Icon name="arrow-right" /></button></div>

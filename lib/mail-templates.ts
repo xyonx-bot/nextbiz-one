@@ -29,7 +29,7 @@ function layout(b: Block, preheader: string): string {
       ${b.note ? `<div style="margin-top:6px;padding:12px 14px;border-radius:12px;background:#F7F3EB;font-size:13px;line-height:1.55;color:#545862">${b.note}</div>` : ""}
     </td></tr>
     <tr><td style="padding:16px 8px;font-size:12px;line-height:1.6;color:#8C8F97;text-align:center">
-      NextBiz One · WhatsApp, Instagram &amp; Meta Ads in one inbox<br>
+      NextBiz One · WhatsApp, Instagram &amp; Meta Ads — one business suite<br>
       <a href="${base}/privacy" style="color:#8C8F97">Privacy</a> · <a href="${base}/terms" style="color:#8C8F97">Terms</a> · Questions? Just reply to this email.
     </td></tr>
   </table>
@@ -49,7 +49,7 @@ export const resetEmail = (to: string, url: string) => mail(to, "reset", "Reset 
 export const requestReceivedEmail = (to: string, business: string) => mail(to, "request_received", "We got your NextBiz One request", {
   heading: "You're on the list", art: "request-pending",
   lead: `Thanks for asking for early access for <b>${esc(business)}</b>. We review every request by hand, usually within one business day.`,
-  paras: ["We'll email you here as soon as your workspace is ready. Then you can connect WhatsApp and Instagram and start answering customers from one inbox."],
+  paras: ["We'll email you here as soon as your workspace is ready. Then you can connect WhatsApp, Instagram and your Meta ad account, and run them all from one place."],
 }, "We review every request by hand — usually within one business day.");
 
 export const newRequestOperatorEmail = (to: string, r: { business: string; email: string; use: string }) => mail(to, "request_new", `New access request: ${r.business}`, {
@@ -61,10 +61,10 @@ export const newRequestOperatorEmail = (to: string, r: { business: string; email
 
 export const approvedEmail = (to: string, business: string, hasAccount: boolean) => mail(to, "approved", `Your NextBiz One workspace is ready`, {
   heading: `Welcome, ${business}!`, art: "launch",
-  lead: hasAccount ? "Your workspace is approved and ready. Log in to connect WhatsApp and Instagram — it takes a few minutes." : "Your request is approved. Create your account with this email address and your workspace is ready straight away.",
+  lead: hasAccount ? "Your workspace is approved and ready. Log in to connect WhatsApp, Instagram or your ad account — each takes a few minutes." : "Your request is approved. Create your account with this email address and your workspace is ready straight away.",
   button: hasAccount ? { label: "Log in to NextBiz One", url: `${BASE()}/login?email=${encodeURIComponent(to)}` } : { label: "Create your account", url: `${BASE()}/signup?email=${encodeURIComponent(to)}&business=${encodeURIComponent(business)}` },
   paras: [],
-  after: "First steps: connect your WhatsApp Business number, send yourself a “Hi” to see it arrive, and switch on a welcome message.",
+  after: "First steps: connect the channel you use most (WhatsApp, Instagram or Meta Ads), send yourself a “Hi” to see it arrive, and switch on a welcome message.",
 }, "Your workspace is approved — here's how to start.");
 
 export const rejectedEmail = (to: string, business: string, reason: string) => mail(to, "rejected", "About your NextBiz One request", {

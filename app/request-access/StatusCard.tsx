@@ -27,7 +27,7 @@ export function StatusCard({ st }: { st: ReqStatus }) {
           <div className="tline">
             <div className="done"><span className="dot"><Icon name="check" size="xs" /></span><span><b>Request received</b><small>{received}</small></span></div>
             <div className="cur"><span className="dot"><Icon name="clock" size="xs" /></span><span><b>Review by our team</b><small>Usually within 24 hours</small></span></div>
-            <div><span className="dot">3</span><span><b>Connect WhatsApp &amp; go live</b><small>About 5 minutes</small></span></div>
+            <div><span className="dot">3</span><span><b>Connect WhatsApp, Instagram or Ads &amp; go live</b><small>About 5 minutes</small></span></div>
           </div>
           <div className="locknote"><Icon name="lock" size="sm" />Your workspace stays locked until approval — nothing to set up yet.</div>
         </div>
@@ -41,7 +41,7 @@ export function StatusCard({ st }: { st: ReqStatus }) {
         <div className="stcard approved" data-testid="st-approved">
           <span className="st-ic status-art" style={{ background: "var(--chat-tint)", color: "var(--chat-deep)" }}><Icon name="seal-check" /></span>
           <h2 className="center">You&apos;re in! 🎉</h2>
-          <p className="sub center">Your workspace is ready. Next: connect your WhatsApp number.</p>
+          <p className="sub center">Your workspace is ready. Next: connect WhatsApp, Instagram or your ad account — whichever you use most.</p>
           <button className="btn btn-primary btn-lg btn-full" onClick={() => { router.replace("/"); router.refresh(); }}>Enter workspace<Icon name="arrow-right" /></button>
         </div>
       </div>

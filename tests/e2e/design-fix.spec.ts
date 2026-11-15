@@ -42,7 +42,7 @@ test.describe("design v2 guards", () => {
       await expect(brand).toBeVisible();
       await expect(brand.locator("b")).toHaveText("NextBiz One");
       expect(await brand.locator("img").evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
-      await expect(page.locator(".auth-sub")).toHaveText("WhatsApp-first client platform for small businesses");
+      await expect(page.locator(".auth-sub")).toHaveText("WhatsApp, Instagram & Meta Ads — one business suite");
       const ordered = await page.evaluate(() => {
         const b = document.querySelector(".auth-brand")!, c = document.querySelector(".authcard")!;
         return !!(b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) || c.contains(b);
