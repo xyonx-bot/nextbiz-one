@@ -736,7 +736,7 @@
 .tline .done .dot { background: var(--chat); color: var(--ink); } .tline .cur .dot { background: var(--banana); color: var(--ink); }
 .tline b { display: block; font-weight: 700; } .tline small { font-size: var(--fs-xs); color: var(--ink-3); font-weight: 600; }
 .center { text-align: center; }
-@media (max-width: 900px) { & { grid-template-columns: 1fr; padding: 0; } .story { display: none; } .side { padding: 28px 18px; justify-content: flex-start; } .mbrand { display: flex !important; } }
+@media (max-width: 900px) { & { grid-template-columns: 1fr; padding: 0; } .story { display: none; } .side { padding: 28px 18px; justify-content: safe center; min-height: 100vh; min-height: 100dvh; } .mbrand { display: flex !important; } }
 .mbrand { display: none; align-self: flex-start; margin-bottom: 28px; }
 .auth-brand { display: flex; align-items: center; gap: 10px; }
 .auth-brand img { width: 30px; height: 30px; }
