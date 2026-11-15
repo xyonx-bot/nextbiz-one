@@ -81,6 +81,9 @@ test.describe.serial("NextBiz Social", () => {
     await expect(page.getByTestId("crow-comment")).toHaveCount(1); // Needs reply filter by default
     await page.getByTestId("crow-comment").first().click();
     await expect(page.locator(".ig-c.on")).toContainText("Salt Lake");
+    // public is the default, and the button says exactly what it will do (a private DM is one-shot)
+    await expect(page.getByTestId("kind-public")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("comment-send")).toContainText("Post public reply");
     await page.getByTestId("kind-public").click();
     await page.getByTestId("comment-reply").fill("Yes! Salt Lake is in our zone 🚚");
     await page.getByTestId("comment-send").click();
@@ -90,10 +93,13 @@ test.describe.serial("NextBiz Social", () => {
 
     // private DM: allowed once, opens a DM thread
     await page.getByTestId("kind-private").click();
+    await expect(page.getByTestId("comment-send")).toContainText("Send private DM");
     await page.getByTestId("comment-reply").fill("Sharing our delivery slots here");
     await page.getByTestId("comment-send").click();
     await expect(page.locator(".ccomposer .note.ok")).toContainText("Private DM sent");
     await expect(page.getByTestId("kind-private")).toBeDisabled();
+    await expect(page.getByTestId("kind-private")).toContainText("DM sent");
+    await expect(page.getByTestId("kind-public")).toHaveAttribute("aria-selected", "true");
     const id = (await comments(page)).comments.find((c) => c.text.includes("Salt Lake"))!.id;
     const again = await page.request.post(`/api/instagram/comments/${id}/reply`, { data: { kind: "private", text: "again?" } });
     expect(again.status()).toBe(409);

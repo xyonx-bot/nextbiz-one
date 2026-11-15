@@ -64,6 +64,9 @@ export function CommentsClient({ username }: { username: string | null }) {
   const [note, setNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const [view, setView] = useState<"list" | "detail">("list");
   const booted = useRef(false);
+  // the reply type the person picked for the open comment — a slow load must never overwrite it
+  const picked = useRef<{ id: string; kind: "public" | "private" } | null>(null);
+  const pickKind = (k: "public" | "private") => { if (sel) picked.current = { id: sel, kind: k }; setKind(k); };
   const [sync, setSync] = useState<"idle" | "busy" | "done" | "fail">("idle");
   const runSync = useCallback(async (force: boolean) => {
     setSync("busy");
@@ -93,13 +96,17 @@ export function CommentsClient({ username }: { username: string | null }) {
     return r.comments as C[];
   }, []);
   const open = useCallback(async (id: string, push = true, refresh = false) => {
-    setSel(id); setView("detail"); if (!refresh) setNote(null);
+    setSel(id); setView("detail");
+    if (!refresh) { setNote(null); if (picked.current?.id !== id) { picked.current = null; setKind("public"); } }
     if (push) { const u = new URL(window.location.href); u.searchParams.set("c", id); history.replaceState(null, "", u); }
     const r = await fetch(`/api/instagram/comments/${id}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null);
     if (r?.ok) {
       setD(r);
       if (r.media) setMedia((prev) => ({ ...prev, [r.media.id]: r.media }));
-      if (!refresh || privateUsed(r.comment)) setKind(privateUsed(r.comment) || privateExpired(r.comment) ? "public" : "private");
+      // public is the default (a private DM is a one-time action per comment); keep the person's own choice
+      // unless the private reply is no longer possible
+      if (privateUsed(r.comment) || privateExpired(r.comment)) { setKind("public"); if (picked.current?.id === id) picked.current = { id, kind: "public" }; }
+      else if (picked.current?.id === id) setKind(picked.current.kind);
     }
   }, []);
 
@@ -259,10 +266,10 @@ export function CommentsClient({ username }: { username: string | null }) {
               </div>
               <div className="ccomposer">
                 <div className="seg" role="tablist" aria-label="Reply type">
-                  <button role="tab" aria-selected={kind === "public"} className={kind === "public" ? "on" : ""} onClick={() => setKind("public")} data-testid="kind-public"><Icon name="chat-circle-dots" size="sm" />Public reply</button>
-                  <button role="tab" aria-selected={kind === "private"} className={kind === "private" ? "on" : ""} onClick={() => setKind("private")} disabled={pUsed || pExp} data-testid="kind-private"
-                    title={pUsed ? "Instagram allows one private reply per comment" : pExp ? "Private replies close 7 days after the comment" : ""}><Icon name="paper-plane-tilt" size="sm" />Private DM</button>
-                  <span className="hint">{kind === "public" ? "Everyone can see it under the comment" : pUsed ? "Already used for this comment" : "Opens a DM chat · one per comment, within 7 days"}</span>
+                  <button role="tab" aria-selected={kind === "public"} className={kind === "public" ? "on" : ""} onClick={() => pickKind("public")} data-testid="kind-public"><Icon name="chat-circle-dots" size="sm" />Public reply</button>
+                  <button role="tab" aria-selected={kind === "private"} className={kind === "private" ? "on" : ""} onClick={() => pickKind("private")} disabled={pUsed || pExp} data-testid="kind-private"
+                    title={pUsed ? "Instagram allows one private reply per comment" : pExp ? "Private replies close 7 days after the comment" : ""}><Icon name={pUsed ? "check" : "paper-plane-tilt"} size="sm" />{pUsed ? "DM sent" : "Private DM"}</button>
+                  <span className="hint">{kind === "public" ? (pUsed ? "Everyone can see it under the comment · you already DM'd this person — continue in DMs" : "Everyone can see it under the comment") : "Opens a DM chat · one per comment, within 7 days"}</span>
                 </div>
                 <AiSuggestStrip s={sug} />
                 {ruleSuggestion && <button className="sugg" onClick={() => { setText(ruleSuggestion); taRef.current?.focus(); }}><Icon name="lightning" size="xs" />Use “{c.rule_name}” reply</button>}
@@ -271,7 +278,7 @@ export function CommentsClient({ username }: { username: string | null }) {
                     placeholder={kind === "public" ? `Reply to ${handle(c.from_name)} publicly…` : `Message ${handle(c.from_name)} privately…`}
                     onKeyDown={(e) => { if (sug.onKey(e)) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sug.close(); void send(); } }} />
                   <AiSuggestButton s={sug} />
-                  <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void send()} data-testid="comment-send"><Icon name="paper-plane-right" />{busy ? "Sending…" : "Send"}</button>
+                  <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void send()} data-testid="comment-send"><Icon name={kind === "public" ? "chat-circle-dots" : "paper-plane-right"} />{busy ? "Sending…" : kind === "public" ? "Post public reply" : "Send private DM"}</button>
                 </div>
                 {note && <div className={`note ${note.kind === "ok" ? "ok" : "bad"}`} style={{ marginTop: 8 }} role="status"><Icon name={note.kind === "ok" ? "check-circle" : "warning-circle"} /><span>{note.text}</span></div>}
               </div>
