@@ -327,7 +327,7 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
 
         <section className="card tcard" aria-label="Conversation">
           {!sel ? (
-            <div className="empty" style={{ flex: 1 }}><div className="art"><Icon name="chat-circle-dots" /></div><h3>Pick a conversation</h3><p>Choose a chat on the left to read and reply.</p></div>
+            <div className="empty" style={{ flex: 1 }}><img className="art-img" src="/art/inbox.webp" alt="" width={120} height={120} /><h3>Pick a conversation</h3><p>Choose a chat on the left to read and reply.</p></div>
           ) : (
             <>
               <header className="thead">

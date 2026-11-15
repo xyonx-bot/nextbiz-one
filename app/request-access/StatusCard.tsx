@@ -21,7 +21,7 @@ export function StatusCard({ st }: { st: ReqStatus }) {
       <div className="apanel">
         <AuthBrand />
         <div className="stcard pending" data-testid="st-pending">
-          <span className="st-ic status-art" style={{ background: "var(--banana-tint)", color: "var(--banana-deep)" }}><Icon name="hourglass" /></span>
+          <img className="st-art" src="/art/request-pending.webp" alt="" width={132} height={132} />
           <h2 className="center">You&apos;re on the list</h2>
           <p className="sub center">We&apos;ll email you as soon as your workspace is ready — usually within one business day.</p>
           <div className="tline">

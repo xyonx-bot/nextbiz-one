@@ -138,6 +138,7 @@ export default async function HomePage() {
                 <div className="lp-rows">{[0, 1, 2].map((i) => <div key={i}><span className={`av sm c${i + 1}`} /><span><i style={{ width: `${60 - i * 12}%` }} /><i style={{ width: `${40 + i * 10}%` }} /></span></div>)}</div>
               </div>
               <div className="lp-go">
+                <img className="lp-art" src="/art/launch.webp" alt="" width={112} height={112} />
                 <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Get your first messages</span>
                 <h3>{anyChannel ? "Share your link — every message lands in your inbox." : "Connect a channel to start."}</h3>
                 {waNumber && <CopyLink url={`https://wa.me/${waNumber}`} label="Your WhatsApp chat link" icon="whatsapp-logo" testId="share-wa" />}

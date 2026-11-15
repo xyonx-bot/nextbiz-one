@@ -36,13 +36,9 @@ export function ChannelGate({ feature, channels }: { feature: FeatureKey; channe
             : "Takes a few minutes with your Facebook or Instagram login. No Meta Business portfolio yet? The WhatsApp connect window creates one for you."}</p>
         </div>
         <div className={`gate-art art-${f.preview}`} aria-hidden="true">
-          <div className="ga-win">
-            <div className="ga-top"><span /><span /><span /></div>
-            {f.preview === "inbox" && <div className="ga-inbox">{[0, 1, 2, 3].map((i) => <div key={i} className="ga-row"><b className={`ga-av c${i + 1}`} /><span><i style={{ width: `${70 - i * 9}%` }} /><i style={{ width: `${45 + i * 8}%` }} /></span></div>)}<div className="ga-bubbles"><em className="in" /><em className="out" /><em className="in s" /></div></div>}
-            {f.preview === "list" && <div className="ga-list">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="ga-row"><b className={`ga-av c${(i % 4) + 1}`} /><span><i style={{ width: `${62 - i * 6}%` }} /></span><u className={i % 2 ? "ok" : ""} /></div>)}</div>}
-            {f.preview === "chart" && <div className="ga-chart">{[38, 62, 48, 80, 56, 92, 70].map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}</div>}
-            {f.preview === "rules" && <div className="ga-rules">{["hi, hello", "price, cost", "timing, open"].map((k, i) => <div key={k} className="ga-rule"><span className="kw">{k}</span><Icon name="arrow-right" size="xs" /><span className="rp"><i style={{ width: `${80 - i * 12}%` }} /></span><u className="ok" /></div>)}</div>}
-          </div>
+          {f.needs[0] === "ads"
+            ? <img className="ga-img wide" src="/art/ads-hero.webp" alt="" width={1100} height={733} />
+            : <img className="ga-img" src={`/art/${f.needs[0] === "instagram" ? "instagram" : "whatsapp"}.webp`} alt="" width={280} height={280} />}
           <span className="ga-blob b1" /><span className="ga-blob b2" />
         </div>
       </section>

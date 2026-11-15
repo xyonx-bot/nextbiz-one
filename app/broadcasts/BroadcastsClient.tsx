@@ -125,7 +125,7 @@ export function BroadcastsClient({ startNew = false, preselect = [], templateId 
           </div>
           {list && list.length === 0 ? (
             <div className="empty">
-              <div className="art"><Icon name="megaphone" /></div><h3>Send your first broadcast</h3>
+              <img className="art-img" src="/art/broadcasts.webp" alt="" width={150} height={150} /><h3>Send your first broadcast</h3>
               <p>Message all your opted-in contacts at once with an approved template — offers, updates, reminders.</p>
               <div className="acts"><button className="btn btn-primary" onClick={() => startCompose()}><Icon name="plus" />New broadcast</button>{tpls.length === 0 && <a className="btn btn-soft" href="/templates?new=1">Create a template first</a>}</div>
             </div>

@@ -218,7 +218,7 @@ export function CommentsClient({ username }: { username: string | null }) {
         {/* ── post + conversation ── */}
         <section className="card cm" aria-label="Comment">
           {!c ? (
-            <div className="empty" style={{ margin: "auto" }}><div className="art"><Icon name="chat-teardrop-text" /></div><h3>Pick a comment</h3><p>See it on its post with the whole conversation, then reply publicly or by DM.</p></div>
+            <div className="empty" style={{ margin: "auto" }}><img className="art-img" src="/art/instagram.webp" alt="" width={112} height={112} /><h3>Pick a comment</h3><p>See it on its post with the whole conversation, then reply publicly or by DM.</p></div>
           ) : (
             <>
               <div className="thead">
@@ -314,7 +314,7 @@ export function CommentsClient({ username }: { username: string | null }) {
 
         <section className="zero" aria-label="No comments yet" data-testid="comments-zero">
           <div className="empty" style={{ maxWidth: 420 }}>
-            <div className="art"><Icon name="chat-teardrop-text" /></div>
+            <img className="art-img" src="/art/instagram.webp" alt="" width={150} height={150} />
             <h3>No comments yet</h3>
             <p>When people comment on {username ? `@${username.replace(/^@/, "")}` : "your"} posts, they appear here within seconds. Keyword rules can answer them automatically.</p>
             <div className="acts"><a className="btn btn-primary" href="/social/automation"><Icon name="lightning" />Set up comment auto-replies</a></div>

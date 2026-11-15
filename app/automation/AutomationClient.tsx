@@ -143,7 +143,7 @@ export function AutomationClient({ channel = "whatsapp" }: { channel?: AutoChann
               <div className="card-h"><span className="h3">Keyword replies</span>
                 <div className="seg">{(["all", "on", "off"] as const).map((t) => <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "all" ? "All" : t === "on" ? "On" : "Off"} {t === "all" ? rules?.length ?? 0 : (rules ?? []).filter((r) => (t === "on") === r.enabled).length}</button>)}</div></div>
               {rules && rules.length === 0 ? (
-                <div className="empty"><div className="art"><Icon name="lightning" /></div><h3>Answer common questions instantly</h3><p>Reply automatically when a message contains words like “price”, “timing” or “address”.</p>
+                <div className="empty"><img className="art-img" src="/art/automation.webp" alt="" width={140} height={140} /><h3>Answer common questions instantly</h3><p>Reply automatically when a message contains words like “price”, “timing” or “address”.</p>
                   <div className="acts"><button className="btn btn-primary" onClick={() => setDraft(NEW_DRAFT({ ...(ig ? { onWhatsapp: false, onInstagramDm: true, onInstagramComment: true } : {}), name: "Price inquiries", keywords: ["price", "cost", "rate"] }))}><Icon name="plus" />Add keyword reply</button></div></div>
               ) : (
                 <>

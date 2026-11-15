@@ -244,7 +244,7 @@ export function TemplatesClient({ startNew = false }: { startNew?: boolean }) {
 
         <section className="card ecard" data-status={status} id="ed">
           {!sel && !creating ? (
-            <div className="empty" style={{ flex: 1 }}><div className="art"><Icon name="notebook" /></div><h3>Pick a template</h3><p>Or create a new one to send after the 24-hour window or in broadcasts.</p><div className="acts"><button className="btn btn-primary" onClick={startCreate}><Icon name="plus" />New template</button></div></div>
+            <div className="empty" style={{ flex: 1 }}><img className="art-img" src="/art/templates.webp" alt="" width={112} height={112} /><h3>Pick a template</h3><p>Or create a new one to send after the 24-hour window or in broadcasts.</p><div className="acts"><button className="btn btn-primary" onClick={startCreate}><Icon name="plus" />New template</button></div></div>
           ) : (
             <>
               <header className="eh">
@@ -369,7 +369,7 @@ export function TemplatesClient({ startNew = false }: { startNew?: boolean }) {
 
         <section className="card zero" style={{ alignItems: "center", justifyContent: "center" }}>
           <div className="empty" style={{ maxWidth: 520 }}>
-            <div className="art"><Icon name="notebook" /></div>
+            <img className="art-img" src="/art/templates.webp" alt="" width={150} height={150} />
             <h3>Templates let you message customers any time</h3>
             <p>WhatsApp only allows free-form replies for 24 hours after a customer writes. After that, and for broadcasts, you need a template that Meta has approved.</p>
             <div className="acts"><button className="btn btn-primary" onClick={startCreate}><Icon name="plus" />Create a template</button><button className="btn btn-soft" onClick={() => void sync()}><Icon name="arrows-clockwise" />Sync from Meta</button></div>

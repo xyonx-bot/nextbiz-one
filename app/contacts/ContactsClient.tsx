@@ -146,7 +146,7 @@ export function ContactsClient({ initialId }: { initialId?: string }) {
           </div>
           <div className="tfoot"><span>{rows.length} of {total} contacts</span></div>
           <div className="empty zero-c" style={{ flex: 1 }}>
-            <div className="art"><Icon name="users-three" /></div>
+            <img className="art-img" src="/art/contacts.webp" alt="" width={150} height={150} />
             <h3>No contacts yet</h3>
             <p>Everyone who messages your WhatsApp number is added here automatically. You can also add people yourself or import a list from Excel or Google Sheets.</p>
             <div className="acts"><button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="user-plus" />Add contact</button><button className="btn btn-soft" onClick={() => setImporting(true)}><Icon name="upload-simple" />Import CSV</button></div>

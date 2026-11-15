@@ -1529,3 +1529,28 @@ a.post:hover img { transform: scale(1.05); } a.post:hover .ov { opacity: 1; }
 .pg-templates .lh .chips { flex-wrap: wrap; }
 .wbub b { display: inline; font-size: inherit; }
 .closed-box .tsend .ts-tpl small, .closed-box .tsend p { margin: 0; }
+
+/* auth: illustrated story panel (art fills the lower part; copy + two live-looking cards sit on the calm top) */
+.pg-auth .story { background: linear-gradient(180deg, #FBF8F2 0%, rgba(251,248,242,.92) 30%, rgba(251,248,242,0) 52%), var(--art) center bottom / cover no-repeat, #FBF8F2; }
+.pg-auth .story h1 { margin-top: 40px; }
+.pg-auth .story .trust { margin-top: 16px; }
+.pg-auth .story .trust span { padding: 5px 10px 5px 8px; border-radius: 999px; background: rgba(255,255,255,.75); border: 1px solid var(--line); }
+.pg-auth .story .collage { height: 150px; margin: 22px 0 0; }
+.pg-auth .story .fl.c1 { left: 0; top: 0; width: 280px; }
+.pg-auth .story .fl.c3 { left: 300px; right: auto; top: 30px; width: 160px; }
+/* illustrations in empty states (replace the small icon tile) */
+.empty .art-img { display: block; margin: 0 auto 2px; max-width: 60%; height: auto; object-fit: contain; user-select: none; pointer-events: none; }
+.pg-dash .lp-go { position: relative; }
+.pg-dash .lp-art { position: absolute; top: 8px; right: 10px; width: 104px; height: 104px; pointer-events: none; }
+.pg-dash .lp-go > .eyebrow, .pg-dash .lp-go > h3 { padding-right: 104px; }
+@container page (max-width: 620px) { .pg-dash .lp-art { width: 72px; height: 72px; } .pg-dash .lp-go > .eyebrow, .pg-dash .lp-go > h3 { padding-right: 70px; } }
+.st-art { display: block; align-self: center; width: 132px; height: 132px; margin: -6px auto -4px; }
+.pg-ads-perf .pe-art { width: 120px; height: 120px; flex-shrink: 0; margin: -10px -4px -10px -8px; }
+/* channel gate: illustration instead of the sketched window */
+.gate-art .ga-img { position: relative; z-index: 1; width: min(280px, 78%); height: auto; }
+.gate-art .ga-img.wide { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+.gate-art:has(.ga-img.wide) { background: #F7F1E8; }
+.gate-art:has(.ga-img.wide) .ga-blob { display: none; }
+.pg-onb .onb-banner { margin: -28px -28px 2px; height: 170px; overflow: hidden; border-radius: var(--r-lg) var(--r-lg) 0 0; background: #F7F1E8; border-bottom: 1px solid var(--line); }
+.pg-onb .onb-banner img { width: 100%; height: 100%; object-fit: cover; object-position: center 46%; display: block; }
+@media (max-width: 640px) { .pg-onb .onb-banner { margin: -18px -18px 2px; height: 130px; } }

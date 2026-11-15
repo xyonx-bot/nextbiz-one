@@ -59,6 +59,7 @@ export function OnboardingClient() {
         <div>
           {step === 0 && (
             <section className="card main-card">
+              <div className="onb-banner" aria-hidden="true"><img src="/art/onboarding.webp" alt="" width={1400} height={933} /></div>
               <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Step 1 of 3</span>
               <h1>{st?.connected ? "Your WhatsApp is connected" : "Connect your WhatsApp Business number"}</h1>
               <p className="lead">{st?.connected ? "This is the number your customers message. Everything they send lands in your inbox." : "Link the number your customers already message. One number serves one workspace."}</p>

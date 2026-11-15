@@ -54,7 +54,7 @@ export function PerformanceClient() {
         {empty ? (
           <section className="grid" data-testid="perf-empty">
             <div className="card s12 pe-hero">
-              <span className={`icon-tile lg ${running.length ? "green" : "orange"}`}><Icon name={running.length ? "hourglass" : camps.length ? "pause" : "rocket-launch"} /></span>
+              <img className="pe-art" src={camps.length ? "/art/ads-waiting.webp" : "/art/launch.webp"} alt="" width={120} height={120} />
               <div className="grow">
                 <h2>{running.length ? "Your ads are live — the first numbers are on their way" : camps.length ? "Nothing has run yet, so there's nothing to measure" : "No campaigns yet"}</h2>
                 <p>{running.length ? `${running.length} campaign${running.length > 1 ? "s are" : " is"} running. Meta usually reports the first views and chats within a few hours of the ad being approved.`
