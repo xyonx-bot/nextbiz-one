@@ -13,7 +13,7 @@ import type { ShellData } from "@/lib/shell";
  * One gutter everywhere. ≥1280 panel docked · 768–1279 panel flyout · <768 bottom tab bar + "More" sheet.
  */
 export type ShellActive =
-  | "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts" | "automation" | "settings" | "connections"
+  | "dashboard" | "inbox" | "contacts" | "templates" | "broadcasts" | "automation" | "settings" | "connections" | "learn"
   | "ads" | "ads-new" | "ads-perf"
   | "social" | "social-comments" | "social-dms" | "social-auto";
 
@@ -95,7 +95,7 @@ export function ShellClient({
   const items = mod === "ads" ? ADS : mod === "social" ? SOCIAL : CHAT;
   const modName = mod === "ads" ? "NextBiz Ads" : mod === "social" ? "NextBiz Social" : "NextBiz Chat";
   const waNumber = data.wa?.displayName?.match(/\(([^)]+)\)/)?.[1] ?? null;
-  const inMore = ["templates", "automation", "settings", "connections", "social", "social-comments", "social-dms", "social-auto", "ads", "ads-new", "ads-perf"].includes(active);
+  const inMore = ["templates", "automation", "settings", "connections", "learn", "social", "social-comments", "social-dms", "social-auto", "ads", "ads-new", "ads-perf"].includes(active);
 
   return (
     <div
@@ -112,6 +112,7 @@ export function ShellClient({
         <a className={`ri m-ads${mod === "ads" ? " on" : ""}`} href="/ads" aria-label="NextBiz Ads" data-testid="rail-ads"><Icon name="megaphone" /><span className="dot" /><span className="tip">NextBiz Ads</span></a>
         <a className={`ri m-social${mod === "social" ? " on" : ""}`} href="/social" aria-label="NextBiz Social" data-testid="rail-social"><Icon name="images" /><span className="tip">NextBiz Social · Instagram</span></a>
         <span className="sp" />
+        <a className={`ri${active === "learn" ? " on" : ""}`} href="/learn" aria-label="Learning center" data-testid="rail-learn"><Icon name="lightbulb" /><span className="tip">Learning center</span></a>
         <a className={`ri${active === "connections" ? " on" : ""}`} href="/connections" aria-label="Connections" data-testid="rail-connections"><Icon name="plugs-connected" /><span className="tip">Connections</span></a>
         <a className={`ri${active === "settings" ? " on" : ""}`} href="/settings" aria-label="Settings"><Icon name="gear" /><span className="tip">Settings</span></a>
         <button className="av sm c2 me" title={data.userName} onClick={() => setMe((v) => !v)} aria-label="Account menu" data-testid="account-btn">{data.initials}</button>
@@ -216,6 +217,7 @@ export function ShellClient({
         <div className="sgrp eyebrow">NextBiz Social</div>
         {SOCIAL.map((i) => <a key={i.key} className={`pi${i.key === active ? " on" : ""}`} href={i.href}><Icon name={i.icon} /><span>{i.label}</span></a>)}
         <div className="sgrp eyebrow">Workspace</div>
+        <a className={`pi${active === "learn" ? " on" : ""}`} href="/learn"><Icon name="lightbulb" /><span>Learning center</span></a>
         <a className={`pi${active === "connections" ? " on" : ""}`} href="/connections"><Icon name="plugs-connected" /><span>Connections</span></a>
         <a className={`pi${active === "settings" ? " on" : ""}`} href="/settings"><Icon name="gear" /><span>Settings</span></a>
         <button className="pi" style={{ width: "100%" }} onClick={signOut}><Icon name="sign-out" /><span>Sign out</span></button>

@@ -7,6 +7,7 @@ import { AvatarPic } from "@/components/AvatarPic";
 import { igPic } from "@/lib/ui";
 import { PairBars, Spark } from "@/components/Charts";
 import { AskAi, CopyLink, CountUp } from "@/components/DashBits";
+import { Hint } from "@/components/Hint";
 import { avatarClass, initials } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
@@ -82,6 +83,82 @@ export default async function HomePage() {
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const first = shell.userName.split(" ")[0].replace(/^./, (c) => c.toUpperCase());
 
+  /* channel cards (broadcast · automation · ads · Instagram): what each channel did — near the top for live workspaces */
+  const channelCards = (
+            <section className="grid cards3">
+              {d.ig && (
+                <div className={`card ${span} ch-ig`} data-testid="card-ig">
+                  <div className="card-h"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span className="h3">Instagram</span><a className="btn-link" style={{ color: "var(--social-deep)" }} href="/social">Social<Icon name="arrow-right" size="xs" /></a></div>
+                  <div className="card-b" style={{ paddingTop: 0 }}>
+                    <div className="nums3"><div><span>DMs · 7d</span><b>{n(d.ig.dms7)}</b></div><div><span>Comments · 7d</span><b>{n(d.ig.comments7)}</b></div><div className={d.ig.needs ? "hot" : ""}><span>Need a reply</span><b>{n(d.ig.needs)}</b></div></div>
+                    <a className="btn btn-soft btn-sm" style={{ marginTop: 12, width: "100%", justifyContent: "center" }} href={d.ig.needs ? "/social/comments?filter=needs" : "/social/comments"}><Icon name="chat-teardrop-text" />{d.ig.needs ? "Reply to comments" : "See comments"}</a>
+                  </div>
+                </div>
+              )}
+              {d.wa.connected && (
+                <div className={`card ${span}`}>
+                  <div className="card-h"><span className="icon-tile sm green"><Icon name="megaphone" /></span><span className="h3">Last broadcast</span>{bc && <span className="pill ok sm">Sent</span>}</div>
+                  {bc ? (
+                    <div className="card-b" style={{ paddingTop: 0 }}>
+                      <div className="xs faint" style={{ fontWeight: 600, marginBottom: 10 }}><b style={{ color: "var(--ink)" }}>{bc.name}</b> · {new Date(bc.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · {bc.total} recipients</div>
+                      <div className="funnel">
+                        {([["Sent", bc.sent], ["Delivered", bc.delivered], ["Read", bc.read], ["Replied", bc.replied]] as const).map(([l, v]) => (
+                          <div key={l} className="fr"><span>{l}</span><div className="bar"><span style={{ width: `${Math.max(pct(v), v > 0 ? 6 : 0)}%` }}>{v}</span></div><span className="v">{pct(v)}%</span></div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="card-b first" style={{ paddingTop: 0 }}>
+                      <p><b>{n(d.contacts.opted ?? 0)}</b> opted-in contact{d.contacts.opted === 1 ? "" : "s"} can get your first broadcast{d.approvedTemplates ? ` · ${d.approvedTemplates} approved template${d.approvedTemplates > 1 ? "s" : ""} ready` : " once a template is approved"}.</p>
+                      <a className="btn btn-soft btn-sm" href={d.approvedTemplates ? "/broadcasts?new=1" : "/templates?new=1"}>{d.approvedTemplates ? "Send a broadcast" : "Create a template"}</a>
+                    </div>
+                  )}
+                </div>
+              )}
+              {anyChannel && (
+                <div className={`card ${span}`}>
+                  <div className="card-h"><span className="icon-tile sm grape"><Icon name="lightning" /></span><span className="h3">Automation · 7 days</span><a className="btn-link" href={d.wa.connected ? "/automation" : "/social/automation"}>Manage</a></div>
+                  <div className="card-b auto-rows" style={{ paddingTop: 0 }}>
+                    <div className="ar"><span className="icon-tile sm green"><Icon name="hand" /></span><span><b>Welcome message</b><small>{[d.wa.connected && `WhatsApp ${d.settings.welcome_enabled ? "on" : "off"}`, d.ig && `Instagram ${d.settings.ig_welcome_enabled ? "on" : "off"}`].filter(Boolean).join(" · ")}</small></span><span className="v">{(d.auto.wa.welcome ?? 0)}</span></div>
+                    <div className="ar"><span className="icon-tile sm grape"><Icon name="chat-text" /></span><span><b>Keyword replies</b><small>{d.rulesOn} rule{d.rulesOn === 1 ? "" : "s"} on</small></span><span className="v">{(d.auto.wa.keyword ?? 0) + (d.auto.wa.comment ?? 0)}</span></div>
+                    <div className="ar"><span className="icon-tile sm"><Icon name="clock" /></span><span><b>Away replies</b><small>Outside business hours</small></span><span className="v">{d.auto.wa.away ?? 0}</span></div>
+                    {d.ig && <div className="ar"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span><b>Instagram auto-DMs</b><small>Welcome + keyword DMs</small></span><span className="v">{d.auto.ig}</span></div>}
+                  </div>
+                </div>
+              )}
+              {d.ads ? (
+                <div className={`card ${span} ch-ads`} data-testid="card-ads">
+                  <div className="card-h"><span className="icon-tile sm orange"><Icon name="target" /></span><span className="h3">Ads · 7 days</span><a className="btn-link" style={{ color: "var(--ads-deep)" }} href="/ads/performance">Performance<Icon name="arrow-right" size="xs" /></a></div>
+                  <div className="card-b" style={{ paddingTop: 0 }}>
+                    {d.ads.error ? <p className="xs" style={{ color: "var(--danger-deep)", fontWeight: 600 }}>{d.ads.error}</p> : (
+                      <>
+                        <div className="nums3"><div><span>Spend</span><b>{inr(d.ads.spend)}</b></div><div><span>Results</span><b>{n(d.ads.results)}</b></div><div><span>Per result</span><b>{d.ads.results ? inr(d.ads.cpr) : "—"}</b></div></div>
+                        <p className="xs faint" style={{ fontWeight: 600, marginTop: 10 }}>{d.ads.name} · {d.ads.active ? `${d.ads.active} campaign${d.ads.active > 1 ? "s" : ""} running` : "nothing running right now"}</p>
+                      </>
+                    )}
+                    <a className="btn btn-soft btn-sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} href={d.ads.active ? "/ads" : "/ads/new"}><Icon name={d.ads.active ? "target" : "plus"} />{d.ads.active ? "Campaigns" : "Create a campaign"}</a>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+  );
+  /* "Your channels" strip stays last */
+  const channelStrip = anyChannel ? (
+          <section className="grid cards3">
+            <div className="card s12 chstrip" data-testid="card-channels">
+              <div className="card-h"><span className="icon-tile sm neutral"><Icon name="plugs-connected" /></span><span className="h3">Your channels</span><a className="btn-link" href="/connections">Manage</a></div>
+              <div className="chs">
+                <div className={`chi${d.wa.connected ? " on wa" : ""}`}><span className={`icon-tile ${d.wa.connected ? "green" : "neutral"}`}><Icon name="whatsapp-logo" /></span><span className="grow"><b>WhatsApp</b><small>{d.wa.connected ? `${d.wa.displayName ?? "Connected"} · last message ${since(d.wa.lastIn)}` : "Chats, templates and broadcasts on your number"}</small></span>
+                  {d.wa.connected ? <span className="pill sm ok">Live</span> : <a className="btn btn-soft btn-sm" href="/connections#whatsapp">Connect</a>}</div>
+                <div className={`chi${d.ig ? " on ig" : ""}`}><span className={`icon-tile ${d.ig ? "pink" : "neutral"}`}><Icon name="instagram-logo" /></span><span className="grow"><b>Instagram</b><small>{d.ig ? `@${d.ig.username} · last DM ${since(d.ig.lastIn)}` : "DMs and comments, answered in one place"}</small></span>
+                  {d.ig ? <span className={`pill sm ${d.ig.lastError ? "warn" : "ok"}`}>{d.ig.lastError ? "Check" : "Live"}</span> : <a className="btn btn-soft btn-sm" href="/connections#instagram">Connect</a>}</div>
+                <div className={`chi${d.ads ? " on ads" : ""}`}><span className={`icon-tile ${d.ads ? "orange" : "neutral"}`}><Icon name="target" /></span><span className="grow"><b>Meta Ads</b><small>{d.ads ? d.ads.name ?? "Ad account connected" : "Click-to-WhatsApp ads that land in your inbox"}</small></span>
+                  {d.ads ? <span className={`pill sm ${d.ads.error ? "warn" : "ok"}`}>{d.ads.error ? "Check" : "Live"}</span> : <a className="btn btn-soft btn-sm" href="/connections#ads">Connect</a>}</div>
+              </div>
+            </div>
+          </section>
+  ) : null;
+
   return (
     <ShellClient active="dashboard" title="Dashboard" data={shell}
       actions={d.wa.connected ? <a className="btn btn-primary" href="/broadcasts?new=1"><Icon name="plus" /><span className="lbl">New broadcast</span></a> : undefined}>
@@ -92,6 +169,8 @@ export default async function HomePage() {
               <p>{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Kolkata" })} · {!d.everActive ? "let's get your first customer chats in." : attention.length ? "here's what needs you today." : "nothing urgent — you're all caught up."}</p></div>
             {shell.ai && d.everActive && <AskAi prompt="What needs my attention today?" label="What needs me today?" testId="dash-ask-ai" />}
           </div>
+
+          <Hint id="dash-learn" title="New: Learning center" text="Short guides on the 24-hour window, automation, templates and ads. Start with: use this number for automation, not long chats." guide="how-to-use-whatsapp-api" />
 
           {setupDone < setup.length && (
             <section className="card setup" style={{ display: "grid" }} data-testid="setup">
@@ -151,6 +230,7 @@ export default async function HomePage() {
             </section>
           ) : (
             <>
+              {channelCards}
               <section className="grid">
                 <div className="card kpi s3" data-testid="kpi-conv"><div className="stat"><span className="lbl"><Icon name="chat-circle-dots" size="sm" />Conversations</span><span className="val v" data-count>{n(d.convs.cur ?? 0)}</span><Delta cur={d.convs.cur ?? 0} prev={d.convs.prev ?? 0} unit="14 days" /><div className="spark-wrap"><Spark data={totalIn} /></div></div></div>
                 <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="user-plus" size="sm" />New contacts</span><span className="val v" data-count>{n((d.contacts.cur ?? 0) + (d.contacts.ig_new ?? 0))}</span><Delta cur={(d.contacts.cur ?? 0) + (d.contacts.ig_new ?? 0)} prev={d.contacts.prev ?? 0} unit="30 days" /><span className="foot sub">{n(d.contacts.opted ?? 0)} of {n(d.contacts.total ?? 0)} WhatsApp contacts opted in</span></div></div>
@@ -184,76 +264,8 @@ export default async function HomePage() {
             </>
           )}
 
-          {/* ── channel cards: only for what's connected; the rest becomes one tidy "Your channels" card ── */}
-          <section className="grid cards3">
-            {d.ig && (
-              <div className={`card ${span} ch-ig`} data-testid="card-ig">
-                <div className="card-h"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span className="h3">Instagram</span><a className="btn-link" style={{ color: "var(--social-deep)" }} href="/social">Social<Icon name="arrow-right" size="xs" /></a></div>
-                <div className="card-b" style={{ paddingTop: 0 }}>
-                  <div className="nums3"><div><span>DMs · 7d</span><b>{n(d.ig.dms7)}</b></div><div><span>Comments · 7d</span><b>{n(d.ig.comments7)}</b></div><div className={d.ig.needs ? "hot" : ""}><span>Need a reply</span><b>{n(d.ig.needs)}</b></div></div>
-                  <a className="btn btn-soft btn-sm" style={{ marginTop: 12, width: "100%", justifyContent: "center" }} href={d.ig.needs ? "/social/comments?filter=needs" : "/social/comments"}><Icon name="chat-teardrop-text" />{d.ig.needs ? "Reply to comments" : "See comments"}</a>
-                </div>
-              </div>
-            )}
-            {d.wa.connected && (
-              <div className={`card ${span}`}>
-                <div className="card-h"><span className="icon-tile sm green"><Icon name="megaphone" /></span><span className="h3">Last broadcast</span>{bc && <span className="pill ok sm">Sent</span>}</div>
-                {bc ? (
-                  <div className="card-b" style={{ paddingTop: 0 }}>
-                    <div className="xs faint" style={{ fontWeight: 600, marginBottom: 10 }}><b style={{ color: "var(--ink)" }}>{bc.name}</b> · {new Date(bc.sent_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · {bc.total} recipients</div>
-                    <div className="funnel">
-                      {([["Sent", bc.sent], ["Delivered", bc.delivered], ["Read", bc.read], ["Replied", bc.replied]] as const).map(([l, v]) => (
-                        <div key={l} className="fr"><span>{l}</span><div className="bar"><span style={{ width: `${Math.max(pct(v), v > 0 ? 6 : 0)}%` }}>{v}</span></div><span className="v">{pct(v)}%</span></div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="card-b first" style={{ paddingTop: 0 }}>
-                    <p><b>{n(d.contacts.opted ?? 0)}</b> opted-in contact{d.contacts.opted === 1 ? "" : "s"} can get your first broadcast{d.approvedTemplates ? ` · ${d.approvedTemplates} approved template${d.approvedTemplates > 1 ? "s" : ""} ready` : " once a template is approved"}.</p>
-                    <a className="btn btn-soft btn-sm" href={d.approvedTemplates ? "/broadcasts?new=1" : "/templates?new=1"}>{d.approvedTemplates ? "Send a broadcast" : "Create a template"}</a>
-                  </div>
-                )}
-              </div>
-            )}
-            {anyChannel && (
-              <div className={`card ${span}`}>
-                <div className="card-h"><span className="icon-tile sm grape"><Icon name="lightning" /></span><span className="h3">Automation · 7 days</span><a className="btn-link" href={d.wa.connected ? "/automation" : "/social/automation"}>Manage</a></div>
-                <div className="card-b auto-rows" style={{ paddingTop: 0 }}>
-                  <div className="ar"><span className="icon-tile sm green"><Icon name="hand" /></span><span><b>Welcome message</b><small>{[d.wa.connected && `WhatsApp ${d.settings.welcome_enabled ? "on" : "off"}`, d.ig && `Instagram ${d.settings.ig_welcome_enabled ? "on" : "off"}`].filter(Boolean).join(" · ")}</small></span><span className="v">{(d.auto.wa.welcome ?? 0)}</span></div>
-                  <div className="ar"><span className="icon-tile sm grape"><Icon name="chat-text" /></span><span><b>Keyword replies</b><small>{d.rulesOn} rule{d.rulesOn === 1 ? "" : "s"} on</small></span><span className="v">{(d.auto.wa.keyword ?? 0) + (d.auto.wa.comment ?? 0)}</span></div>
-                  <div className="ar"><span className="icon-tile sm"><Icon name="clock" /></span><span><b>Away replies</b><small>Outside business hours</small></span><span className="v">{d.auto.wa.away ?? 0}</span></div>
-                  {d.ig && <div className="ar"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span><b>Instagram auto-DMs</b><small>Welcome + keyword DMs</small></span><span className="v">{d.auto.ig}</span></div>}
-                </div>
-              </div>
-            )}
-            {d.ads ? (
-              <div className={`card ${span} ch-ads`} data-testid="card-ads">
-                <div className="card-h"><span className="icon-tile sm orange"><Icon name="target" /></span><span className="h3">Ads · 7 days</span><a className="btn-link" style={{ color: "var(--ads-deep)" }} href="/ads/performance">Performance<Icon name="arrow-right" size="xs" /></a></div>
-                <div className="card-b" style={{ paddingTop: 0 }}>
-                  {d.ads.error ? <p className="xs" style={{ color: "var(--danger-deep)", fontWeight: 600 }}>{d.ads.error}</p> : (
-                    <>
-                      <div className="nums3"><div><span>Spend</span><b>{inr(d.ads.spend)}</b></div><div><span>Results</span><b>{n(d.ads.results)}</b></div><div><span>Per result</span><b>{d.ads.results ? inr(d.ads.cpr) : "—"}</b></div></div>
-                      <p className="xs faint" style={{ fontWeight: 600, marginTop: 10 }}>{d.ads.name} · {d.ads.active ? `${d.ads.active} campaign${d.ads.active > 1 ? "s" : ""} running` : "nothing running right now"}</p>
-                    </>
-                  )}
-                  <a className="btn btn-soft btn-sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} href={d.ads.active ? "/ads" : "/ads/new"}><Icon name={d.ads.active ? "target" : "plus"} />{d.ads.active ? "Campaigns" : "Create a campaign"}</a>
-                </div>
-              </div>
-            ) : null}
-            {anyChannel && (
-            <div className="card s12 chstrip" data-testid="card-channels">
-              <div className="card-h"><span className="icon-tile sm neutral"><Icon name="plugs-connected" /></span><span className="h3">Your channels</span><a className="btn-link" href="/connections">Manage</a></div>
-              <div className="chs">
-                <div className={`chi${d.wa.connected ? " on wa" : ""}`}><span className={`icon-tile ${d.wa.connected ? "green" : "neutral"}`}><Icon name="whatsapp-logo" /></span><span className="grow"><b>WhatsApp</b><small>{d.wa.connected ? `${d.wa.displayName ?? "Connected"} · last message ${since(d.wa.lastIn)}` : "Chats, templates and broadcasts on your number"}</small></span>
-                  {d.wa.connected ? <span className="pill sm ok">Live</span> : <a className="btn btn-soft btn-sm" href="/connections#whatsapp">Connect</a>}</div>
-                <div className={`chi${d.ig ? " on ig" : ""}`}><span className={`icon-tile ${d.ig ? "pink" : "neutral"}`}><Icon name="instagram-logo" /></span><span className="grow"><b>Instagram</b><small>{d.ig ? `@${d.ig.username} · last DM ${since(d.ig.lastIn)}` : "DMs and comments, answered in one place"}</small></span>
-                  {d.ig ? <span className={`pill sm ${d.ig.lastError ? "warn" : "ok"}`}>{d.ig.lastError ? "Check" : "Live"}</span> : <a className="btn btn-soft btn-sm" href="/connections#instagram">Connect</a>}</div>
-                <div className={`chi${d.ads ? " on ads" : ""}`}><span className={`icon-tile ${d.ads ? "orange" : "neutral"}`}><Icon name="target" /></span><span className="grow"><b>Meta Ads</b><small>{d.ads ? d.ads.name ?? "Ad account connected" : "Click-to-WhatsApp ads that land in your inbox"}</small></span>
-                  {d.ads ? <span className={`pill sm ${d.ads.error ? "warn" : "ok"}`}>{d.ads.error ? "Check" : "Live"}</span> : <a className="btn btn-soft btn-sm" href="/connections#ads">Connect</a>}</div>
-              </div>
-            </div>
-            )}
-          </section>
+          {!d.everActive && channelCards}
+          {channelStrip}
         </div>
       </div>
     </ShellClient>

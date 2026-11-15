@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/AppShell";
+import { Hint } from "@/components/Hint";
 import { BroadcastsClient } from "./BroadcastsClient";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,7 @@ export default async function BroadcastsPage({ searchParams }: { searchParams: P
   const preselect = (to ?? "").split(",").filter((s) => /^[0-9a-f-]{36}$/i.test(s));
   return (
     <AppShell active="broadcasts" requires="broadcasts" title="Broadcasts">
+      <Hint id="broadcasts" tone="green" className="top" title="Keep your number healthy" text="Broadcasts only go to opted-in contacts. One or two a week, sent late morning or evening, keeps blocks low and your quality rating high." guide="broadcasts" />
       <BroadcastsClient startNew={isNew === "1"} preselect={preselect} templateId={tpl && /^[0-9a-f-]{36}$/i.test(tpl) ? tpl : null} />
     </AppShell>
   );
