@@ -8,14 +8,17 @@
 **Before you start**
 - ChatGPT can make three sizes: **square 1024×1024**, **landscape 1536×1024** and **portrait 1024×1536**. Each prompt says which to use.
 - **Start a new chat for this set and generate them all in the same chat**, so the style stays consistent. After the first good one, you can add: "match the style of the previous image exactly".
-- **No text, letters, numbers, logos or real app screens** anywhere. The app draws its own chat bubbles and numbers on top, AI-drawn text comes out garbled, and the WhatsApp and Instagram logos are trademarks.
+- **Where text goes.** ChatGPT handles text well now, so some images use it on purpose:
+  - **With text:** the link-preview image (5) carries the headline, because it's shown on its own in WhatsApp, Slack and LinkedIn. The onboarding banner (4) and the Ads hero (6) show modern UI cards with short, realistic chat lines and numbers, so they read as real product visuals.
+  - **Without text:** the sign-in panels (1–3), where the app already shows its own headline and live cards, so text in the image would double up. All spot illustrations (7–16), which sit next to the app's own headings and must stay readable at small sizes.
+  - **Never:** logos, including ours (I add the real NextBiz logo myself) and the WhatsApp and Instagram logos (trademarks).
 - **Brand colours** used in the prompts: lime green **#91C82B**, orange **#FF7518**, pink **#F74770**, purple **#A66BFF**, yellow **#FFD21F**, deep ink **#1A1D23**, and warm off-white **#F7F3EB** as the background.
 - **Naming:** save each file with the name in its heading and send them over. I'll place them, crop and compress them, and add dark-mode handling.
 
 **Priority:** do 1–3 and 7–12 first.
 
 **The shared style.** It's already written into every prompt below. Paste this sentence again if the style drifts:
-> *Modern flat vector illustration, clean geometric shapes with soft rounded corners, smooth subtle gradients, a light grain texture, crisp edges, generous negative space, limited palette, calm premium tech-brand aesthetic, no outlines or thin outlines only, no text, no letters, no numbers, no logos.*
+> *Modern flat vector illustration, clean geometric shapes with soft rounded corners, smooth subtle gradients, a light grain texture, crisp edges, generous negative space, limited palette, calm premium tech-brand aesthetic, no outlines or thin outlines only, no logos.* (For the no-text images, add: *no text, no letters, no numbers.*)
 
 ---
 
@@ -39,17 +42,28 @@
 ### 4. `onboarding-welcome.png`: first-run welcome banner
 **Size:** landscape 1536×1024. **Where:** the top of /onboarding. Shown cropped to a wide banner, so keep the main content in a horizontal band through the centre.
 
-> Modern flat vector illustration, horizontal 3:2, designed to be cropped to a wide banner. Centred: a smartphone shape lying at a gentle angle, with three abstract channel "orbs" connected to it by soft curved dotted lines: a lime green #91C82B orb holding a blank speech bubble, a pink #F74770 orb holding a small heart shape, and an orange #FF7518 orb holding a tiny rising bar-chart shape. Small floating geometric confetti around them: circles, rounded squares, sparkles in yellow #FFD21F and purple #A66BFF. Background warm off-white #F7F3EB with two very large soft gradient blobs at the left and right edges. Keep all key content inside the middle horizontal band; top and bottom edges quiet. Clean shapes, soft rounded corners, subtle gradients, light grain texture, generous negative space, premium tech aesthetic. No text, letters, numbers, logos or people.
+> Modern vector illustration with clean UI elements, horizontal 3:2, designed to be cropped to a wide banner. Centred: a sleek smartphone at a gentle angle showing a minimal chat screen with two crisp, legible message bubbles. A customer bubble in white reads "Hi! Is this still available?" and a reply bubble in lime green #91C82B reads "Yes! Want me to keep one for you? 😊". Around the phone, three small floating UI cards connected by soft curved dotted lines:
+> - a white card with a pink #F74770 heart icon and the text "New comment";
+> - a white card with a tiny orange #FF7518 rising chart and the text "Ad: 24 chats today";
+> - a white card with a yellow #FFD21F lightning icon and the text "Auto-reply sent".
+>
+> Small geometric confetti around them: circles, rounded squares and sparkles in purple #A66BFF and yellow. Background warm off-white #F7F3EB with two very large soft gradient blobs at the left and right edges. Keep all key content inside the middle horizontal band; top and bottom edges quiet. Clean modern sans-serif type (like Inter), all text sharp, correctly spelled and in English. Soft rounded corners, subtle shadows and gradients, light grain texture, premium tech-brand aesthetic. No logos, no people.
 
 ### 5. `og-share.png`: link preview when the app's link is shared
-**Size:** landscape 1536×1024; I'll crop it to 1200×630. **Where:** the preview card when someone pastes a NextBiz link. I'll add the logo and headline myself.
+**Size:** landscape 1536×1024; I'll crop it to 1200×630, so keep everything inside the central band (about 150px clear at top and bottom). **Where:** the preview card when someone pastes a NextBiz link. I'll add the real logo myself in the empty top-left corner.
 
-> Modern flat vector illustration, horizontal 3:2. On the left 55%: an elegant isometric-style arrangement of rounded floating panels, like abstract app cards with no text: one with blank message bubbles in lime green #91C82B, one with a simple soft line-graph shape in orange #FF7518, one with a grid of rounded squares in pink #F74770 and purple #A66BFF. The panels are layered with soft shadows and gentle depth. The right 45% of the frame is empty warm off-white #F7F3EB with only a faint large gradient circle, reserved for a logo and headline. Clean geometric shapes, soft rounded corners, smooth subtle gradients, light grain texture, crisp, minimal, premium tech-brand aesthetic. No text, letters, numbers, logos or people.
+> Modern vector marketing graphic, horizontal 3:2, warm off-white #F7F3EB background. Left half: bold, clean headline in a modern geometric sans-serif (like Plus Jakarta Sans or Inter), deep ink colour #1A1D23, on two lines: "Every customer," / "answered." The word "answered." is in lime green #91C82B. Below it, a smaller grey subtitle on one line: "WhatsApp, Instagram & Meta Ads — one inbox for your business". Leave an empty area about 220×80px in the top-left corner above the headline, for a logo added later. Right half: an elegant layered arrangement of floating rounded UI cards with soft shadows:
+> - a chat card with bubbles reading "Do you deliver today?" and "Yes — order before 6 pm 🚚";
+> - a small stat card reading "Reply time 2 min" with a tiny lime-green sparkline;
+> - a small card with an orange #FF7518 bar chart labelled "Ads";
+> - a small pink #F74770 heart badge.
+>
+> All text crisp, correctly spelled, English. Clean geometric shapes, soft rounded corners, subtle gradients, light grain texture, generous negative space, premium tech-brand aesthetic. No logos, no people.
 
 ### 6. `ads-hero.png`: Meta Ads "not connected" screen
 **Size:** landscape 1536×1024. **Where:** the right side of the "Connect your Meta ad account" card (currently a simple bar-chart sketch).
 
-> Modern flat vector illustration, horizontal 3:2. A rounded browser-window shape with no text, holding a smooth rising area chart in an orange #FF7518 gradient, with a small target symbol (concentric circles) and a rounded cursor-arrow shape tapping a pill-shaped button. A smartphone shape overlaps the lower-right corner of the window, its screen showing two blank message bubbles in lime green #91C82B. Floating accents: a small coin-like circle in yellow #FFD21F, a sparkle, a few dots in pink #F74770. Background warm off-white #F7F3EB with a soft peach gradient blob behind the window. Content slightly right of centre. Clean shapes, soft rounded corners, subtle gradients, light grain texture, generous negative space, premium tech aesthetic. No text, letters, numbers, logos or people.
+> Modern vector illustration with clean UI elements, horizontal 3:2. A rounded, minimal dashboard window holding a smooth rising area chart in an orange #FF7518 gradient, with a small label above it reading "Chats from ads" and a lime-green pill reading "+38% this week". A smartphone overlaps the lower-right corner of the window, showing a minimal ad card (a soft abstract product image in pastel shapes) with a lime green #91C82B pill button reading "Send message", and below it a single chat bubble reading "Hi! I saw your ad 👋". Floating accents: a small yellow #FFD21F coin-like circle with a "₹" symbol, a sparkle, a few dots in pink #F74770. Background warm off-white #F7F3EB with a soft peach gradient blob behind the window. Content slightly right of centre. Text crisp, correctly spelled, English, modern sans-serif. Clean shapes, soft rounded corners, subtle shadows and gradients, light grain texture, premium tech aesthetic. No logos, no people.
 
 ---
 
@@ -110,7 +124,8 @@ Every spot uses the same framing: **one centred object group filling about 55–
 ---
 
 ### If something comes out wrong
-- **Text appears:** reply "same image, remove all text, letters and numbers".
+- **Unwanted text in a no-text image:** reply "same image, remove all text, letters and numbers".
+- **A word is misspelled:** reply "same image, fix the text to read exactly: …".
 - **Background isn't transparent (spots):** reply "same image on a transparent background, PNG". An off-white background also works.
 - **It looks 3D or too cartoonish:** reply "flatter: flat vector shapes, minimal gradients, no 3D, no faces".
 - **The style drifts between images:** paste a finished image back in and say "match this exact style, palette and level of detail".
