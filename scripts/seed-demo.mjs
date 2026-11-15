@@ -52,10 +52,10 @@ sql(`INSERT INTO ads_connections (workspace_id, ad_account_id, name, currency, t
      VALUES (${q(ws)}, ${q(ACT)}, 'Mellowmoon Candle Co.', 'INR', 'Asia/Kolkata', false, ${q(EMAIL)}, ${ago(60 * D)}, now())`);
 
 /* ── automation ── */
-const hours = Object.fromEntries(["mon", "tue", "wed", "thu", "fri", "sat"].map((d) => [d, ["10:00", "19:00"]]));
+const hours = Object.fromEntries(["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => [d, ["09:00", "22:00"]])); // wide hours: keyword replies (not the away message) show whenever a video is recorded
 sql(`INSERT INTO automation_settings (workspace_id, welcome_enabled, welcome_text, away_enabled, away_text, business_hours, ig_welcome_enabled, ig_welcome_text, ig_away_enabled, ig_away_text)
      VALUES (${q(ws)}, true, ${q("Hi! 👋 Thanks for messaging Mellowmoon. Every candle is hand-poured in our Bengaluru studio — ask us anything, a real person replies within the hour.")},
-             true, ${q("We're closed for the night 🌙 We'll reply first thing at 10 am. Meanwhile, our gift sets are here: mellowmoon.example/gifts")}, ${json(hours)},
+             true, ${q("We're closed for the night 🌙 We'll reply first thing at 9 am. Meanwhile, our gift sets are here: mellowmoon.example/gifts")}, ${json(hours)},
              true, ${q("Hey! 💛 Thanks for the DM — we'll get back to you shortly. Type PRICE for our price list.")}, false, null)`);
 const RULES = [
   ["Price list", ["price", "prices", "cost", "rate", "how much"], "Here's our price list 🕯️\n• Small jar (100 g) — ₹449\n• Large jar (250 g) — ₹899\n• Monsoon gift set (3 minis) — ₹1,299\nFree shipping above ₹999!", "Sent you the prices in DM 💌", 146],
@@ -182,7 +182,7 @@ const CHATS = {
     [THEM, "Send me prices", 6 * D - 30], [ME, RULES[0][2], 6 * D - 30, { auto: "Price list" }], [THEM, "Ordering the gift set now 😍", 6 * D - 50]] },
   "Neha Gupta": { msgs: [[THEM, "Hi do you have the jasmine one in small size?", 26 * H], [ME, "Yes we do! Small Jasmine is ₹449. Shall I reserve one for you?", 25 * H + 50], [THEM, "Let me think and tell you", 25 * H + 30]] },
   "Aditya Joshi": { msgs: [
-    [THEM, "Hi, want to gift something to my mom for her birthday", 13 * H + 20], [ME, "We're closed for the night 🌙 We'll reply first thing at 10 am. Meanwhile, our gift sets are here: mellowmoon.example/gifts", 13 * H + 20, { away: true }],
+    [THEM, "Hi, want to gift something to my mom for her birthday", 13 * H + 20], [ME, "We're closed for the night 🌙 We'll reply first thing at 9 am. Meanwhile, our gift sets are here: mellowmoon.example/gifts", 13 * H + 20, { away: true }],
     [ME, "Good morning Aditya! A gift set with Rose & Oud, Jasmine and Vanilla Chai is our favourite for moms 💐 ₹1,299 with gift wrap.", 4 * H + 30], [THEM, "Perfect, booking it", 4 * H]] },
   "Pooja Patel": { msgs: [[THEM, "Do you sell refill wax for the jars?", 5 * D], [ME, "Not yet, but send the empty jars back and we'll refill them for ₹299 ♻️", 5 * D - 20], [THEM, "Oh that's so nice", 5 * D - 25]] },
   "Siddharth Rao": { msgs: [[THEM, "Hi, I own The Linen Loft in Pune. Interested in stocking your candles.", 8 * D], [ME, "Hi Siddharth! We'd love to be on your shelves. Sharing our wholesale catalogue now 📄", 8 * D - 15], [THEM, "Received, will place a first order next week", 8 * D - 70]] },
