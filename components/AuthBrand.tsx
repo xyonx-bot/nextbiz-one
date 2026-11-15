@@ -28,8 +28,10 @@ const COPY = {
 export function AuthLayout({ children, art = "login" }: { children: React.ReactNode; art?: "login" | "signup" | "request" }) {
   const c = COPY[art];
   return (
-    <div className="pg-auth">
-      <section className={`story art-${art}`} aria-hidden="true" style={{ ["--art" as string]: `url(/art/auth-${art}.webp)`, ["--art-bg" as string]: ART_BG[art] }}>
+    <div className={`pg-auth art-${art}`} style={{ ["--art" as string]: `url(/art/auth-${art}.webp)`, ["--art-bg" as string]: ART_BG[art] }}>
+      {/* phones and tablets: the page's illustration as a band on top, the form card overlapping it */}
+      <div className="m-hero" aria-hidden="true" />
+      <section className={`story art-${art}`} aria-hidden="true">
         <div className="brand"><img src="/logo.png" alt="" />NextBiz One</div>
         <h1>{c.h}</h1>
         <p>{c.p}</p>

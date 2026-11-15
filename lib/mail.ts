@@ -39,9 +39,14 @@ async function viaSmtp(m: Mail): Promise<MailResult> {
   } catch (e) { smtp = null; return { ok: false, error: (e as Error).message }; }
 }
 
+/** Reserved test domains (RFC 2606/6761) never get real email — test runs log them as skipped. */
+export const isTestAddress = (to: string) => /@([^@]+\.)?(test|example|invalid|localhost)$|@example\.(com|org|net)$/i.test(to.trim());
+
 export async function sendMail(m: Mail): Promise<MailResult> {
-  const provider = mailProvider();
-  const res: MailResult = provider === "resend" ? await viaResend(m) : provider === "smtp" ? await viaSmtp(m) : { ok: false, skipped: true, error: "Email isn't set up on this server" };
+  // a local mail catcher (SMTP on this machine) may receive test addresses; a real provider never does
+  const block = isTestAddress(m.to) && !/@(127\.0\.0\.1|localhost)(:|$)|\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(process.env.SMTP_URL ?? "");
+  const provider = block ? "none" : mailProvider();
+  const res: MailResult = block ? { ok: false, skipped: true, error: "Test address — not sent" } : provider === "resend" ? await viaResend(m) : provider === "smtp" ? await viaSmtp(m) : { ok: false, skipped: true, error: "Email isn't set up on this server" };
   await getPool().query(
     `INSERT INTO email_log (to_email, kind, subject, status, provider, provider_id, error) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
     [m.to, m.kind, m.subject, res.ok ? "sent" : "skipped" in res && res.skipped ? "skipped" : "failed", provider, res.ok ? res.id : null, res.ok ? null : res.error.slice(0, 500)],

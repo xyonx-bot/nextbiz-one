@@ -736,7 +736,22 @@
 .tline .done .dot { background: var(--chat); color: var(--ink); } .tline .cur .dot { background: var(--banana); color: var(--ink); }
 .tline b { display: block; font-weight: 700; } .tline small { font-size: var(--fs-xs); color: var(--ink-3); font-weight: 600; }
 .center { text-align: center; }
-@media (max-width: 900px) { & { grid-template-columns: 1fr; padding: 0; } .story { display: none; } .side { padding: 28px 18px; justify-content: safe center; min-height: 100vh; min-height: 100dvh; } .mbrand { display: flex !important; } }
+.m-hero { display: none; }
+@media (max-width: 900px) {
+  & { grid-template-columns: 1fr; grid-template-rows: auto 1fr; align-content: start; padding: 0; gap: 0; background: var(--art-bg, var(--bg)); }
+  .story { display: none; }
+  /* illustration band: the art's own scene, cropped to its subject */
+  /* the scene sits in the image's lower 60%: scale so all of it fits the band, the matched background fills the sides */
+  .m-hero { display: block; height: clamp(190px, 30vh, 280px); background: var(--art) center 86% / auto 162% no-repeat, var(--art-bg, var(--bg));
+    -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent); }
+  .side { padding: 0 14px 24px; justify-content: flex-start; min-height: 0; }
+  /* the form as an elevated card overlapping the band */
+  .side > .apanel { position: relative; margin-top: -40px; max-width: 520px; padding: 24px 20px 22px; border-radius: 24px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 18px 40px -18px rgba(26,29,35,.22), var(--shadow-1); }
+  .mbrand { display: flex !important; }
+}
+@media (min-width: 560px) and (max-width: 900px) { .side > .apanel { padding: 30px 30px 26px; } .m-hero { height: clamp(240px, 32vh, 320px); } }
+/* the request envelope art fills its frame edge to edge */
+@media (max-width: 900px) { .pg-auth.art-request .m-hero { background: var(--art) center 72% / cover no-repeat, var(--art-bg); } }
 .mbrand { display: none; align-self: flex-start; margin-bottom: 28px; }
 .auth-brand { display: flex; align-items: center; gap: 10px; }
 .auth-brand img { width: 30px; height: 30px; }

@@ -45,3 +45,11 @@ describe("ad creative", () => {
     expect(welcomeSpec({ greeting: "Hey", mode: "autofill", autofill: "I want one" }, "instagram_dm")).toMatchObject({ text_format: { customer_action_type: "autofill_message", message: { autofill_message: { content: "I want one" } } } });
   });
 });
+
+describe("mail safety", () => {
+  it("never emails reserved test domains", async () => {
+    const { isTestAddress } = await import("@/lib/mail");
+    for (const a of ["x@nbo.test", "launch-1@e2e.test", "a@example.com", "b@foo.invalid", "c@localhost"]) expect(isTestAddress(a)).toBe(true);
+    for (const a of ["owner@nextbizstudio.com", "someone@gmail.com", "me@test.com"]) expect(isTestAddress(a)).toBe(false);
+  });
+});
