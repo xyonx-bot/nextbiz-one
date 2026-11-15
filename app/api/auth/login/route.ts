@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSession, login } from "@/lib/auth";
 import { compare } from "bcryptjs";
+import { blocked, clientIp, fail, tooMany } from "@/lib/ratelimit";
 
 const Body = z.object({ email: z.string().trim().min(3).max(160), password: z.string().min(1).max(200) });
 
@@ -10,6 +11,9 @@ export async function POST(req: Request) {
   try { parsed = await req.json(); } catch { return NextResponse.json({ error: "Malformed body" }, { status: 400 }); }
   const body = Body.safeParse(parsed);
   if (!body.success) return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
+  // password guessing: after 10 wrong passwords for an email, or 50 from one IP, wait 15 minutes
+  const ip = clientIp(req), ek = `login:e:${body.data.email.trim().toLowerCase()}`, ik = `login:ip:${ip}`;
+  if (blocked(ek, 10) || blocked(ik, 50)) return tooMany();
 
   // S3 gate: correct creds but no approval yet -> a distinct state, not a
   // generic failure (the client shows the pending/rejected status card).
@@ -31,6 +35,7 @@ export async function POST(req: Request) {
 
   const user = await login(body.data.email, body.data.password);
   if (!user) {
+    fail(ek, 900); fail(ik, 900);
     // never reveal which part failed
     return NextResponse.json({ error: "Those credentials didn't match. Check them and try again." }, { status: 401 });
   }

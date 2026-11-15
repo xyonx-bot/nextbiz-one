@@ -1,3 +1,4 @@
+import { allow, clientIp, tooMany } from "@/lib/ratelimit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPool } from "@/lib/db";
@@ -10,6 +11,7 @@ const Req = z.object({
 });
 
 export async function POST(req: Request) {
+  if (!allow(`reqaccess:${clientIp(req)}`, 30, 3600)) return tooMany();
   const b = Req.safeParse(await req.json().catch(() => null));
   if (!b.success) {
     return NextResponse.json({ error: "Tell us a bit more (10+ characters) about your intended use." }, { status: 400 });

@@ -87,7 +87,7 @@ test.describe("design v2 guards", () => {
     const st = page.locator("[data-testid=st-pending]");
     await expect(st).toBeVisible();
     await expect(st).toHaveClass(/stcard pending/);
-    await expect(st.locator(".st-ic")).toBeVisible();
+    await expect(st.locator(".st-art")).toBeVisible(); // illustration replaced the icon tile (v1.9)
     await expect(st.locator(".locknote")).toBeVisible();
     await expect(page.locator(".auth-brand")).toBeVisible();
   });

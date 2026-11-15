@@ -12,8 +12,9 @@ import { avatarClass } from "@/lib/ui";
 type Req = { id: string; business_name: string; use_description: string; email: string; created_at: string };
 type Ws = { id: string; name: string; revoked: boolean; created_at: string; contact_count: number; user_count: number };
 type Entry = { actor_email: string; action: string; target: string; reason: string | null; created_at: string };
-type View = "overview" | "requests" | "workspaces" | "audit" | "ai";
-const TITLES: Record<View, string> = { overview: "Overview", requests: "Access requests", workspaces: "Workspaces", audit: "Audit log", ai: "NextBiz AI" };
+type View = "overview" | "requests" | "workspaces" | "audit" | "ai" | "resets";
+type Reset = { id: string; email: string; display_name: string; workspace: string | null; requested_at: string; link_created_at: string | null; expires_at: string | null };
+const TITLES: Record<View, string> = { overview: "Overview", requests: "Access requests", workspaces: "Workspaces", audit: "Audit log", ai: "NextBiz AI", resets: "Password help" };
 type AiModel = { id: string; name: string; free: boolean; inPerM: number; outPerM: number; ctx: number };
 type AiCfg = { enabled: boolean; assistantModel: string; quickModel: string; fallbackModel: string; dailyLimit: number };
 type AiData = { keyPresent: boolean; config: AiCfg; models: AiModel[]; usage: { today: { calls: number; cost: number; failed: number }; month: { calls: number; cost: number; tokens: number }; byWorkspace: { name: string; calls: number; cost: number; last: string }[] } };
@@ -45,6 +46,15 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
   const [note, setNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const [env, setEnv] = useState("Production");
   const [ai, setAi] = useState<AiData | null>(null);
+  const [resets, setResets] = useState<Reset[] | null>(null);
+  const [resetLink, setResetLink] = useState<{ id: string; url: string } | null>(null);
+  const loadResets = useCallback(async () => { const d = await fetch("/api/operator/password-resets", { cache: "no-store" }).then((x) => x.json()).catch(() => null); setResets(d?.resets ?? []); }, []);
+  useEffect(() => { void loadResets(); }, [loadResets]);
+  async function makeResetLink(id: string) {
+    const d = await fetch("/api/operator/password-resets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).then((x) => x.json()).catch(() => null);
+    if (d?.ok) { setResetLink({ id, url: d.url }); try { await navigator.clipboard.writeText(d.url); } catch { /* shown on screen instead */ } await loadResets(); }
+    else setNote({ kind: "bad", text: d?.error ?? "Couldn't create the link" });
+  }
   const [aiDraft, setAiDraft] = useState<AiCfg | null>(null);
   const loadAi = useCallback(async () => {
     const d = await fetch("/api/operator/ai", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
@@ -114,6 +124,7 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
           <a className={`ni${view === "requests" ? " on" : ""}`} onClick={() => go("requests")}><Icon name="envelope-simple-open" />Requests{(reqs?.length ?? 0) > 0 && <span className="badge">{reqs!.length}</span>}</a>
           <a className={`ni${view === "workspaces" ? " on" : ""}`} onClick={() => go("workspaces")}><Icon name="buildings" />Workspaces<span className="badge soft">{live.length}</span></a>
           <span className="grp eyebrow">Records</span>
+          <a className={`ni${view === "resets" ? " on" : ""}`} onClick={() => go("resets")} data-testid="op-resets"><Icon name="key" />Password help{(resets?.filter((r) => !r.link_created_at).length ?? 0) > 0 && <span className="badge">{resets!.filter((r) => !r.link_created_at).length}</span>}</a>
           <a className={`ni${view === "audit" ? " on" : ""}`} onClick={() => go("audit")}><Icon name="list-checks" />Audit log</a>
           <a className={`ni${view === "ai" ? " on" : ""}`} onClick={() => go("ai")} data-testid="op-ai"><Icon name="sparkle" />NextBiz AI</a>
         </nav>
@@ -261,6 +272,24 @@ export function OperatorClient({ operator, email }: { operator: string; email: s
                 </>
               )}
             </div>
+          )}
+
+          {view === "resets" && (
+            <section className="view on">
+              <div className="card">
+                <div className="card-h"><span className="h3">Password reset requests</span><span className="xs faint" style={{ fontWeight: 600 }}>Create a one-time link (valid 24 h) and email it to the person from your support inbox. Links are shown once.</span></div>
+                <div style={{ padding: "0 8px 8px", overflowX: "auto" }}><table className="dt lg"><thead><tr><th>Who</th><th className="col-y">Workspace</th><th>Asked</th><th className="r">Link</th></tr></thead>
+                  <tbody>
+                    {resets?.length === 0 && <tr><td colSpan={4}><div className="empty"><p>No open requests.</p></div></td></tr>}
+                    {(resets ?? []).map((r) => (
+                      <tr key={r.id} data-testid="reset-row"><td><b className="small">{r.display_name || r.email}</b><div className="xs faint">{r.email}</div></td><td className="col-y small">{r.workspace ?? "—"}</td><td className="small">{ago(r.requested_at)}</td>
+                        <td className="r">{resetLink?.id === r.id
+                          ? <div className="col gap-4" style={{ alignItems: "flex-end" }}><input className="input mono" readOnly value={resetLink.url} onFocus={(e) => e.target.select()} style={{ width: 300, height: 30, fontSize: 11 }} aria-label="Reset link" data-testid="reset-url" /><span className="xs" style={{ color: "var(--chat-deep)", fontWeight: 700 }}>Copied — email it to {r.email}</span></div>
+                          : <button className="btn btn-soft btn-sm" onClick={() => void makeResetLink(r.id)} data-testid="reset-make"><Icon name="key" />{r.link_created_at ? "New link" : "Create link"}</button>}</td></tr>
+                    ))}
+                  </tbody></table></div>
+              </div>
+            </section>
           )}
 
           {view === "audit" && (

@@ -1,3 +1,4 @@
+import { allow, clientIp, tooMany } from "@/lib/ratelimit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPool } from "@/lib/db";
@@ -16,6 +17,7 @@ const Signup = z.object({
 });
 
 export async function POST(req: Request) {
+  if (!allow(`signup:${clientIp(req)}`, 30, 3600)) return tooMany();
   const b = Signup.safeParse(await req.json().catch(() => null));
   if (!b.success) {
     return NextResponse.json({ error: b.error.issues[0]?.message ?? "Invalid signup" }, { status: 400 });

@@ -55,7 +55,7 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
     setBusy("ads");
     try {
       const FB = await loadFbSdk(ads.appId);
-      const tok = await new Promise<string | null>((res) => FB.login((r) => res(r.authResponse?.accessToken ?? null), { scope: "ads_read,ads_management,business_management", return_scopes: true }));
+      const tok = await new Promise<string | null>((res) => FB.login((r) => res(r.authResponse?.accessToken ?? null), { scope: "ads_read,ads_management,business_management,pages_show_list,pages_read_engagement,pages_manage_ads,instagram_basic", return_scopes: true }));
       if (!tok) { setNote({ kind: "bad", text: "Facebook login was closed — nothing changed." }); return; }
       userTok.current = tok;
       const d = await fetch("/api/ads/connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "user", accessToken: tok }) }).then((x) => x.json()).catch(() => null);

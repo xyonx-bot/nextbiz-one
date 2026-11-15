@@ -6,7 +6,7 @@ import { Icon } from "@/components/Icon";
 import { AvatarPic } from "@/components/AvatarPic";
 import { igPic } from "@/lib/ui";
 import { PairBars, Spark } from "@/components/Charts";
-import { AskAi, CopyLink } from "@/components/DashBits";
+import { AskAi, CopyLink, CountUp } from "@/components/DashBits";
 import { avatarClass, initials } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
@@ -85,7 +85,7 @@ export default async function HomePage() {
   return (
     <ShellClient active="dashboard" title="Dashboard" data={shell}
       actions={d.wa.connected ? <a className="btn btn-primary" href="/broadcasts?new=1"><Icon name="plus" /><span className="lbl">New broadcast</span></a> : undefined}>
-      <div className="pg-dash v3">
+      <div className="pg-dash v3"><CountUp />
         <div className="page" data-testid="dashboard" data-state={d.everActive ? "live" : "new"}>
           <div className="pagehead">
             <div className="t"><div className="h1">{greet}, {first}</div>
@@ -152,12 +152,12 @@ export default async function HomePage() {
           ) : (
             <>
               <section className="grid">
-                <div className="card kpi s3" data-testid="kpi-conv"><div className="stat"><span className="lbl"><Icon name="chat-circle-dots" size="sm" />Conversations</span><span className="val v">{n(d.convs.cur ?? 0)}</span><Delta cur={d.convs.cur ?? 0} prev={d.convs.prev ?? 0} unit="14 days" /><div className="spark-wrap"><Spark data={totalIn} /></div></div></div>
-                <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="user-plus" size="sm" />New contacts</span><span className="val v">{n((d.contacts.cur ?? 0) + (d.contacts.ig_new ?? 0))}</span><Delta cur={(d.contacts.cur ?? 0) + (d.contacts.ig_new ?? 0)} prev={d.contacts.prev ?? 0} unit="30 days" /><span className="foot sub">{n(d.contacts.opted ?? 0)} of {n(d.contacts.total ?? 0)} WhatsApp contacts opted in</span></div></div>
-                <div className="card kpi s3" data-testid="kpi-reply"><div className="stat"><span className="lbl"><Icon name="timer" size="sm" />Reply time</span><span className="val v">{dur(d.reply.median_s)}</span>
+                <div className="card kpi s3" data-testid="kpi-conv"><div className="stat"><span className="lbl"><Icon name="chat-circle-dots" size="sm" />Conversations</span><span className="val v" data-count>{n(d.convs.cur ?? 0)}</span><Delta cur={d.convs.cur ?? 0} prev={d.convs.prev ?? 0} unit="14 days" /><div className="spark-wrap"><Spark data={totalIn} /></div></div></div>
+                <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="user-plus" size="sm" />New contacts</span><span className="val v" data-count>{n((d.contacts.cur ?? 0) + (d.contacts.ig_new ?? 0))}</span><Delta cur={(d.contacts.cur ?? 0) + (d.contacts.ig_new ?? 0)} prev={d.contacts.prev ?? 0} unit="30 days" /><span className="foot sub">{n(d.contacts.opted ?? 0)} of {n(d.contacts.total ?? 0)} WhatsApp contacts opted in</span></div></div>
+                <div className="card kpi s3" data-testid="kpi-reply"><div className="stat"><span className="lbl"><Icon name="timer" size="sm" />Reply time</span><span className="val v" data-count>{dur(d.reply.median_s)}</span>
                   <span className="foot">{d.reply.samples ? <>median first reply · {n(d.reply.samples)}, incl. automatic</> : "no replies in 14 days"}</span>
                   <div className="meter rt" style={{ marginTop: 10 }}><span style={{ width: `${d.reply.median_s == null ? 0 : Math.max(8, 100 - Math.min(100, (d.reply.median_s / 3600) * 100))}%` }} /></div></div></div>
-                <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="lightning" size="sm" />Automatic replies</span><span className="val v">{n(d.auto.total)}</span><span className="foot">sent for you · 7 days</span>
+                <div className="card kpi s3"><div className="stat"><span className="lbl"><Icon name="lightning" size="sm" />Automatic replies</span><span className="val v" data-count>{n(d.auto.total)}</span><span className="foot">sent for you · 7 days</span>
                   <span className="foot sub">{d.settings.welcome_enabled || d.settings.ig_welcome_enabled ? "Welcome message on" : "Welcome message off"} · {d.rulesOn} keyword rule{d.rulesOn === 1 ? "" : "s"}</span></div></div>
 
                 <div className="card s8">

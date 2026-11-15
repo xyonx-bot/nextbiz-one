@@ -38,7 +38,7 @@ export function LoginForm() {
       <AuthBrand />
       <h2>Welcome back</h2><p className="sub">Log in to your workspace.</p>
       <div className="field"><label htmlFor="email">Work email</label><input id="email" className="input" type="email" placeholder="you@business.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" /></div>
-      <div className="field"><label htmlFor="password">Password</label>
+      <div className="field"><label htmlFor="password" style={{ display: "flex", justifyContent: "space-between" }}>Password<a className="lnk" href="/forgot" style={{ fontSize: "var(--fs-xs)" }} data-testid="forgot-link">Forgot password?</a></label>
         <div className="pw"><input id="password" className="input" type={show ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
           <button className="btn btn-ghost btn-icon btn-sm" type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Hide password" : "Show password"}><Icon name={show ? "eye-slash" : "eye"} /></button></div></div>
       {err && <p className="aerr" role="alert"><Icon name="warning-circle" size="sm" />{err}</p>}
@@ -46,6 +46,7 @@ export function LoginForm() {
       <div className="or">New to NextBiz One?</div>
       <a className="btn btn-soft btn-lg btn-full" href="/request-access">Request early access</a>
       <p className="foot">Have an invite? <a href="/signup">Create your workspace</a></p>
+      <p className="foot legal"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/data-deletion">Data deletion</a></p>
     </form>
   );
 }
