@@ -9,6 +9,7 @@ import { AiSuggestButton, AiSuggestStrip, useAiSuggest } from "@/components/AiSu
 import { setAiContext, useAiHandler } from "@/lib/ai-bridge";
 import { TemplateSender, TemplateSendModal } from "@/components/TemplateSender";
 import { avatarClass, fmtPhone, initials } from "@/lib/ui";
+import { handoffActive, handoffEndsAt } from "@/lib/handoff";
 
 /**
  * Inbox — design v2 (nextbiz-one-v2/inbox). Layout follows the content width (container queries):
@@ -354,7 +355,9 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
                   <div className="sys"><Icon name="user-plus" />New contact · added automatically from their first message</div>
                 )}
                 {stream}
-                {sel.automationPaused && <div className="sys pause"><Icon name="hand" />Automation is paused for this chat because you replied</div>}
+                {handoffActive(sel.automationPaused, sel.automationPausedAt) && (
+                  <div className="sys pause"><Icon name="hand" />Automation is paused until {handoffEndsAt(sel.automationPaused, sel.automationPausedAt)!.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} because you replied · START and STOP are still answered</div>
+                )}
               </div>
 
               <footer className="composer">
@@ -423,8 +426,8 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
                       : win.state === "closed" ? "Send an approved template to restart. The window reopens when they reply." : "Free-form replies are allowed until the window closes. After that, only approved templates."}</p>
                   </div>
                   <div className="setrow"><span className="icon-tile sm grape"><Icon name="lightning" /></span>
-                    <span className="grow">Automation<small>{sel.automationPaused ? `Paused — you replied${sel.automationPausedAt ? ` ${ago(sel.automationPausedAt)} ago` : ""}` : "Active for this chat"}</small></span>
-                    <span className={`pill sm ${sel.automationPaused ? "warn" : "ok"}`}>{sel.automationPaused ? "Paused" : "On"}</span></div>
+                    <span className="grow">Automation<small>{handoffActive(sel.automationPaused, sel.automationPausedAt) ? `Paused — you replied ${ago(sel.automationPausedAt!)} ago, resumes at ${handoffEndsAt(sel.automationPaused, sel.automationPausedAt)!.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Active for this chat"}</small></span>
+                    <span className={`pill sm ${handoffActive(sel.automationPaused, sel.automationPausedAt) ? "warn" : "ok"}`}>{handoffActive(sel.automationPaused, sel.automationPausedAt) ? "Paused" : "On"}</span></div>
                 </div>
                 {!isIg && sel.tags.length > 0 && (
                   <div className="dsec"><div className="sh"><span className="eyebrow">Tags</span></div>

@@ -1,10 +1,12 @@
 import { getPool } from "./db";
 import { getWaCreds, sendText } from "./wa-client";
+import { handoffActive, isCommand } from "./handoff";
 
 /**
  * P1.10 automation engine — contains-match only, case-insensitive, no regex/AI
  * (v1 lock). Fires ONLY on inbound (always inside the 24h window). Manual
- * human reply sets conversations.automation_paused and everything goes quiet.
+ * human reply sets conversations.automation_paused(+_at) and automation goes quiet
+ * for HANDOFF_HOURS (lib/handoff.ts), then resumes. START/STOP are always answered.
  */
 
 function inBusinessHours(hours: Record<string, [string, string]> | null): boolean {
@@ -42,33 +44,43 @@ export async function maybeAutoReply(
   try {
     const p = getPool();
     const conv = await p.query(
-      `SELECT automation_paused, welcome_sent_at FROM conversations WHERE id = $1`, [convId]);
+      `SELECT automation_paused, automation_paused_at, welcome_sent_at FROM conversations WHERE id = $1`, [convId]);
     if (conv.rows.length === 0) return;
-    if (conv.rows[0].automation_paused) {
-      await log(p, wsId, contactId, "paused", null, "human replied first — automation stays quiet for this chat", "paused");
+    const c0 = conv.rows[0];
+    const handoff = handoffActive(c0.automation_paused, c0.automation_paused_at);
+    const command = isCommand(text);
+    if (handoff && !command) {
+      await log(p, wsId, contactId, "paused", null, "you replied recently — automation stays quiet for this chat for a few hours", "paused");
       return;
+    }
+    if (c0.automation_paused && !handoff) {
+      // handoff expired (or a legacy pause with no timestamp) → automation resumes
+      await p.query(`UPDATE conversations SET automation_paused = false WHERE id = $1`, [convId]);
     }
     const st = await p.query(`SELECT * FROM automation_settings WHERE workspace_id = $1`, [wsId]);
     if (st.rows.length === 0) return;
     const cfg = st.rows[0];
     const creds = await getWaCreds(wsId);
 
-    // away message wins when business is closed
-    if (cfg.away_enabled && !inBusinessHours(cfg.business_hours)) {
-      if (cfg.away_text) {
-        const s = await sendText(creds, waId, cfg.away_text);
-        await keep(p, wsId, convId, s, cfg.away_text, "away");
-        await log(p, wsId, contactId, "away", null, `away reply: ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
+    // START / STOP get their keyword reply only — no away or welcome stacked on top
+    if (!command) {
+      // away message wins when business is closed
+      if (cfg.away_enabled && !inBusinessHours(cfg.business_hours)) {
+        if (cfg.away_text) {
+          const s = await sendText(creds, waId, cfg.away_text);
+          await keep(p, wsId, convId, s, cfg.away_text, "away");
+          await log(p, wsId, contactId, "away", null, `away reply: ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
+        }
+        return;
       }
-      return;
-    }
 
-    // welcome — once per conversation
-    if (cfg.welcome_enabled && !conv.rows[0].welcome_sent_at) {
-      const s = await sendText(creds, waId, cfg.welcome_text);
-      await keep(p, wsId, convId, s, cfg.welcome_text, "welcome");
-      if (s.ok) await p.query(`UPDATE conversations SET welcome_sent_at = now() WHERE id = $1`, [convId]);
-      await log(p, wsId, contactId, "welcome", null, `welcome ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
+      // welcome — once per conversation
+      if (cfg.welcome_enabled && !c0.welcome_sent_at) {
+        const s = await sendText(creds, waId, cfg.welcome_text);
+        await keep(p, wsId, convId, s, cfg.welcome_text, "welcome");
+        if (s.ok) await p.query(`UPDATE conversations SET welcome_sent_at = now() WHERE id = $1`, [convId]);
+        await log(p, wsId, contactId, "welcome", null, `welcome ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
+      }
     }
 
     // keyword rules — first matching enabled rule fires, single reply
@@ -87,6 +99,7 @@ export async function maybeAutoReply(
       }
       const s = await sendText(creds, waId, r.reply);
       await keep(p, wsId, convId, s, r.reply, "keyword", r.name);
+      if (s.ok && command && !c0.welcome_sent_at) await p.query(`UPDATE conversations SET welcome_sent_at = now() WHERE id = $1`, [convId]);
       await p.query(
         `UPDATE keyword_rules SET fired_count = fired_count + 1, last_fired_at = now() WHERE id = $1`, [r.id]);
       await log(p, wsId, contactId, "keyword", r.id, `rule "${r.name}" ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
