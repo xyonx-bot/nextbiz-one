@@ -19,16 +19,9 @@ const COPY = {
   signup: { h: <>One suite to <em>grow</em> your business on Meta.</>, p: "Chats, comments, broadcasts and ads — set up in minutes, managed from one screen. Start with the channel you use most." },
   request: { h: <>Chats, comments and ads, <em>finally together</em>.</>, p: "Tell us a little about your business. We review every request by hand and set you up within a day." },
 } as const;
-const MODULES: [string, string, string, string][] = [
-  ["whatsapp-logo", "NextBiz Chat", "WhatsApp inbox, templates, broadcasts", "green"],
-  ["instagram-logo", "NextBiz Social", "Instagram DMs and comments", "pink"],
-  ["megaphone", "NextBiz Ads", "Meta ads that start chats", "orange"],
-  ["sparkle", "NextBiz AI", "Replies and campaigns, drafted", "grape"],
-];
-
 /**
- * Auth layout: the product story on the left (hidden <900px), form on the right. The story presents the
- * whole suite — Chat (WhatsApp), Social (Instagram), Ads (Meta) and AI — not just WhatsApp.
+ * Auth layout: the product story on the left (hidden <900px), form on the right. Headline + one line +
+ * trust badges over a full illustration; the copy presents the whole suite, not just WhatsApp.
  */
 export function AuthLayout({ children, art = "login" }: { children: React.ReactNode; art?: "login" | "signup" | "request" }) {
   const c = COPY[art];
@@ -38,7 +31,6 @@ export function AuthLayout({ children, art = "login" }: { children: React.ReactN
         <div className="brand"><img src="/logo.png" alt="" />NextBiz One</div>
         <h1>{c.h}</h1>
         <p>{c.p}</p>
-        <div className="mods">{MODULES.map(([ic, n, d, tone]) => <span key={n} className="mod"><span className={`icon-tile sm ${tone}`}><Icon name={ic} /></span><span><b>{n}</b><small>{d}</small></span></span>)}</div>
         <div className="trust"><span><Icon name="seal-check" size="sm" />Built on Meta&apos;s official APIs</span><span><Icon name="shield-check" size="sm" />Your data stays yours</span></div>
       </section>
       <section className="side">{children}</section>

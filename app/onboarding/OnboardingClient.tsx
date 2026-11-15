@@ -63,13 +63,6 @@ export function OnboardingClient() {
               <span className="eyebrow" style={{ color: "var(--chat-deep)" }}>Step 1 of 3</span>
               <h1>{st?.connected ? "Your WhatsApp is connected" : "Connect your WhatsApp Business number"}</h1>
               <p className="lead">{st?.connected ? "This is the number your customers message. Everything they send lands in your inbox." : "Link the number your customers already message. One number serves one workspace."}</p>
-              {st && !st.connected && (
-                <div className="onb-chans" aria-label="Start with any channel">
-                  <span className="onb-chan on"><span className="icon-tile sm green"><Icon name="whatsapp-logo" /></span><span><b>WhatsApp</b><small>Set up below · recommended</small></span></span>
-                  <a className="onb-chan" href="/connections#instagram"><span className="icon-tile sm pink"><Icon name="instagram-logo" /></span><span><b>Instagram</b><small>DMs and comments</small></span><Icon name="arrow-right" size="sm" /></a>
-                  <a className="onb-chan" href="/connections#ads"><span className="icon-tile sm orange"><Icon name="megaphone" /></span><span><b>Meta Ads</b><small>Ads that start chats</small></span><Icon name="arrow-right" size="sm" /></a>
-                </div>
-              )}
               {st === null ? <span className="sk" style={{ height: 64 }} /> : st.connected ? (
                 <div className="ck ok" style={{ borderColor: "var(--chat-line)", background: "var(--chat-tint)" }}><span className="ic"><Icon name="check" size="xs" /></span>
                   <span><b>{st.displayName ?? "WhatsApp number"}</b><small>Connected to this workspace</small></span></div>
