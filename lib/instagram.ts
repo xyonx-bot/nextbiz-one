@@ -1,5 +1,6 @@
 import { getPool } from "./db";
 import { verifySignature } from "./webhook";
+import { demoMedia, demoMsgId, isDemoId } from "./demo";
 
 /**
  * Instagram — "Instagram API with Instagram Login" (no Facebook Page needed).
@@ -267,6 +268,7 @@ async function sendErr(r: Response): Promise<IgSendResult> {
 /** DM to a customer (inside Instagram's 24-hour window). */
 export async function igSendDm(accountId: string, igsid: string, text: string): Promise<IgSendResult> {
   const a = await tokenFor(accountId);
+  if (isDemoId(a.igUserId)) return { ok: true, mid: demoMsgId("dm") };
   if (!igLive() || !a.live) return { ok: true, mid: `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
   if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Settings." };
   const r = await graphPost("/me/messages", a.token, { recipient: { id: igsid }, message: { text } });
@@ -278,6 +280,7 @@ export async function igSendDm(accountId: string, igsid: string, text: string): 
 /** Private reply: a DM to the person who commented (one per comment, within 7 days). */
 export async function igPrivateReply(accountId: string, commentId: string, text: string): Promise<IgSendResult> {
   const a = await tokenFor(accountId);
+  if (isDemoId(a.igUserId)) return { ok: true, mid: demoMsgId("pr") };
   if (!igLive() || !a.live) return { ok: true, mid: `mock-pr-${Date.now()}` };
   if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Settings." };
   const r = await graphPost("/me/messages", a.token, { recipient: { comment_id: commentId }, message: { text } });
@@ -289,6 +292,7 @@ export async function igPrivateReply(accountId: string, commentId: string, text:
 /** Public reply under a comment. */
 export async function igPublicReply(accountId: string, commentId: string, text: string): Promise<IgSendResult> {
   const a = await tokenFor(accountId);
+  if (isDemoId(a.igUserId)) return { ok: true, mid: demoMsgId("cr") };
   if (!igLive() || !a.live) return { ok: true, mid: `mock-cr-${Date.now()}` };
   if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Settings." };
   const r = await gfetch(`${IG_GRAPH}/${encodeURIComponent(commentId)}/replies?message=${encodeURIComponent(text)}`, { method: "POST", headers: { Authorization: `Bearer ${a.token}` } });
@@ -430,8 +434,10 @@ export async function igMediaInfo(accountId: string, mediaIds: string[]): Promis
   const out: Record<string, IgMedia> = {};
   const ids = [...new Set(mediaIds.filter(Boolean))].slice(0, 24);
   const need = ids.filter((id) => { const c = mediaCache.get(id); if (c && Date.now() - c.at < 30 * 60_000) { out[id] = c.m; return false; } return true; });
-  if (!need.length || !igLive()) return out;
+  if (!need.length) return out;
   const a = await tokenFor(accountId).catch(() => null);
+  if (a && isDemoId(a.igUserId)) return { ...out, ...demoMedia(need) };
+  if (!igLive()) return out;
   if (!a?.live || !a.token) return out;
   await Promise.all(need.map(async (id) => {
     try {

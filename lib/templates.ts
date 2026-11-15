@@ -4,6 +4,7 @@
  * one approved template to one contact (inbox "restart the chat", contacts "send template").
  */
 import { getPool } from "./db";
+import { isDemoId } from "./demo";
 import {
   getWaCreds, pollTemplates, sendTemplate, submitTemplate, uploadTemplateSample, uploadWaMedia,
   type HeaderFormat, type SendHeader, type TplButton, type WaCreds,
@@ -52,7 +53,14 @@ export async function submitRow(wsId: string, t: TplRow): Promise<{ ok: true; id
 
 /** Pull statuses and content from Meta; adds templates created in WhatsApp Manager. Returns rows changed. */
 export async function syncTemplates(wsId: string): Promise<{ ok: true; updated: number; added: number } | { ok: false; error: string }> {
-  const poll = await pollTemplates(await getWaCreds(wsId));
+  const creds = await getWaCreds(wsId);
+  if (creds && isDemoId(creds.phoneNumberId)) {
+    // demo: Meta "approves" a template submitted in the demo about 20 seconds later (seeded ones stay as seeded)
+    const r = await getPool().query(`UPDATE templates SET status = 'approved', updated_at = now() WHERE workspace_id = $1 AND status = 'pending'
+      AND meta_template_id NOT LIKE 'demo-seed-%' AND updated_at < now() - interval '20 seconds'`, [wsId]);
+    return { ok: true, updated: r.rowCount ?? 0, added: 0 };
+  }
+  const poll = await pollTemplates(creds);
   if (!poll.ok) return poll;
   const p = getPool();
   let updated = 0, added = 0;

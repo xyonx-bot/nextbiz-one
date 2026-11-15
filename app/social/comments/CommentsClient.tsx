@@ -126,6 +126,12 @@ export function CommentsClient({ username }: { username: string | null }) {
     void runSync(false).then((r) => { if (r?.synced) void load(f2, m); });
   }, [load, open, runSync]);
 
+  // demo workspaces (components/DemoDock) ask for quick refreshes so new comments show at once
+  useEffect(() => {
+    const on = () => void load(filter, mediaF);
+    window.addEventListener("nbo:refresh", on); return () => window.removeEventListener("nbo:refresh", on);
+  }, [load, filter, mediaF]);
+
   const pick = (f: Filter) => { setFilter(f); const u = new URL(window.location.href); u.searchParams.set("filter", f); history.replaceState(null, "", u); void load(f, mediaF); };
   const clearMedia = () => { setMediaF(null); const u = new URL(window.location.href); u.searchParams.delete("media"); history.replaceState(null, "", u); void load(filter, null); };
 

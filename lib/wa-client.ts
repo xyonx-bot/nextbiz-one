@@ -5,6 +5,7 @@
  */
 import { getPool } from "./db";
 import { decrypt } from "./crypto";
+import { demoMsgId, demoTicks, isDemoId } from "./demo";
 
 const API = "https://graph.facebook.com/v21.0";
 
@@ -18,6 +19,7 @@ export async function getWaCreds(wsId: string): Promise<WaCreds | null> {
        FROM waba_connections WHERE workspace_id = $1 AND status = 'connected' ORDER BY created_at DESC LIMIT 1`, [wsId]);
   const r = rows[0];
   if (!r?.phone_number_id) return null;
+  if (isDemoId(r.phone_number_id)) return { phoneNumberId: r.phone_number_id, wabaId: r.business_account_id ?? null, token: "demo", displayName: r.display_name ?? null };
   let token = decrypt(r.access_token_enc);
   // legacy: the platform owner's own number predates stored tokens — its token lives in the server env
   if (!token && process.env.PHONE_NUMBER_ID && r.phone_number_id === process.env.PHONE_NUMBER_ID) token = process.env.META_ACCESS_TOKEN ?? null;
@@ -47,6 +49,7 @@ function fail(res: Response, data: Record<string, unknown> | null): SendResult {
 
 export async function sendText(creds: WaCreds | null, toWaId: string, body: string): Promise<SendResult> {
   if (!creds) return { ok: false, error: "WhatsApp isn't connected for this workspace" };
+  if (isDemoId(creds.phoneNumberId)) { const id = demoMsgId(); demoTicks(id); return { ok: true, waMessageId: id }; }
   const { res, data } = await call(creds, `/${creds.phoneNumberId}/messages`, {
     messaging_product: "whatsapp", recipient_type: "individual", to: toWaId, type: "text", text: { preview_url: false, body },
   });
@@ -61,6 +64,7 @@ export type SendHeader = { format: "IMAGE" | "VIDEO" | "DOCUMENT"; mediaId: stri
 /** Approved template message — the only kind WhatsApp delivers outside the 24-hour window. */
 export async function sendTemplate(creds: WaCreds | null, toWaId: string, t: { metaName: string; language: string; params: string[]; header?: SendHeader }): Promise<SendResult> {
   if (!creds) return { ok: false, error: "WhatsApp isn't connected for this workspace" };
+  if (isDemoId(creds.phoneNumberId)) { const id = demoMsgId(); demoTicks(id); return { ok: true, waMessageId: id }; }
   const components: Record<string, unknown>[] = [];
   if (t.header) {
     const kind = t.header.format.toLowerCase();
@@ -80,6 +84,7 @@ export async function sendTemplate(creds: WaCreds | null, toWaId: string, t: { m
 /** Upload a file to WhatsApp's media store (for sending). Returns a media id valid for ~30 days. */
 export async function uploadWaMedia(creds: WaCreds | null, bytes: Buffer, mime: string, name: string): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   if (!creds) return { ok: false, error: "WhatsApp isn't connected for this workspace" };
+  if (isDemoId(creds.phoneNumberId)) return { ok: true, id: demoMsgId("media") };
   const fd = new FormData();
   fd.set("messaging_product", "whatsapp"); fd.set("type", mime);
   fd.set("file", new Blob([new Uint8Array(bytes)], { type: mime }), name);
@@ -94,6 +99,7 @@ export async function uploadWaMedia(creds: WaCreds | null, bytes: Buffer, mime: 
  */
 export async function uploadTemplateSample(creds: WaCreds | null, bytes: Buffer, mime: string, name: string): Promise<{ ok: true; handle: string } | { ok: false; error: string }> {
   if (!creds) return { ok: false, error: "WhatsApp isn't connected for this workspace" };
+  if (isDemoId(creds.phoneNumberId)) return { ok: true, handle: demoMsgId("h") };
   const auth = { Authorization: `OAuth ${creds.token}` };
   const app = (await fetch(`${API}/app?access_token=${encodeURIComponent(creds.token)}`, { signal: AbortSignal.timeout(15000) }).then((r) => r.json()).catch(() => null)) as { id?: string } | null;
   const appId = app?.id ?? process.env.META_APP_ID;
@@ -129,6 +135,7 @@ export function templateComponents(t: TemplateDef): Record<string, unknown>[] {
 /** Template submit — header (text or media sample), body with samples, footer, buttons. */
 export async function submitTemplate(creds: WaCreds | null, t: TemplateDef): Promise<{ ok: true; id: string; status: string } | { ok: false; error: string; metaCode?: number }> {
   if (!creds?.wabaId) return { ok: false, error: "WhatsApp isn't connected for this workspace" };
+  if (isDemoId(creds.phoneNumberId)) return { ok: true, id: demoMsgId("tpl"), status: "pending" };
   const { res, data } = await call(creds, `/${creds.wabaId}/message_templates`, { name: t.name, language: t.language, category: t.category, components: templateComponents(t) });
   if (!res.ok || !data?.id) {
     const e = (data?.error ?? {}) as { message?: string; error_user_msg?: string; error_user_title?: string; code?: number };
@@ -140,6 +147,7 @@ export async function submitTemplate(creds: WaCreds | null, t: TemplateDef): Pro
 /** Delete a template on Meta (all languages with that name). Missing on Meta counts as deleted. */
 export async function deleteTemplateOnMeta(creds: WaCreds | null, name: string): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!creds?.wabaId) return { ok: false, error: "WhatsApp isn't connected for this workspace" };
+  if (isDemoId(creds.phoneNumberId)) return { ok: true };
   const res = await fetch(`${API}/${creds.wabaId}/message_templates?name=${encodeURIComponent(name)}`, { method: "DELETE", headers: { Authorization: `Bearer ${creds.token}` }, signal: AbortSignal.timeout(15000) });
   const d = (await res.json().catch(() => null)) as { success?: boolean; error?: { message?: string; code?: number; error_subcode?: number } } | null;
   if (res.ok && d?.success) return { ok: true };
@@ -151,6 +159,7 @@ export type MetaTemplate = { metaName: string; status: string; rejectedReason?: 
   body?: string; headerFormat?: HeaderFormat; headerText?: string | null; footer?: string | null; buttons?: TplButton[] };
 export async function pollTemplates(creds: WaCreds | null): Promise<{ ok: true; templates: MetaTemplate[] } | { ok: false; error: string }> {
   if (!creds?.wabaId) return { ok: false, error: "WhatsApp isn't connected for this workspace" };
+  if (isDemoId(creds.phoneNumberId)) return { ok: true, templates: [] };
   const res = await fetch(`${API}/${creds.wabaId}/message_templates?limit=200&fields=name,status,rejected_reason,category,language,components`, { headers: { Authorization: `Bearer ${creds.token}` }, signal: AbortSignal.timeout(15000) });
   type C = { type: string; format?: string; text?: string; buttons?: { type: string; text: string; url?: string; phone_number?: string }[] };
   const data = (await res.json().catch(() => null)) as { data?: { name: string; status: string; rejected_reason?: string; category?: string; language?: string; components?: C[] }[] } | null;

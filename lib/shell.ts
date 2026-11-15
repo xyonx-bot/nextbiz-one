@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { getSessionUser, type SessionUser } from "./auth";
 import { getPool } from "./db";
 import { aiAvailable } from "./ai";
+import { isDemoId } from "./demo";
 
 /** Everything the app shell shows on every page — one round trip, read on the server. */
 export type ShellData = {
@@ -18,6 +19,8 @@ export type ShellData = {
   adAccount: { id: string; name: string | null } | null;
   /** NextBiz AI switched on (operator setting + server key) */
   ai: boolean;
+  /** demo workspace (simulated channels, for promo videos) */
+  demo: boolean;
 };
 
 export function initialsOf(name: string) {
@@ -38,7 +41,7 @@ export async function getShellData(): Promise<ShellData> {
         WHERE c.workspace_id = $1 AND m.direction = 'in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0))`, [wsId],
     ).catch(() => ({ rows: [{ n: 0 }] })),
     p.query(`SELECT name FROM workspaces WHERE id = $1`, [wsId]).catch(() => none),
-    p.query(`SELECT display_name, status FROM waba_connections WHERE workspace_id = $1 ORDER BY (status = 'connected') DESC, created_at DESC LIMIT 1`, [wsId]).catch(() => none),
+    p.query(`SELECT display_name, status, phone_number_id FROM waba_connections WHERE workspace_id = $1 ORDER BY (status = 'connected') DESC, created_at DESC LIMIT 1`, [wsId]).catch(() => none),
     p.query(`SELECT username, profile_picture_url FROM ig_accounts WHERE workspace_id = $1 AND live ORDER BY updated_at DESC LIMIT 1`, [wsId]).catch(() => none),
     p.query(`SELECT ad_account_id, name FROM ads_connections WHERE workspace_id = $1`, [wsId]).catch(() => none),
   ]) : [{ rows: [{ n: 0 }] }, none, none, none, none];
@@ -54,6 +57,7 @@ export async function getShellData(): Promise<ShellData> {
     workspaceName: w?.display_name?.replace(/\s*\(.*\)\s*$/, "").trim() || (ws.rows[0] as { name?: string } | undefined)?.name || "My workspace",
     wa: w ? { displayName: w.display_name ?? null, connected: waConnected } : null,
     channels: { whatsapp: waConnected, instagram: ig.rows.length > 0, ads: ads.rows.length > 0 },
+    demo: isDemoId((w as { phone_number_id?: string } | undefined)?.phone_number_id),
     ai: await aiAvailable().catch(() => false),
     adAccount: ads.rows[0] ? { id: (ads.rows[0] as { ad_account_id: string }).ad_account_id, name: (ads.rows[0] as { name: string | null }).name } : null,
     ig: ig.rows[0] ? { username: (ig.rows[0] as { username: string | null }).username, picture: (ig.rows[0] as { profile_picture_url: string | null }).profile_picture_url } : null,

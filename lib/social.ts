@@ -6,6 +6,7 @@
  */
 import { getPool } from "./db";
 import { igLive, igMediaInfo, type IgMedia } from "./instagram";
+import { DEMO_PROFILE, demoPosts, isDemoId } from "./demo";
 
 const IG_GRAPH = "https://graph.instagram.com/v21.0";
 
@@ -38,6 +39,7 @@ async function gget(path: string, token: string): Promise<Record<string, unknown
 export type IgProfile = { followers: number | null; follows: number | null; posts: number | null; picture: string | null; name: string | null };
 export async function socialProfile(a: SocialAccount): Promise<IgProfile> {
   const empty: IgProfile = { followers: null, follows: null, posts: null, picture: a.profile_picture_url, name: a.display_name };
+  if (isDemoId(a.ig_user_id)) return { ...DEMO_PROFILE, picture: a.profile_picture_url, name: a.display_name };
   if (!igLive() || !a.access_token) return empty;
   return cached(`prof:${a.id}`, 10 * 60_000, async () => {
     const j = await gget(`/me?fields=followers_count,follows_count,media_count,profile_picture_url,name`, a.access_token!);
@@ -49,6 +51,7 @@ export async function socialProfile(a: SocialAccount): Promise<IgProfile> {
 
 export type IgPost = { id: string; caption: string | null; type: string; thumb: string | null; permalink: string | null; at: string | null; likes: number | null; comments: number | null };
 export async function socialPosts(a: SocialAccount, limit = 12): Promise<IgPost[]> {
+  if (isDemoId(a.ig_user_id)) return demoPosts().slice(0, limit);
   if (!igLive() || !a.access_token) return [];
   return cached(`posts:${a.id}:${limit}`, 10 * 60_000, async () => {
     const j = await gget(`/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count&limit=${limit}`, a.access_token!);

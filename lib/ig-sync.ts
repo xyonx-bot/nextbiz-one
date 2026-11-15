@@ -138,8 +138,8 @@ export async function syncIgDms(accountId: string, opts: { conversations?: numbe
 /** Sync a workspace's account (comments + DMs) if it hasn't been synced for `staleMs`. */
 export async function syncIfStale(wsId: string, staleMs = 3 * 60_000, what: "comments" | "dms" | "both" = "comments") {
   const a = (await getPool().query(
-    `SELECT id, comments_synced_at, dms_synced_at FROM ig_accounts WHERE workspace_id = $1 AND live ORDER BY updated_at DESC LIMIT 1`, [wsId])).rows[0];
-  if (!a) return null;
+    `SELECT id, ig_user_id, comments_synced_at, dms_synced_at FROM ig_accounts WHERE workspace_id = $1 AND live ORDER BY updated_at DESC LIMIT 1`, [wsId])).rows[0];
+  if (!a || String(a.ig_user_id).startsWith("demo")) return null;
   const stale = (t: string | null) => !t || Date.now() - new Date(t).getTime() >= staleMs;
   const [c, d] = await Promise.all([
     what !== "dms" && stale(a.comments_synced_at) ? syncIgComments(a.id) : null,

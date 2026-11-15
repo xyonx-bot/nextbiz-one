@@ -172,6 +172,11 @@ export function InboxClient({ only }: { only?: "ig" } = {}) {
     const t = setInterval(() => { if (document.visibilityState === "visible") void pull(); }, 60_000);
     return () => clearInterval(t);
   }, [loadList]);
+  // demo workspaces (components/DemoDock) ask for quick refreshes so new messages and ticks show at once
+  useEffect(() => {
+    const on = () => { void loadList(); if (selected) void open(selected, { focusThread: false, markRead: false }); };
+    window.addEventListener("nbo:refresh", on); return () => window.removeEventListener("nbo:refresh", on);
+  }, [loadList, open, selected]);
   // keep list fresh + window countdown ticking
   useEffect(() => {
     const t = setInterval(() => { void loadList(); tick((n) => n + 1); }, 30000);

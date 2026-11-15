@@ -9,6 +9,7 @@
 import { getPool } from "./db";
 import { decrypt, encrypt } from "./crypto";
 import type { AdsCampaign, AdsObjective, PerformanceReport } from "./ads";
+import { DEMO_ACCOUNT, demoCampaigns, demoPerformance, demoSetStatus, isDemoId } from "./demo";
 
 const G = "https://graph.facebook.com/v21.0";
 
@@ -77,6 +78,7 @@ export async function saveConnection(wsId: string, info: AdAccountInfo, how: { s
 export async function removeConnection(wsId: string) { await getPool().query(`DELETE FROM ads_connections WHERE workspace_id = $1`, [wsId]); }
 
 export async function accountInfo(c: AdsConnection): Promise<AdAccountInfo | null> {
+  if (isDemoId(c.ad_account_id)) return { id: c.ad_account_id, name: c.name ?? "Demo", currency: "INR", timezone: "Asia/Kolkata", ...DEMO_ACCOUNT };
   const t = tokenOf(c); if (!t) return null;
   const r = await gget<RawAccount>(`/${c.ad_account_id}?fields=${ACCT_FIELDS}`, t);
   return r.ok ? toInfo(r.data) : null;
@@ -117,6 +119,7 @@ function resultsOf(objective: AdsObjective, actions: Action[] = []): number {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function liveCampaigns(c: AdsConnection, days: 7 | 30 = 7): Promise<{ ok: true; campaigns: AdsCampaign[] } | { ok: false; error: string }> {
+  if (isDemoId(c.ad_account_id)) return { ok: true, campaigns: await demoCampaigns(c.workspace_id, days) };
   const t = tokenOf(c); if (!t) return { ok: false, error: "The ad account login has expired — reconnect it in Connections." };
   const preset = days === 30 ? "last_30d" : "last_7d";
   const r = await gget<{ data: RawCampaign[] }>(`/${c.ad_account_id}/campaigns?fields=id,name,objective,status,effective_status,daily_budget,lifetime_budget,start_time,stop_time,insights.date_preset(${preset}){spend,impressions,reach,clicks,actions}&limit=100`, t);
@@ -141,6 +144,7 @@ export async function liveCampaigns(c: AdsConnection, days: 7 | 30 = 7): Promise
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 export async function livePerformance(c: AdsConnection, days: 7 | 30): Promise<{ ok: true; report: PerformanceReport } | { ok: false; error: string }> {
+  if (isDemoId(c.ad_account_id)) return { ok: true, report: demoPerformance(days) };
   const t = tokenOf(c); if (!t) return { ok: false, error: "The ad account login has expired — reconnect it in Connections." };
   const today = new Date(), start = new Date(today.getTime() - (days - 1) * 864e5), pEnd = new Date(start.getTime() - 864e5), pStart = new Date(pEnd.getTime() - (days - 1) * 864e5);
   const range = (a: Date, b: Date) => encodeURIComponent(JSON.stringify({ since: ymd(a), until: ymd(b) }));
@@ -166,6 +170,7 @@ export async function livePerformance(c: AdsConnection, days: 7 | 30): Promise<{
 
 /** Pause / resume a live campaign. Only ACTIVE and PAUSED — nothing else can be set from here. */
 export async function setLiveStatus(c: AdsConnection, campaignId: string, status: "ACTIVE" | "PAUSED") {
+  if (isDemoId(c.ad_account_id)) return demoSetStatus(campaignId, status);
   const t = tokenOf(c); if (!t) return { ok: false as const, error: "The ad account login has expired — reconnect it in Connections." };
   // the campaign must belong to the connected account
   const own = await gget<{ account_id: string }>(`/${encodeURIComponent(campaignId)}?fields=account_id`, t);

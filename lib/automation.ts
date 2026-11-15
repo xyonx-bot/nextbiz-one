@@ -27,6 +27,15 @@ async function log(p: ReturnType<typeof getPool>, wsId: string, contactId: strin
 }
 
 /** Runs after an inbound message lands. Never throws (inbound must not break). */
+/** Automatic replies belong in the chat history too, so the inbox shows what the customer received. */
+async function keep(p: ReturnType<typeof getPool>, wsId: string, convId: string, s: Awaited<ReturnType<typeof sendText>>, body: string, kind: string, rule?: string) {
+  if (!s.ok) return;
+  await p.query(
+    `INSERT INTO messages (workspace_id, conversation_id, direction, wa_message_id, type, body, status, raw)
+     VALUES ($1, $2, 'out', $3, 'text', $4, 'sent', $5::jsonb) ON CONFLICT DO NOTHING`,
+    [wsId, convId, s.waMessageId, body, JSON.stringify({ automation: kind, ...(rule ? { rule } : {}) })]).catch(() => {});
+}
+
 export async function maybeAutoReply(
   wsId: string, contactId: string, convId: string, waId: string, text: string,
 ): Promise<void> {
@@ -48,6 +57,7 @@ export async function maybeAutoReply(
     if (cfg.away_enabled && !inBusinessHours(cfg.business_hours)) {
       if (cfg.away_text) {
         const s = await sendText(creds, waId, cfg.away_text);
+        await keep(p, wsId, convId, s, cfg.away_text, "away");
         await log(p, wsId, contactId, "away", null, `away reply: ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
       }
       return;
@@ -56,6 +66,7 @@ export async function maybeAutoReply(
     // welcome — once per conversation
     if (cfg.welcome_enabled && !conv.rows[0].welcome_sent_at) {
       const s = await sendText(creds, waId, cfg.welcome_text);
+      await keep(p, wsId, convId, s, cfg.welcome_text, "welcome");
       if (s.ok) await p.query(`UPDATE conversations SET welcome_sent_at = now() WHERE id = $1`, [convId]);
       await log(p, wsId, contactId, "welcome", null, `welcome ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
     }
@@ -75,6 +86,7 @@ export async function maybeAutoReply(
         if (prior.rows.length) { await log(p, wsId, contactId, "keyword", r.id, `rule "${r.name}" already answered this chat`, "skipped"); return; }
       }
       const s = await sendText(creds, waId, r.reply);
+      await keep(p, wsId, convId, s, r.reply, "keyword", r.name);
       await p.query(
         `UPDATE keyword_rules SET fired_count = fired_count + 1, last_fired_at = now() WHERE id = $1`, [r.id]);
       await log(p, wsId, contactId, "keyword", r.id, `rule "${r.name}" ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");

@@ -3,6 +3,7 @@
  * Everything is created PAUSED: campaign → ad set → creative → ad. Nothing spends until the user
  * resumes it (with a confirmation) in Campaigns. If any step fails, the half-built campaign is deleted.
  */
+import { DEMO_IDENTITY, demoCampaignId, demoEstimate, demoInterests, demoLocations, demoMsgId, isDemoId } from "./demo";
 import type { AdsConnection } from "./meta-ads";
 import { tokenOf } from "./meta-ads";
 
@@ -37,6 +38,7 @@ const tok = (c: AdsConnection) => { const t = tokenOf(c); if (!t) throw new Erro
 
 export type GeoHit = { key: string; name: string; type: "country" | "region" | "city" | "zip" | string; region?: string; country_code?: string; country_name?: string };
 export async function searchLocations(c: AdsConnection, q: string, country = "IN"): Promise<GeoHit[]> {
+  if (isDemoId(c.ad_account_id)) return demoLocations(q);
   const t = tok(c);
   const types = encodeURIComponent(JSON.stringify(["country", "region", "city", "zip"]));
   const r = await gget<{ data: GeoHit[] }>(`/search?type=adgeolocation&q=${encodeURIComponent(q)}&location_types=${types}&limit=12${country ? `&country_code=${country}` : ""}`, t);
@@ -45,6 +47,7 @@ export async function searchLocations(c: AdsConnection, q: string, country = "IN
 }
 export type InterestHit = { id: string; name: string; audience_size_lower_bound?: number; audience_size_upper_bound?: number; path?: string[] };
 export async function searchInterests(c: AdsConnection, q: string): Promise<InterestHit[]> {
+  if (isDemoId(c.ad_account_id)) return demoInterests(q);
   const r = await gget<{ data: InterestHit[] }>(`/search?type=adinterest&q=${encodeURIComponent(q)}&limit=12&locale=en_US`, tok(c));
   return r.ok ? r.data.data.map((i) => ({ id: String(i.id), name: i.name, audience_size_lower_bound: i.audience_size_lower_bound, audience_size_upper_bound: i.audience_size_upper_bound, path: i.path })) : [];
 }
@@ -53,6 +56,7 @@ export async function searchInterests(c: AdsConnection, q: string): Promise<Inte
 
 export type Identity = { pages: { id: string; name: string; whatsapp: boolean | null }[]; instagram: { id: string; username: string }[]; pageError: string | null };
 export async function identities(c: AdsConnection): Promise<Identity> {
+  if (isDemoId(c.ad_account_id)) return DEMO_IDENTITY;
   const t = tok(c);
   const acct = await gget<{ business?: { id: string } }>(`/${c.ad_account_id}?fields=business`, t);
   const biz = acct.ok ? acct.data.business?.id : undefined;
@@ -83,6 +87,7 @@ export async function identities(c: AdsConnection): Promise<Identity> {
 /* ── media ── */
 
 export async function uploadImage(c: AdsConnection, file: Blob, name: string): Promise<{ ok: true; hash: string; url: string | null } | { ok: false; error: string }> {
+  if (isDemoId(c.ad_account_id)) return { ok: true, hash: demoMsgId("img"), url: null };
   const fd = new FormData(); fd.set("filename", file, name);
   const r = await gpost<{ images?: Record<string, { hash: string; url?: string }> }>(`/${c.ad_account_id}/adimages`, tok(c), fd);
   if (!r.ok) return r;
@@ -90,12 +95,14 @@ export async function uploadImage(c: AdsConnection, file: Blob, name: string): P
   return img ? { ok: true, hash: img.hash, url: img.url ?? null } : { ok: false, error: "Meta didn't return the image" };
 }
 export async function uploadVideo(c: AdsConnection, file: Blob, name: string): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  if (isDemoId(c.ad_account_id)) return { ok: true, id: demoMsgId("vid") };
   const fd = new FormData(); fd.set("source", file, name); fd.set("name", name);
   const r = await gpost<{ id?: string }>(`/${c.ad_account_id}/advideos`, tok(c), fd);
   if (!r.ok) return r;
   return r.data.id ? { ok: true, id: r.data.id } : { ok: false, error: "Meta didn't return the video" };
 }
 export async function videoState(c: AdsConnection, id: string): Promise<{ ready: boolean; thumb: string | null; error: string | null }> {
+  if (isDemoId(c.ad_account_id)) return { ready: true, thumb: null, error: null };
   const t = tok(c);
   const [st, th] = await Promise.all([
     gget<{ status?: { video_status?: string; processing_progress?: number } }>(`/${id}?fields=status`, t),
@@ -154,6 +161,7 @@ export function targetingOf(s: Pick<AdSpec, "locations" | "ageMin" | "ageMax" | 
 }
 
 export async function estimateAudience(c: AdsConnection, s: Parameters<typeof targetingOf>[0]): Promise<{ lower: number; upper: number } | null> {
+  if (isDemoId(c.ad_account_id)) return s.locations.length ? demoEstimate(s.locations.length, s.interests.length) : null;
   if (!s.locations.length) return null;
   const goal = s.goal === "website" ? "LINK_CLICKS" : "CONVERSATIONS";
   const r = await gget<{ data: { estimate_mau_lower_bound?: number; estimate_mau_upper_bound?: number }[] }>(
@@ -202,6 +210,7 @@ export function storySpecOf(s: Pick<AdSpec, "goal" | "pageId" | "instagramId" | 
 export const PREVIEW_FORMATS = ["MOBILE_FEED_STANDARD", "INSTAGRAM_STANDARD", "INSTAGRAM_STORY", "INSTAGRAM_REELS", "FACEBOOK_STORY_MOBILE", "FACEBOOK_REELS_MOBILE"] as const;
 /** Meta's own rendering of the ad (an iframe it hosts) — exactly what people will see. */
 export async function previewAd(c: AdsConnection, story: Record<string, unknown>, format: (typeof PREVIEW_FORMATS)[number]): Promise<{ ok: true; src: string; width: number; height: number } | { ok: false; error: string }> {
+  if (isDemoId(c.ad_account_id)) return { ok: false, error: "Meta's exact preview needs a real ad account — use Sketch in this demo." };
   const r = await gget<{ data?: { body?: string }[] }>(`/${c.ad_account_id}/generatepreviews?ad_format=${format}&creative=${encodeURIComponent(JSON.stringify({ object_story_spec: story }))}`, tok(c));
   if (!r.ok) return r;
   const body = r.data.data?.[0]?.body ?? "";
@@ -212,6 +221,7 @@ export async function previewAd(c: AdsConnection, story: Record<string, unknown>
 
 /** Publish: campaign → ad set → creative → ad, all PAUSED. Rolls back the campaign if a later step fails. */
 export async function publishCampaign(c: AdsConnection, s: AdSpec): Promise<{ ok: true; campaignId: string; adSetId: string; adId: string } | { ok: false; error: string; step: string }> {
+  if (isDemoId(c.ad_account_id)) return { ok: true, campaignId: demoCampaignId(), adSetId: demoMsgId("set"), adId: demoMsgId("ad") };
   const t = tok(c);
   const objective = s.goal === "website" ? "OUTCOME_TRAFFIC" : "OUTCOME_ENGAGEMENT";
   const camp = await gpost<{ id: string }>(`/${c.ad_account_id}/campaigns`, t, {

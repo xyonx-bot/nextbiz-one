@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DemoDock } from "./DemoDock";
 import { usePathname } from "next/navigation";
 import { Icon } from "./Icon";
 import { AiAssistant } from "./AiAssistant";
@@ -220,6 +221,7 @@ export function ShellClient({
         <button className="pi" style={{ width: "100%" }} onClick={signOut}><Icon name="sign-out" /><span>Sign out</span></button>
       </div>
       {data.ai && <AiAssistant open={ai} onClose={() => setAi(false)} ask={aiAsk} />}
+      {data.demo && <DemoDock />}
     </div>
   );
 }
