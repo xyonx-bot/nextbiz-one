@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // seeds the connected platform WhatsApp number the suite relies on (see the file for required env)
+  globalSetup: "./tests/e2e/global-setup.ts",
   timeout: 30000,
   fullyParallel: false,
   retries: 0,
