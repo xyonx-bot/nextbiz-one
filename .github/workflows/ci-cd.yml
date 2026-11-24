@@ -64,11 +64,17 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://nextbiz:***@127.0.0.1:5432/nextbiz_one
+      DATABASE_URL: postgres://nextbiz:nextbiz@127.0.0.1:5432/nextbiz_one
       OPERATOR_EMAIL: e2e-operator@nextbiz.one
       OPERATOR_PASS: e2e-operator-pass-2026
       WHATSAPP_VERIFY_TOKEN: nbo-e2e-verify
       WHATSAPP_APP_SECRET: nbo-e2e-secret
+      # platform number + Instagram test values the e2e specs sign/verify with (mock mode: no Graph calls)
+      PHONE_NUMBER_ID: PNID
+      IG_LIVE: "false"
+      IG_APP_ID: "100000000000001"
+      IG_APP_SECRET: nbo-e2e-ig-secret
+      IG_WEBHOOK_VERIFY_TOKEN: nbo-e2e-ig-verify
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
