@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getTenant, unauthorized } from "@/lib/tenant";
 
 const QUERIES: Record<string, string> = {
   contacts: `SELECT c.wa_id, c.name, c.opt_in, c.created_at FROM contacts c WHERE c.workspace_id = $1 ORDER BY c.created_at DESC`,

@@ -8,6 +8,7 @@ import { igPic } from "@/lib/ui";
 import { PairBars, Spark } from "@/components/Charts";
 import { AskAi, CopyLink, CountUp } from "@/components/DashBits";
 import { Hint } from "@/components/Hint";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { avatarClass, initials } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
@@ -162,7 +163,7 @@ export default async function HomePage() {
   return (
     <ShellClient active="dashboard" title="Dashboard" data={shell}
       actions={d.wa.connected ? <a className="btn btn-primary" href="/broadcasts?new=1"><Icon name="plus" /><span className="lbl">New broadcast</span></a> : undefined}>
-      <div className="pg-dash v3"><CountUp />
+      <div className="pg-dash v3"><CountUp /><AutoRefresh />
         <div className="page" data-testid="dashboard" data-state={d.everActive ? "live" : "new"}>
           <div className="pagehead">
             <div className="t"><div className="h1">{greet}, {first}</div>

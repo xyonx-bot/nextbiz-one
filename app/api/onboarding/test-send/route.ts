@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
-import { getPool } from "@/lib/db";
-import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getTenant, unauthorized } from "@/lib/tenant";
 import { getWaCreds, sendText } from "@/lib/wa-client";
 
 /** P1.4 step 3 — real two-way check: send the test message to the
  *  workspace's own number (the owner's phone). */
 export async function POST() {
-  const token = (await cookies()).get("nbo_session")?.value;
   const t = await getTenant();
   if (!t) return unauthorized();
   const creds = await getWaCreds(t.wsId);

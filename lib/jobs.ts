@@ -4,7 +4,7 @@ import { headerForSend, syncTemplates } from "@/lib/templates";
 
 /** S2 in-app scheduler (plan D2 — no Redis). Single-container worker tick. */
 
-async function runBroadcastSend(payload: { broadcastId: string }) {
+async function runBroadcastSend(payload: { broadcastId: string }, jobId: string) {
   const p = getPool();
   const b = await p.query(
     `SELECT b.*, t.body AS tpl_body, t.status AS tpl_status, t.name AS tpl_name, t.meta_name AS tpl_meta, t.language AS tpl_lang, t.header_format AS tpl_hf, t.header_media_id AS tpl_hm
@@ -25,38 +25,55 @@ async function runBroadcastSend(payload: { broadcastId: string }) {
   await p.query(`UPDATE broadcasts SET status='sending' WHERE id=$1`, [bc.id]);
   const varCount = new Set((bc.tpl_body.match(/\{\{\d+\}\}/g) ?? []) as string[]).size;
 
-  // remaining queued recipients (opt-in snapshotted at create time)
-  const rcpt = await p.query(
-    `SELECT r.id, r.contact_id, c.wa_id, c.name
-       FROM broadcast_recipients r JOIN contacts c ON c.id = r.contact_id
-      WHERE r.broadcast_id = $1 AND r.status = 'queued' LIMIT 250`,
-    [bc.id],
-  );
-  for (const r of rcpt.rows) {
-    // real template message (plain text is only delivered inside the 24h window): {{1}} = first name
-    const first = String(r.name || "there").split(" ")[0];
-    const params = Array.from({ length: varCount }, (_, k) => (k === 0 ? first : "-"));
-    try {
-      const res = await sendTemplate(creds, r.wa_id, { metaName: bc.tpl_meta || bc.tpl_name, language: bc.tpl_lang || "en", params, header: hdr.header });
-      if (res.ok) {
-        await p.query(
-          `UPDATE broadcast_recipients SET status='sent', wa_message_id=$2, sent_at=now() WHERE id=$1`,
-          [r.id, res.waMessageId ?? null],
-        );
-      } else {
-        await p.query(
-          `UPDATE broadcast_recipients SET status='failed', error_raw=$2 WHERE id=$1`,
-          [r.id, String(res.error ?? "send failed")],
-        );
+  // remaining queued recipients (opt-in snapshotted at create time), in batches until none are left
+  for (;;) {
+    const live = await p.query(`SELECT status FROM broadcasts WHERE id = $1`, [bc.id]);
+    if (live.rows[0]?.status !== "sending") return; // cancelled or removed meanwhile
+    const rcpt = await p.query(
+      `SELECT r.id, r.contact_id, c.wa_id, c.name
+         FROM broadcast_recipients r JOIN contacts c ON c.id = r.contact_id
+        WHERE r.broadcast_id = $1 AND r.status = 'queued' LIMIT 250`,
+      [bc.id],
+    );
+    if (rcpt.rows.length === 0) break;
+    for (const r of rcpt.rows) {
+      // claim before sending: if the server stops mid-send, this person is never messaged twice
+      const claim = await p.query(`UPDATE broadcast_recipients SET status='failed', error_raw='Interrupted while sending' WHERE id=$1 AND status='queued'`, [r.id]);
+      if (!claim.rowCount) continue;
+      await p.query(`UPDATE jobs SET updated_at = now() WHERE id = $1`, [jobId]); // still alive (see reclaimStuckJobs)
+      // real template message (plain text is only delivered inside the 24h window): {{1}} = first name
+      const first = String(r.name || "there").split(" ")[0];
+      const params = Array.from({ length: varCount }, (_, k) => (k === 0 ? first : "-"));
+      try {
+        const res = await sendTemplate(creds, r.wa_id, { metaName: bc.tpl_meta || bc.tpl_name, language: bc.tpl_lang || "en", params, header: hdr.header });
+        if (res.ok) {
+          await p.query(
+            `UPDATE broadcast_recipients SET status='sent', error_raw=NULL, wa_message_id=$2, sent_at=now() WHERE id=$1`,
+            [r.id, res.waMessageId ?? null],
+          );
+        } else {
+          await p.query(`UPDATE broadcast_recipients SET error_raw=$2 WHERE id=$1`, [r.id, String(res.error ?? "send failed")]);
+        }
+      } catch (e) {
+        await p.query(`UPDATE broadcast_recipients SET error_raw=$2 WHERE id=$1`, [r.id, String(e)]);
       }
-    } catch (e) {
-      await p.query(`UPDATE broadcast_recipients SET status='failed', error_raw=$2 WHERE id=$1`, [r.id, String(e)]);
     }
   }
-  const left = await p.query(`SELECT count(*)::int AS n FROM broadcast_recipients WHERE broadcast_id=$1 AND status='queued'`, [bc.id]);
-  if (left.rows[0].n === 0) {
-    await p.query(`UPDATE broadcasts SET status='done', sent_at=now() WHERE id=$1`, [bc.id]);
-  }
+  await p.query(`UPDATE broadcasts SET status='done', sent_at=now() WHERE id=$1 AND status='sending'`, [bc.id]);
+}
+
+/**
+ * A job still "running" without progress belongs to a process that died (crash, redeploy). Put it back in the queue —
+ * otherwise a dead template poll blocks every later one. At boot nothing can be running, so everything is reclaimed.
+ */
+export async function reclaimStuckJobs(olderThanMinutes: number): Promise<number> {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE jobs SET status = CASE WHEN attempts >= 3 THEN 'failed' ELSE 'queued' END, last_error = 'Interrupted', run_at = now(), updated_at = now()
+      WHERE status = 'running' AND updated_at <= now() - ($1 || ' minutes')::interval RETURNING type, status, payload`, [String(olderThanMinutes)]);
+  for (const j of r.rows) if (j.status === "failed" && j.type === "broadcast_send")
+    await p.query(`UPDATE broadcasts SET status='failed' WHERE id=$1 AND status='sending'`, [j.payload.broadcastId]).catch(() => {});
+  return r.rowCount ?? 0;
 }
 
 /** Poll Meta for template review results — every connected workspace, its own templates only. */
@@ -83,7 +100,7 @@ export async function tick(): Promise<boolean> {
   if (claimed.rows.length === 0) return false;
   const j = claimed.rows[0];
   try {
-    if (j.type === "broadcast_send") await runBroadcastSend(j.payload);
+    if (j.type === "broadcast_send") await runBroadcastSend(j.payload, j.id);
     else if (j.type === "template_status_poll") await runTemplateStatusPoll();
     await p.query(`UPDATE jobs SET status='done', updated_at=now() WHERE id=$1`, [j.id]);
   } catch (e) {
@@ -104,15 +121,23 @@ let started = false;
 export function startWorker() {
   if (started || process.env.JOBS_DISABLED === "1") return;
   started = true;
-  const loop = async () => { try { while (await tick()) { /* drain */ } } catch { /* next tick */ } };
+  let booted = false;
+  const loop = async () => { try {
+    if (!booted) { const n = await reclaimStuckJobs(0); booted = true; if (n) console.log(`[jobs] requeued ${n} interrupted job(s)`); }
+    else await reclaimStuckJobs(15);
+    while (await tick()) { /* drain */ }
+  } catch { /* next tick */ } };
   void loop();
   setInterval(() => void loop(), 30_000).unref();
   // recurring poll job every 10 min (idempotent re-arm)
   const armPoll = () => getPool().query(
+    // finished polls are only noise (one every 10 minutes)
+    `DELETE FROM jobs WHERE type='template_status_poll' AND status IN ('done','failed') AND updated_at < now() - interval '7 days'`,
+  ).then(() => getPool().query(
     `INSERT INTO jobs (type, payload, run_at)
      SELECT 'template_status_poll', '{}'::jsonb, now()
       WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE type='template_status_poll' AND status IN ('queued','running'))`,
-  ).catch(() => {});
+  )).catch(() => {});
   void armPoll();
   setInterval(() => void armPoll(), 600_000).unref();
   // Instagram long-lived tokens last 60 days — refresh the ones expiring within 15 days, every 6h

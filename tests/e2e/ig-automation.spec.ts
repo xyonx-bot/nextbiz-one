@@ -55,8 +55,8 @@ async function messagesOf(page: import("@playwright/test").Page, id: string) {
 async function seedIgAccount(pool: import("pg").Pool, igUserId: string) {
   await pool.query(
     `INSERT INTO ig_accounts (workspace_id, ig_user_id, username, live)
-     SELECT workspace_id, $1, 'e2e_shop', false FROM users WHERE lower(email) = lower($2) AND workspace_id IS NOT NULL LIMIT 1
-     ON CONFLICT (workspace_id, ig_user_id) DO NOTHING`,
+     SELECT workspace_id, $1, 'e2e_shop', true FROM users WHERE lower(email) = lower($2) AND workspace_id IS NOT NULL LIMIT 1
+     ON CONFLICT (workspace_id, ig_user_id) DO UPDATE SET live = true`,
     [igUserId, process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one"]);
 }
 

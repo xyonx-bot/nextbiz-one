@@ -61,13 +61,13 @@ export async function runReadTool(name: string, args: Record<string, unknown>, w
       const [chats, contacts, tpl, bc, ig, conn] = await Promise.all([
         one(`SELECT (SELECT count(*)::int FROM conversations WHERE workspace_id=$1 AND last_inbound_at > now() - interval '7 days') AS wa_active_7d,
                     (SELECT count(*)::int FROM conversations c WHERE c.workspace_id=$1 AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.direction='in' AND m.created_at > COALESCE(c.last_read_at, to_timestamp(0)))) AS wa_unread_chats,
-                    (SELECT count(*)::int FROM ig_threads t WHERE t.workspace_id=$1 AND EXISTS (SELECT 1 FROM ig_messages m WHERE m.thread_id=t.id AND m.direction='in' AND m.created_at > COALESCE(t.last_read_at, to_timestamp(0)))) AS ig_unread_chats,
+                    (SELECT count(*)::int FROM ig_threads t WHERE t.ig_account_id IN (SELECT id FROM ig_accounts WHERE workspace_id=$1 AND live) AND EXISTS (SELECT 1 FROM ig_messages m WHERE m.thread_id=t.id AND m.direction='in' AND m.created_at > COALESCE(t.last_read_at, to_timestamp(0)))) AS ig_unread_chats,
                     (SELECT count(*)::int FROM conversations WHERE workspace_id=$1 AND last_inbound_at BETWEEN now() - interval '24 hours' AND now() - interval '20 hours') AS wa_windows_closing_soon`),
         one(`SELECT count(*)::int AS total, count(*) FILTER (WHERE opt_in)::int AS opted_in, count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS new_7d FROM contacts WHERE workspace_id=$1`),
         one(`SELECT count(*) FILTER (WHERE lower(status)='approved')::int AS approved, count(*) FILTER (WHERE lower(status)='pending')::int AS pending, count(*) FILTER (WHERE lower(status)='rejected')::int AS rejected FROM templates WHERE workspace_id=$1`),
         p.query(`SELECT name, status, sent_at FROM broadcasts WHERE workspace_id=$1 ORDER BY COALESCE(sent_at, created_at) DESC LIMIT 3`, [wsId]).then((r) => r.rows),
         one(`SELECT count(*)::int AS comments_needing_reply FROM ig_comments c JOIN ig_accounts a ON a.id=c.ig_account_id WHERE a.workspace_id=$1 AND a.live AND c.replied_at IS NULL AND c.owner_replied_at IS NULL
-               AND COALESCE(c.dm_status,'') <> 'sent' AND COALESCE(c.public_status,'') <> 'sent' AND c.hidden_at IS NULL AND c.created_at > now() - interval '7 days' AND (c.from_id IS NULL OR c.from_id <> a.ig_user_id)`),
+               AND COALESCE(c.dm_status,'') <> 'sent' AND COALESCE(c.public_status,'') <> 'sent' AND c.hidden_at IS NULL AND c.ig_hidden_at IS NULL AND c.created_at > now() - interval '7 days' AND (c.from_id IS NULL OR c.from_id <> a.ig_user_id)`),
         one(`SELECT (SELECT status FROM waba_connections WHERE workspace_id=$1 ORDER BY (status='connected') DESC LIMIT 1) AS whatsapp,
                     (SELECT username FROM ig_accounts WHERE workspace_id=$1 AND live LIMIT 1) AS instagram,
                     (SELECT name FROM ads_connections WHERE workspace_id=$1) AS ad_account`),
@@ -86,14 +86,14 @@ export async function runReadTool(name: string, args: Record<string, unknown>, w
         `SELECT 'ig:' || t.id AS id, COALESCE(t.name, t.username) AS name, t.username AS handle, 'instagram' AS channel, lm.body AS last_message, lm.direction AS last_from, lm.created_at AS last_at, t.last_inbound_at,
                 (SELECT count(*)::int FROM ig_messages m WHERE m.thread_id=t.id AND m.direction='in' AND m.created_at > COALESCE(t.last_read_at, to_timestamp(0))) AS unread
            FROM ig_threads t JOIN LATERAL (SELECT body, direction, created_at FROM ig_messages m WHERE m.thread_id=t.id ORDER BY created_at DESC LIMIT 1) lm ON true
-          WHERE t.workspace_id=$1 ORDER BY lm.created_at DESC LIMIT $2`, [wsId, n])).rows;
+          WHERE t.ig_account_id IN (SELECT id FROM ig_accounts WHERE workspace_id=$1 AND live) ORDER BY lm.created_at DESC LIMIT $2`, [wsId, n])).rows;
       return [...wa, ...ig].filter((r) => !unread || r.unread > 0).sort((a, b) => +new Date(b.last_at) - +new Date(a.last_at)).slice(0, n)
         .map((r) => ({ ...r, last_message: cut(r.last_message, 140), reply_window_open: !!r.last_inbound_at && Date.now() - +new Date(r.last_inbound_at) < 24 * 3600e3 }));
     }
     case "get_conversation": {
       const id = String(args.id ?? ""), n = lim(args.limit, 30, 60);
       if (id.startsWith("ig:")) {
-        const t = (await p.query(`SELECT id, username, name, last_inbound_at FROM ig_threads WHERE id::text=$2 AND workspace_id=$1`, [wsId, id.slice(3)])).rows[0];
+        const t = (await p.query(`SELECT id, username, name, last_inbound_at FROM ig_threads WHERE id::text=$2 AND ig_account_id IN (SELECT id FROM ig_accounts WHERE workspace_id=$1 AND live)`, [wsId, id.slice(3)])).rows[0];
         if (!t) return { error: "not found" };
         const msgs = (await p.query(`SELECT direction, body, origin, created_at FROM ig_messages WHERE thread_id=$1 ORDER BY created_at DESC LIMIT $2`, [t.id, n])).rows.reverse();
         return { channel: "instagram", customer: t.username ? `@${t.username}` : t.name, reply_window_open: !!t.last_inbound_at && Date.now() - +new Date(t.last_inbound_at) < 24 * 3600e3, messages: msgs.map((m) => ({ from: m.direction === "in" ? "customer" : m.origin === "automation" ? "bot" : "business", text: cut(m.body, 600), at: m.created_at })) };

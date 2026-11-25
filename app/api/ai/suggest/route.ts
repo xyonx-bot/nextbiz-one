@@ -30,14 +30,14 @@ export async function POST(req: Request) {
     transcript = m.map((x) => `${x.direction === "in" ? "Customer" : "Business"}: ${x.body ?? `[${x.type}]`}`).join("\n");
   } else if (kind === "ig") {
     channel = "Instagram DM";
-    const th = (await p.query(`SELECT id, username, name FROM ig_threads WHERE id=$1 AND workspace_id=$2`, [id, t.wsId])).rows[0];
+    const th = (await p.query(`SELECT id, username, name FROM ig_threads WHERE id=$1 AND ig_account_id IN (SELECT id FROM ig_accounts WHERE workspace_id=$2 AND live)`, [id, t.wsId])).rows[0];
     if (!th) return NextResponse.json({ error: "not found" }, { status: 404 });
     who = th.username ? `@${th.username}` : th.name ?? "the customer";
     const m = (await p.query(`SELECT direction, body FROM ig_messages WHERE thread_id=$1 ORDER BY created_at DESC LIMIT 20`, [id])).rows.reverse();
     transcript = m.map((x) => `${x.direction === "in" ? "Customer" : "Business"}: ${x.body ?? "[media]"}`).join("\n");
   } else {
     channel = "Instagram comment";
-    const c = (await p.query(`SELECT c.from_name, c.text, c.media_id, c.raw FROM ig_comments c JOIN ig_accounts a ON a.id=c.ig_account_id WHERE c.id=$1 AND a.workspace_id=$2`, [id, t.wsId])).rows[0];
+    const c = (await p.query(`SELECT c.from_name, c.text, c.media_id, c.raw FROM ig_comments c JOIN ig_accounts a ON a.id=c.ig_account_id WHERE c.id=$1 AND a.workspace_id=$2 AND a.live`, [id, t.wsId])).rows[0];
     if (!c) return NextResponse.json({ error: "not found" }, { status: 404 });
     who = c.from_name ? `@${c.from_name}` : "the commenter";
     transcript = `Comment on our post by ${who}: ${c.text ?? ""}`;

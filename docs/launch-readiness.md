@@ -94,7 +94,8 @@ Use a phone for the customer side.
 
 **Instagram**
 - [ ] DM @nextbizstudio from another account → appears in Social → DMs, with profile picture → reply
-- [ ] Comment on a post → Comments → public reply and private reply
+- [ ] Comment on a post → Comments → public reply and private reply; hide, unhide and delete a comment
+- [ ] Connect a second account → the first one's chats disappear; Connections → Previously connected → Delete data
 
 **Ads** (keep budgets tiny, everything is created paused)
 - [ ] Builder: the **Exact** preview renders for Instagram feed and Story

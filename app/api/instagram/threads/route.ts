@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getTenant, unauthorized } from "@/lib/tenant";
 
-/** GET — Instagram DM threads for the inbox (same shape as /api/conversations + channel). */
+/** GET — DM threads of the connected Instagram account for the inbox (same shape as /api/conversations + channel). */
 export async function GET() {
   const tn = await getTenant();
   if (!tn) return unauthorized();
@@ -15,7 +13,7 @@ export async function GET() {
                AND m.created_at > COALESCE(t.last_read_at, to_timestamp(0))) AS unread
        FROM ig_threads t JOIN ig_accounts a ON a.id = t.ig_account_id
        LEFT JOIN LATERAL (SELECT body, direction, status, created_at FROM ig_messages m WHERE m.thread_id = t.id ORDER BY created_at DESC LIMIT 1) lm ON true
-      WHERE t.workspace_id = $1
+      WHERE t.workspace_id = $1 AND a.live
       ORDER BY COALESCE(lm.created_at, t.last_inbound_at) DESC NULLS LAST LIMIT 200`, [tn.wsId],
   );
   return NextResponse.json({ ok: true, threads: rows }, { headers: { "Cache-Control": "no-store" } });

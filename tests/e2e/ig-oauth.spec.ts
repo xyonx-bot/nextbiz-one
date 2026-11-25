@@ -40,21 +40,23 @@ test.describe("Instagram Login OAuth", () => {
     expect(res.headers()["set-cookie"]).toContain("ig_oauth_state=");
   });
 
-  test("callback: no code -> 400; bad state -> 400; valid state + code in mock mode -> 200 mock page, no Graph", async ({ page }) => {
+  test("callback: cancelled, expired and switched-off logins all return to Connections with a reason", async ({ page }) => {
     await login(page);
-    const noCode = await page.request.get("/api/auth/instagram/callback", { maxRedirects: 0 });
-    expect(noCode.status()).toBe(400);
+    const to = async (qs: string) => {
+      const r = await page.request.get(`/api/auth/instagram/callback${qs}`, { maxRedirects: 0 });
+      expect([302, 307]).toContain(r.status());
+      return r.headers()["location"] ?? "";
+    };
+    expect(await to("?error=access_denied")).toContain("/connections?ig=err-denied");
+    expect(await to("")).toContain("/connections?ig=err-expired");
+    expect(await to("?code=x&state=wrong")).toContain("/connections?ig=err-expired");
 
-    const badState = await page.request.get("/api/auth/instagram/callback?code=x&state=wrong", { maxRedirects: 0 });
-    expect(badState.status()).toBe(400);
-
-    // valid state: hit /start first to plant the cookie, extract state, then callback
+    // valid state: hit /start first to plant the cookie, extract state, then callback (IG_LIVE=false → no Graph call)
     const start = await page.request.get("/api/auth/instagram/start", { maxRedirects: 0 });
-    const loc = start.headers()["location"] ?? "";
-    const state = new URL(loc).searchParams.get("state") ?? "";
-    const cb = await page.request.get(`/api/auth/instagram/callback?code=fake&state=${state}`, { maxRedirects: 0 });
-    expect(cb.status()).toBe(200); // mock mode: info page, IG_LIVE=false so no network
-    expect(await cb.text()).toContain("Mock mode");
+    const state = new URL(start.headers()["location"] ?? "").searchParams.get("state") ?? "";
+    expect(await to(`?code=fake&state=${state}`)).toContain("/connections?ig=err-off");
+    await page.goto("/connections?ig=err-denied");
+    await expect(page.getByRole("status")).toContainText("cancelled");
   });
 
   test("settings: Login with Instagram button present in Connections", async ({ page }) => {

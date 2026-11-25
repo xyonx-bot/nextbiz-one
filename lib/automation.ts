@@ -28,7 +28,6 @@ async function log(p: ReturnType<typeof getPool>, wsId: string, contactId: strin
   ).catch(() => {});
 }
 
-/** Runs after an inbound message lands. Never throws (inbound must not break). */
 /** Automatic replies belong in the chat history too, so the inbox shows what the customer received. */
 async function keep(p: ReturnType<typeof getPool>, wsId: string, convId: string, s: Awaited<ReturnType<typeof sendText>>, body: string, kind: string, rule?: string) {
   if (!s.ok) return;
@@ -38,6 +37,7 @@ async function keep(p: ReturnType<typeof getPool>, wsId: string, convId: string,
     [wsId, convId, s.waMessageId, body, JSON.stringify({ automation: kind, ...(rule ? { rule } : {}) })]).catch(() => {});
 }
 
+/** Runs after an inbound message lands. Never throws (inbound must not break). */
 export async function maybeAutoReply(
   wsId: string, contactId: string, convId: string, waId: string, text: string,
 ): Promise<void> {
@@ -75,10 +75,12 @@ export async function maybeAutoReply(
       }
 
       // welcome — once per conversation
-      if (cfg.welcome_enabled && !c0.welcome_sent_at) {
+      // claim it first, so two messages arriving together don't both send it
+      if (cfg.welcome_enabled && !c0.welcome_sent_at
+        && (await p.query(`UPDATE conversations SET welcome_sent_at = now() WHERE id = $1 AND welcome_sent_at IS NULL`, [convId])).rowCount) {
         const s = await sendText(creds, waId, cfg.welcome_text);
         await keep(p, wsId, convId, s, cfg.welcome_text, "welcome");
-        if (s.ok) await p.query(`UPDATE conversations SET welcome_sent_at = now() WHERE id = $1`, [convId]);
+        if (!s.ok) await p.query(`UPDATE conversations SET welcome_sent_at = NULL WHERE id = $1`, [convId]);
         await log(p, wsId, contactId, "welcome", null, `welcome ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
       }
     }

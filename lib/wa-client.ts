@@ -27,11 +27,11 @@ export async function getWaCreds(wsId: string): Promise<WaCreds | null> {
   return { phoneNumberId: r.phone_number_id, wabaId: r.business_account_id ?? null, token, displayName: r.display_name ?? null };
 }
 
-/** Workspace that owns a phone number id (webhook routing). */
+/** Workspace a phone number id is connected to (webhook routing). A disconnected number routes nowhere. */
 export async function workspaceForPhoneNumber(phoneNumberId: string | null | undefined): Promise<string | null> {
   if (!phoneNumberId) return null;
   const { rows } = await getPool().query(
-    `SELECT workspace_id FROM waba_connections WHERE phone_number_id = $1 ORDER BY (status = 'connected') DESC, created_at DESC LIMIT 1`, [phoneNumberId]);
+    `SELECT workspace_id FROM waba_connections WHERE phone_number_id = $1 AND status = 'connected' ORDER BY created_at DESC LIMIT 1`, [phoneNumberId]);
   return rows[0]?.workspace_id ?? null;
 }
 

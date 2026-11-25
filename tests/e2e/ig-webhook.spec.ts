@@ -35,13 +35,15 @@ async function login(page: import("@playwright/test").Page) {
 async function seedIgAccount(pool: import("pg").Pool, igUserId: string) {
   await pool.query(
     `INSERT INTO ig_accounts (workspace_id, ig_user_id, username, live)
-     SELECT workspace_id, $1, 'e2e_shop', false FROM users WHERE lower(email) = lower($2) AND workspace_id IS NOT NULL LIMIT 1
-     ON CONFLICT (workspace_id, ig_user_id) DO NOTHING`,
+     SELECT workspace_id, $1, 'e2e_shop', true FROM users WHERE lower(email) = lower($2) AND workspace_id IS NOT NULL LIMIT 1
+     ON CONFLICT (workspace_id, ig_user_id) DO UPDATE SET live = true`,
     [igUserId, process.env.OPERATOR_EMAIL ?? "operator@nextbiz.one"]);
 }
 
 test.describe("IG access prep (r-nbo-ig-access-prep)", () => {
   test.beforeAll(async () => { await seedIgAccount(pool, "ig-user-e2e"); });
+  // one live account per workspace: leave none behind for the other specs
+  test.afterAll(async () => { await pool.query(`UPDATE ig_accounts SET live = false WHERE ig_user_id = 'ig-user-e2e'`); });
 
   test("webhook GET: echoes hub.challenge on valid verify token, 403 otherwise", async ({ request }) => {
     const ok = await request.get(`/api/webhooks/instagram?hub.mode=subscribe&hub.verify_token=${VT}&hub.challenge=IG-CH-42`);
@@ -157,7 +159,7 @@ test.describe("IG access prep (r-nbo-ig-access-prep)", () => {
     expect(j.live).toBe(false);
     if (!hasLive) {
       await expect(page.getByTestId("ig-acct")).toContainText("@mock_business");
-      await expect(page.getByTestId("ig-acct")).toContainText("Connecting…");
+      await expect(page.getByTestId("ig-acct")).toContainText("Connected");
       expect(j.account?.live).toBe(false);
       expect(j.account?.username).toBe("@mock_business");
     } else {

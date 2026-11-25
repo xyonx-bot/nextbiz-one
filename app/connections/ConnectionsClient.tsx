@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { AvatarPic } from "@/components/AvatarPic";
-import { igPic } from "@/lib/ui";
+import { announceChannels } from "@/components/AutoRefresh";
 import type { Channels } from "@/lib/channels";
 
 /**
@@ -12,6 +12,7 @@ import type { Channels } from "@/lib/channels";
  * A business can run on any one of them; pages that need a missing channel show a guided state that links here.
  */
 type IgAccount = { username: string | null; display_name: string | null; live: boolean; expires_at: string | null; webhook_subscribed?: boolean; last_error?: string | null };
+type Past = { id: string; username: string | null; disconnected_at: string; chats: number; messages: number; comments: number };
 type Es = { ready: boolean; appId: string | null; configId: string | null };
 type FB = { init: (o: Record<string, unknown>) => void; login: (cb: (r: { authResponse?: { code?: string; accessToken?: string } | null; status?: string }) => void, o: Record<string, unknown>) => void };
 type AdAcct = { id: string; name: string; currency: string; status: number; business: string | null };
@@ -19,6 +20,7 @@ type AdsState = { connected: boolean; canUseSystem: boolean; appId: string | nul
   account: { id: string; name: string | null; lastError: string | null; live: { status: number; spent: number; balanceLabel: string | null } | null } | null };
 declare global { interface Window { FB?: FB; fbAsyncInit?: () => void } }
 
+const many = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const d8 = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 function loadFbSdk(appId: string): Promise<FB> {
@@ -32,18 +34,24 @@ function loadFbSdk(appId: string): Promise<FB> {
   });
 }
 
-export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
+export function ConnectionsClient({ channels, wa, waOwn, es, igReady, adsDemo }: {
   channels: Channels;
   wa: { displayName: string | null; connected: boolean } | null;
+  /** the platform owner's own number is off and can be switched back on without a Facebook login */
+  waOwn: boolean;
   es: Es;
   igReady: boolean;
   adsDemo: boolean;
 }) {
   const router = useRouter();
   const [ig, setIg] = useState<IgAccount | null | undefined>(undefined);
-  const [busy, setBusy] = useState<"" | "wa" | "wa-off" | "ig-off" | "ads">("");
+  const [busy, setBusy] = useState<"" | "wa" | "wa-off" | "ig-off" | "ig-del" | "ads">("");
+  const [past, setPast] = useState<Past[]>([]);
+  const [igOff, setIgOff] = useState(false);
+  const [delPast, setDelPast] = useState<string | null>(null);
   const [ads, setAds] = useState<AdsState | null>(null);
   const [pick, setPick] = useState<AdAcct[] | null>(null);
+  const changed = useCallback(() => { router.refresh(); announceChannels(); }, [router]);
   const userTok = useRef<string | null>(null);
   const loadAds = useCallback(async () => {
     const d = await fetch("/api/ads/connection", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
@@ -70,11 +78,11 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
     setBusy("");
     if (!d?.ok) { setNote({ kind: "bad", text: d?.error ?? "Couldn't connect the ad account." }); return; }
     setPick(null); userTok.current = null; setNote({ kind: "ok", text: `${d.account?.name ?? "Ad account"} connected — campaigns are live in NextBiz Ads` });
-    await loadAds(); router.refresh();
+    await loadAds(); changed();
   }
   async function disconnectAds() {
     setBusy("ads"); await fetch("/api/ads/connection", { method: "DELETE" }).catch(() => null); setBusy("");
-    setNote({ kind: "ok", text: "Ad account disconnected — nothing changed on Meta" }); await loadAds(); router.refresh();
+    setNote({ kind: "ok", text: "Ad account disconnected — nothing changed on Meta" }); await loadAds(); changed();
   }
   const [note, setNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
@@ -82,20 +90,33 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
   const session = useRef<{ wabaId?: string; phoneNumberId?: string; cancelled?: boolean }>({});
 
   const loadIg = useCallback(async () => {
-    const g = await fetch("/api/instagram/connect", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
+    const [g, h] = await Promise.all([
+      fetch("/api/instagram/connect", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
+      fetch("/api/instagram/accounts", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
+    ]);
     setIg(g?.ok ? g.account ?? null : null);
+    setPast(h?.ok ? h.accounts : []);
   }, []);
   useEffect(() => { void loadIg(); }, [loadIg]);
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search).get("ig");
+    const sp = new URLSearchParams(window.location.search), q = sp.get("ig");
+    if (q === "connected") announceChannels();
     if (q === "connected") setNote({ kind: "ok", text: "Instagram connected — DMs and comments now arrive in your inbox" });
     else if (q === "err-fbappid") setNote({ kind: "bad", text: "Instagram login is misconfigured on this server (Facebook app ID used instead of the Instagram app ID)." });
     else if (q === "err-noappid") setNote({ kind: "bad", text: "Instagram login isn't switched on for this server yet." });
-    else if (q?.startsWith("err")) setNote({ kind: "bad", text: "Instagram connection failed — try again." });
+    else if (q === "err-denied") setNote({ kind: "bad", text: "Instagram login was cancelled — nothing changed." });
+    else if (q === "err-expired") setNote({ kind: "bad", text: "The Instagram login expired — start it again." });
+    else if (q === "err-off") setNote({ kind: "bad", text: "Instagram login isn't switched on for this server yet." });
+    else if (q?.startsWith("err")) {
+      const m = document.cookie.match(/(?:^|; )ig_flash=([^;]*)/)?.[1];
+      document.cookie = "ig_flash=; path=/connections; max-age=0";
+      setNote({ kind: "bad", text: m ? decodeURIComponent(m) : "Instagram connection failed — try again." });
+    }
+    if (q) { const u = new URL(window.location.href); u.searchParams.delete("ig"); history.replaceState(null, "", u); }
     const h = window.location.hash.slice(1);
     if (h) requestAnimationFrame(() => document.getElementById(h)?.scrollIntoView({ block: "center" }));
   }, []);
-  useEffect(() => { if (note) { const t = setTimeout(() => setNote(null), 5000); return () => clearTimeout(t); } }, [note]);
+  useEffect(() => { if (note) { const t = setTimeout(() => setNote(null), note.kind === "bad" ? 10000 : 5000); return () => clearTimeout(t); } }, [note]);
 
   // Embedded Signup reports the chosen WhatsApp account + number through postMessage
   useEffect(() => {
@@ -132,7 +153,7 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
       }).then((x) => x.json()).catch(() => null);
       if (!d?.ok) { setNote({ kind: "bad", text: d?.error ?? "Connecting failed — try again." }); return; }
       setNote({ kind: "ok", text: `${d.displayName} is connected` });
-      router.refresh();
+      changed();
     } catch (e) {
       setNote({ kind: "bad", text: (e as Error).message });
     } finally { setBusy(""); }
@@ -143,14 +164,31 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
     const d = await fetch("/api/whatsapp/connection", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: typed }) }).then((x) => x.json()).catch(() => null);
     setBusy("");
     if (!d?.ok) { setNote({ kind: "bad", text: d?.error ?? "Couldn't disconnect" }); return; }
-    setConfirmOff(false); setTyped(""); setNote({ kind: "ok", text: "WhatsApp disconnected" }); router.refresh();
+    setConfirmOff(false); setTyped(""); setNote({ kind: "ok", text: "WhatsApp disconnected" }); changed();
+  }
+  async function reconnectOwn() {
+    setBusy("wa");
+    const d = await fetch("/api/whatsapp/connection", { method: "POST" }).then((x) => x.json()).catch(() => null);
+    setBusy("");
+    setNote(d?.ok ? { kind: "ok", text: "WhatsApp is connected again" } : { kind: "bad", text: d?.error ?? "Couldn't reconnect" });
+    if (d?.ok) changed();
   }
   async function disconnectIg() {
     setBusy("ig-off");
-    await fetch("/api/instagram/connect", { method: "DELETE" }).catch(() => null);
-    setBusy(""); setNote({ kind: "ok", text: "Instagram disconnected" }); await loadIg(); router.refresh();
+    const d = await fetch("/api/instagram/connect", { method: "DELETE" }).then((x) => x.json()).catch(() => null);
+    setBusy("");
+    if (!d?.ok) { setNote({ kind: "bad", text: "Couldn't disconnect — try again." }); return; }
+    setIgOff(false); setNote({ kind: "ok", text: "Instagram disconnected" }); await loadIg(); changed();
+  }
+  async function deletePast(a: Past) {
+    setBusy("ig-del");
+    const d = await fetch(`/api/instagram/accounts/${a.id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: "DELETE" }) }).then((x) => x.json()).catch(() => null);
+    setBusy(""); setDelPast(null);
+    setNote(d?.ok ? { kind: "ok", text: `All data from @${a.username ?? "that account"} was deleted` } : { kind: "bad", text: d?.error ?? "Couldn't delete it — try again." });
+    await loadIg();
   }
 
+  const typedOk = typed.trim().toUpperCase() === "DISCONNECT";
   const waOn = !!wa?.connected;
   const waName = wa?.displayName?.replace(/\s*\(.*\)\s*$/, "") || "Your business";
   const waNum = wa?.displayName?.match(/\(([^)]+)\)/)?.[1] ?? null;
@@ -177,11 +215,11 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
 
       <div className="conn-grid">
         {/* WhatsApp */}
-        <section id="whatsapp" className="card cc" data-state={waOn ? "on" : es.ready ? "ready" : "soon"} data-testid="cc-whatsapp">
+        <section id="whatsapp" className="card cc" data-state={waOn ? "on" : es.ready || waOwn ? "ready" : "soon"} data-testid="cc-whatsapp">
           <div className="cc-h">
             <span className="icon-tile lg green"><Icon name="whatsapp-logo" /></span>
             <span className="grow"><b>WhatsApp Business</b><small>Official Cloud API · your own number</small></span>
-            <span className={`pill sm ${waOn ? "ok" : es.ready ? "neutral" : "warn"}`}>{waOn ? "Connected" : es.ready ? "Not connected" : "Soon"}</span>
+            <span className={`pill sm ${waOn ? "ok" : "neutral"}`}>{waOn ? "Connected" : "Not connected"}</span>
           </div>
           {waOn ? (
             <div className="cc-acct">
@@ -207,11 +245,11 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
           <div className="cc-f">
             {waOn ? (
               confirmOff ? (
-                <div className="cc-confirm">
-                  <input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type DISCONNECT" aria-label="Type DISCONNECT to confirm" />
-                  <button className="btn btn-danger btn-sm" disabled={typed !== "DISCONNECT" || busy === "wa-off"} onClick={() => void disconnectWhatsApp()}>Disconnect</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmOff(false); setTyped(""); }}>Cancel</button>
-                </div>
+                <form className="cc-confirm" onSubmit={(e) => { e.preventDefault(); if (typedOk && !busy) void disconnectWhatsApp(); }}>
+                  <input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type DISCONNECT" aria-label="Type DISCONNECT to confirm" autoFocus autoComplete="off" autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
+                  <button type="submit" className="btn btn-danger solid btn-sm" disabled={!typedOk || busy === "wa-off"} data-testid="wa-disconnect-confirm">{busy === "wa-off" ? "Disconnecting…" : "Disconnect"}</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setConfirmOff(false); setTyped(""); }}>Cancel</button>
+                </form>
               ) : (
                 <>
                   <a className="btn btn-soft btn-sm" href="/onboarding"><Icon name="paper-plane-tilt" />Run live test</a>
@@ -219,12 +257,14 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
                   <button className="btn btn-ghost btn-sm" onClick={() => setConfirmOff(true)} data-testid="wa-disconnect">Disconnect</button>
                 </>
               )
+            ) : waOwn ? (
+              <button className="btn btn-primary" onClick={() => void reconnectOwn()} disabled={busy === "wa"} data-testid="wa-reconnect"><Icon name="whatsapp-logo" />{busy === "wa" ? "Connecting…" : `Reconnect ${waName}`}</button>
             ) : es.ready ? (
               <button className="btn btn-primary" onClick={() => void connectWhatsApp()} disabled={busy === "wa"} data-testid="wa-connect">
                 <Icon name="facebook-logo" />{busy === "wa" ? "Connecting…" : "Connect with Facebook"}
               </button>
             ) : (
-              <div className="note warn cc-note" data-testid="wa-soon"><Icon name="info" /><span>Self-connect is being switched on. Until then our team connects your number with you on a short call — <b>reply to your approval email</b>.</span></div>
+              <div className="note warn cc-note" data-testid="wa-soon"><Icon name="info" /><span>Our team connects your number with you on a short call — <b>reply to your approval email</b> to book it.</span></div>
             )}
           </div>
         </section>
@@ -234,7 +274,7 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
           <div className="cc-h">
             <span className="icon-tile lg pink"><Icon name="instagram-logo" /></span>
             <span className="grow"><b>Instagram</b><small>DMs and comments from your professional account</small></span>
-            <span className={`pill sm ${igOn ? "ok" : igReady ? "neutral" : "warn"}`}>{ig === undefined ? "…" : igOn ? "Connected" : igReady ? "Not connected" : "Soon"}</span>
+            <span className={`pill sm ${igOn ? "ok" : "neutral"}`}>{ig === undefined ? "…" : igOn ? "Connected" : "Not connected"}</span>
           </div>
           {igOn && ig ? (
             <>
@@ -258,8 +298,34 @@ export function ConnectionsClient({ channels, wa, es, igReady, adsDemo }: {
               onClick={(e) => { if (!igReady) { e.preventDefault(); setNote({ kind: "bad", text: "Instagram login isn't switched on for this server yet." }); } }}>
               <Icon name="instagram-logo" />{igOn ? "Reconnect" : "Log in with Instagram"}
             </a>
-            {igOn && <><span className="sp" /><button className="btn btn-ghost btn-sm" disabled={busy === "ig-off"} onClick={() => void disconnectIg()}>Disconnect</button></>}
+            {igOn && <><span className="sp" /><button className="btn btn-ghost btn-sm" onClick={() => setIgOff(true)} data-testid="ig-disconnect">Disconnect</button></>}
           </div>
+          {igOff && igOn && (
+            <div className="cc-ask" data-testid="ig-disconnect-ask">
+              <b>Disconnect @{(ig?.username ?? "instagram").replace(/^@/, "")}?</b>
+              <p>New DMs and comments stop arriving and its chats leave your inbox. They come back if you reconnect it, or you can delete them here afterwards.</p>
+              <div className="row gap-6"><button className="btn btn-danger solid btn-sm" disabled={busy === "ig-off"} onClick={() => void disconnectIg()} data-testid="ig-disconnect-confirm">{busy === "ig-off" ? "Disconnecting…" : "Disconnect"}</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setIgOff(false)}>Cancel</button></div>
+            </div>
+          )}
+          {past.length > 0 && (
+            <div className="cc-past" data-testid="ig-past">
+              <span className="eyebrow">Previously connected</span>
+              {past.map((a) => delPast === a.id ? (
+                <div className="cc-ask in" key={a.id}>
+                  <b>Delete everything from @{(a.username ?? "this account").replace(/^@/, "")}?</b>
+                  <p>{many(a.chats, "chat")}, {many(a.messages, "message")} and {many(a.comments, "comment")} are removed from NextBiz One for good. Nothing changes on Instagram.</p>
+                  <div className="row gap-6"><button className="btn btn-danger solid btn-sm" disabled={busy === "ig-del"} onClick={() => void deletePast(a)} data-testid="ig-past-confirm">{busy === "ig-del" ? "Deleting…" : "Delete for good"}</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setDelPast(null)}>Cancel</button></div>
+                </div>
+              ) : (
+                <div className="cc-pr" key={a.id}>
+                  <span className="grow trunc"><b>@{(a.username ?? "unknown").replace(/^@/, "")}</b><small>{many(a.chats, "chat")} · {many(a.comments, "comment")} · hidden since {d8(a.disconnected_at)}</small></span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDelPast(a.id)} data-testid="ig-past-delete">Delete data</button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Meta ads */}

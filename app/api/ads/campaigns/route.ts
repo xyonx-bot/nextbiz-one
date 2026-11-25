@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getTenant, unauthorized } from "@/lib/tenant";
 import { draftToCampaign, filterCampaigns, seedCampaigns } from "@/lib/ads";
 import { adsConnection, liveCampaigns } from "@/lib/meta-ads";
 

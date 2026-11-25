@@ -42,7 +42,7 @@ describe("exchangeIgCode", () => {
   });
 
   it("live: short token → long-lived → /me user_id → stores account → subscribes webhooks", async () => {
-    vi.stubEnv("IG_LIVE", "true"); vi.stubEnv("IG_APP_ID", "1234567890"); vi.stubEnv("IG_APP_SECRET", "a".repeat(32));
+    vi.stubEnv("IG_LIVE", "true"); vi.stubEnv("IG_APP_ID", "1234567890"); vi.stubEnv("IG_APP_SECRET", "a".repeat(32)); vi.stubEnv("APP_ENCRYPTION_KEY", "unit-test-encryption-key");
     const calls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       calls.push(url);
@@ -61,7 +61,11 @@ describe("exchangeIgCode", () => {
     expect(calls.some((c) => c.includes("subscribed_fields=messages,comments"))).toBe(true);
     const ins = queries.find((q) => /INSERT INTO ig_accounts/.test(q.sql))!;
     expect(ins.params[1]).toBe("17841400000000001"); // webhook entry.id = IG professional account id
-    expect(ins.params[6]).toBe("long");
+    // the token is stored encrypted, never as text
+    expect(Buffer.isBuffer(ins.params[6])).toBe(true);
+    const { decrypt } = await import("@/lib/crypto");
+    expect(decrypt(ins.params[6] as Buffer)).toBe("long");
+    expect(JSON.stringify(queries.map((q) => q.params.filter((x) => typeof x === "string")))).not.toContain('"long"');
   });
 });
 

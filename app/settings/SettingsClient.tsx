@@ -35,6 +35,7 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
   const [profile, setProfile] = useState<Profile | null>(null);
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [ig, setIg] = useState<{ live: boolean; account: IgAccount | null } | null>(null);
+  const [ads, setAds] = useState<{ connected: boolean; name: string | null } | null>(null);
   const [about, setAbout] = useState("");
   const [active, setActive] = useState("profile");
   const [confirm, setConfirm] = useState("");
@@ -45,11 +46,13 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
 
   const load = useCallback(async () => {
     // no-store on all: these GETs were heuristic-cached and re-served stale after mutations
-    const [p, s, g] = await Promise.all([
+    const [p, s, g, a] = await Promise.all([
       fetch("/api/settings/profile", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
       fetch("/api/settings/sessions", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
       fetch("/api/instagram/connect", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
+      fetch("/api/ads/connection", { cache: "no-store" }).then((x) => x.json()).catch(() => null),
     ]);
+    if (a?.ok) setAds({ connected: !!a.connected, name: a.account?.name ?? null });
     if (p?.ok) { setProfile(p.profile); setAbout(p.profile?.about ?? ""); }
     setSessions(s?.ok ? s.sessions ?? [] : []);
     if (g?.ok) setIg({ live: g.live, account: g.account });
@@ -142,19 +145,19 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
               </div>
             </div>
             {!connected && <div className="frow"><div><b>Connect your number</b><small>Takes about 3 minutes with Facebook login</small></div><div><a className="btn btn-primary btn-sm" href="/connections#whatsapp"><Icon name="plugs-connected" />Connect WhatsApp</a></div></div>}
-            <div className="frow"><div><b>Change number</b><small>A number can serve one workspace</small></div><div className="xs muted" style={{ fontWeight: 600, alignSelf: "center" }}>Contact support to move to a different number.</div></div>
+            <div className="frow"><div><b>Change number</b><small>A number can serve one workspace</small></div><div className="xs muted" style={{ fontWeight: 600, alignSelf: "center" }}>Disconnect this number in <a href="/connections#whatsapp" style={{ textDecoration: "underline" }}>Connections</a>, then connect the new one.</div></div>
           </section>
 
           <section className="card sec" id="channels">
-            <div className="card-h"><span className="grow"><span className="h2">Other channels</span><small>More ways to reach customers — rolling out during early access.</small></span><a className="btn btn-soft btn-sm" href="/connections"><Icon name="plugs-connected" />All connections</a></div>
+            <div className="card-h"><span className="grow"><span className="h2">Other channels</span><small>Instagram and Meta ads, connected on their own.</small></span><a className="btn btn-soft btn-sm" href="/connections"><Icon name="plugs-connected" />All connections</a></div>
             <div className="chan">
               <div className="ch" data-testid="ig-acct" style={ig?.account ? { borderStyle: "solid", background: "var(--surface)" } : undefined}>
                 <span className="icon-tile pink lg"><Icon name="instagram-logo" /></span>
                 <span className="grow"><b>Instagram DMs &amp; comments{ig?.account?.username ? ` · @${ig.account.username.replace(/^@/, "")}` : ""}</b>
-                  <small>{ig?.account ? (ig.account.live ? `Connected · token valid until ${ig.account.expires_at ? d8(ig.account.expires_at) : "—"}` : "Connecting… (test mode)") : "Reply to Instagram DMs and comments from NextBiz One"}</small></span>
-                <span className={`st pill sm ${ig?.account?.live ? "ok" : ig?.account ? "warn" : "neutral"}`}>{ig?.account?.live ? "Connected" : ig?.account ? "Pending" : "Not connected"}</span>
+                  <small>{ig?.account ? `Connected${ig.account.expires_at ? ` · login valid until ${d8(ig.account.expires_at)}` : ""}` : "Reply to Instagram DMs and comments from NextBiz One"}</small></span>
+                <span className={`st pill sm ${ig?.account ? "ok" : "neutral"}`}>{ig?.account ? "Connected" : "Not connected"}</span>
               </div>
-              <div className="ch"><span className="icon-tile orange lg"><Icon name="megaphone" /></span><span className="grow"><b>Meta ad account</b><small>Run click-to-WhatsApp ads</small></span><span className="demo">Demo</span></div>
+              <div className="ch"><span className="icon-tile orange lg"><Icon name="megaphone" /></span><span className="grow"><b>Meta ad account{ads?.name ? ` · ${ads.name}` : ""}</b><small>Run click-to-WhatsApp and Instagram ads</small></span><span className={`pill sm ${ads?.connected ? "ok" : "neutral"}`} data-testid="ads-acct">{ads?.connected ? "Connected" : "Not connected"}</span></div>
             </div>
             {ig?.account?.live && (
               <div className="frow"><div><b>Instagram status</b><small>Messages and comments reach NextBiz One through Meta webhooks</small></div>
@@ -166,7 +169,7 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
             <div className="frow" data-testid="ig-connect-strip"><div><b>{ig?.account?.live ? "Reconnect Instagram" : "Connect Instagram"}</b><small>Log in with the Instagram professional account you want to automate</small></div>
               <div className="row wrap gap-6">
                 <button className="btn btn-soft btn-sm" data-testid="ig-oauth" onClick={() => { window.location.href = "/api/auth/instagram/start"; }}><Icon name="instagram-logo" />{ig?.account?.live ? "Reconnect" : "Login with Instagram"}</button>
-                {ig?.account && <button className="btn btn-ghost btn-sm" data-testid="ig-disconnect" onClick={async () => { await fetch("/api/instagram/connect", { method: "DELETE" }); setNote({ kind: "ok", text: "Instagram disconnected" }); await load(); }}>Disconnect</button>}
+                {ig?.account && <a className="btn btn-ghost btn-sm" href="/connections#instagram">Manage or disconnect</a>}
               </div></div>
           </section>
 
@@ -205,7 +208,7 @@ export function SettingsClient({ email, displayName }: { email: string; displayN
                   <>
                     <label className="label" htmlFor="del-confirm">Type <b style={{ color: "var(--ink)" }}>{profile?.name}</b> to confirm</label>
                     <input id="del-confirm" className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
-                    <div className="row"><button className="btn btn-ghost btn-sm" onClick={() => { setDel(false); setConfirm(""); }}>Cancel</button><button className="btn btn-danger btn-sm" disabled={busy || confirm !== profile?.name} onClick={() => void deleteWorkspace()}>Delete forever</button></div>
+                    <div className="row"><button className="btn btn-ghost btn-sm" onClick={() => { setDel(false); setConfirm(""); }}>Cancel</button><button className="btn btn-danger btn-sm" disabled={busy || confirm.trim() !== profile?.name} onClick={() => void deleteWorkspace()}>Delete forever</button></div>
                   </>
                 )}
               </div></div>

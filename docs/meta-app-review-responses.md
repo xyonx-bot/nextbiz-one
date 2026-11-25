@@ -1,93 +1,74 @@
 # Meta App Review — paste-ready responses
-App: 1950786512230644 (NextBiz One) · Site: one.nextbizstudio.com (prod), one-beta.nextbizstudio.com (beta)
-Product: NextBiz One — done-for-you WhatsApp + Instagram + Ads workspace for local businesses (India).
-Model: the business owner ("operator") connects their OWN WhatsApp number, Instagram professional account, Facebook Page and ad account through our app. We only ever touch assets they explicitly connected.
+
+App: 1950786512230644 (NextBiz One) · Site: https://one.nextbizstudio.com
+Product: one workspace where a local business answers WhatsApp and Instagram messages and comments, sends approved WhatsApp templates to people who opted in, and runs Meta ads.
+Model: the business owner connects their **own** WhatsApp number, Instagram professional account and ad account on Meta's login screens. The app only touches what they connected.
+
+**Every answer below describes something the app does today.** Request only these permissions. Checked against the code on 25 Nov 2026.
+
+## Do not request (the app doesn't use them)
+
+`threads_business_basic` · `manage_app_solution` · `whatsapp_business_manage_events` · Business Asset User Profile Access · **Human Agent** (replies use the normal 24-hour window; no message tag is sent) · `instagram_manage_comments` / `instagram_manage_messages` (the Facebook-Login versions; we use the Instagram-Login ones)
 
 ---
 
-## Tier question — Marketing API Access Tier
-> We request the access tier needed for ads_read + ads_management so operators can view and manage campaigns inside their own ad account (e.g. act_1724784822411857 "NextBiz One Ads") from the /ads dashboard. We never run ads on Meta assets the user did not connect; we create/edit/pause campaigns only inside the ad account linked to their connected Page. Test calls already performed with our system-user token: `GET /v21.0/act_1724784822411857` and `GET /v21.0/act_1724784822411857/campaigns` → HTTP 200. If Advanced Access is required, we will complete Business Verification.
+## Instagram (Instagram API with Instagram Login)
 
-## business_asset_user_profile_access (Business Asset User Profile Access)
-> Used to read the profile (id, name) of business assets the operator connected (Pages, ad accounts, WABA, IG account) so Settings can label them correctly, e.g. "NextBiz One Ads (act_…)". Read-only; no targeting, no sharing with third parties.
+### instagram_business_basic
+> We read the connected professional account's id, username, name, profile picture, follower count and recent posts to show which account is connected (Connections), the Social overview, and which post each comment belongs to. It is also the required base for the two permissions below.
 
-## instagram_business_basic
-> Base permission for all Instagram Business features. We use it to read the connected professional account's profile (`GET /v21.0/me?fields=id,username,name`) after Instagram Business Login and to display the account in Settings → Connections. Required as the parent of instagram_business_manage_messages / instagram_business_manage_comments.
+### instagram_business_manage_messages
+> Businesses read and answer their Instagram DMs in NextBiz One. Incoming messages arrive through a signature-verified webhook, and recent conversations are loaded when the account is connected. A person types a reply in the inbox and we send it with POST /me/messages inside Instagram's 24-hour window; outside it, sending is blocked. The business can also switch on a welcome message, away message or keyword reply, sent only in answer to a customer's message. When a person replies by hand, automatic replies pause for that chat. Disconnecting stops events and deletes the token; the account's data can be deleted in Connections.
 
-## instagram_business_manage_messages
-> Core feature — Instagram DMs. Our signature-verified webhook `https://one.nextbizstudio.com/api/webhooks/instagram` receives incoming DM events (X-Hub-Signature-256 checked, invalid → 401) and stores them; the operator reads and replies from the NextBiz One inbox via `POST /{ig-user-id}/messages`. Screencast: Connect Instagram → Meta sends test webhook event (Webhooks → Test) → event visible in app → reply sent via Graph Explorer with the connected token.
+### instagram_business_manage_comments
+> Businesses see the comments on their own posts and reply publicly, send one private reply within 7 days, or hide, unhide and delete a comment on Instagram. Optional keyword rules answer matching comments. We only act on media owned by the connected account.
 
-## instagram_manage_comments
-> Manage comments on the business's own media: `GET /{media-id}/comments` to list and `POST /{comment-id}/replies` to reply (and hide spam). Submitted together with instagram_basic as the form requires. We only touch comments on media owned by the connected IG account.
+## WhatsApp
 
-## threads_business_basic
-> Read-only profile read of the connected Threads business profile (if the client has one) to show its connection status in Settings. No posting.
+### whatsapp_business_management
+> During Embedded Signup we read the WhatsApp account and number the business selects and subscribe our webhook to it. In Templates, the business creates message templates (text or media header, buttons), submits them for Meta's review, sees their status and deletes them.
 
-## pages_show_list
-> `GET /me/accounts` to list the operator's Facebook Pages so they can pick which Page to connect for ads/IG management. Read-only; required parent for pages_manage_ads and pages_read_engagement.
+### whatsapp_business_messaging
+> Customers' messages arrive in the inbox through a signature-verified webhook, and the business replies inside the 24-hour window. Outside it, only approved templates can be sent. Broadcasts send an approved template only to contacts who opted in; replying STOP opts a contact out at once. Delivery and read status is shown per message and per broadcast recipient.
 
-## pages_read_engagement
-> Read Page engagement metrics (reach/impressions on posts) for the reporting view alongside ads. Parent pages_show_list is included in this submission.
+### business_management
+> Needed to list the business assets (WhatsApp account, ad accounts, Pages) the person selects during Embedded Signup and when connecting Meta ads. No changes are made to the business portfolio.
 
-## pages_manage_ads
-> Create, edit, pause and set budgets on ad campaigns in the Page-connected ad account from the /ads UI (`POST /act_{id}/campaigns`, `POST /act_{id}/adsets`, …). Only the connected ad account is touched. pages_show_list is included as required.
+## Ads (request together, only if the screencast shows them)
 
-## ads_read
-> Read campaign + insights (spend, results, status) from the connected ad account to render the /ads performance table. Test call already made with system-user token: `GET /v21.0/act_1724784822411857/campaigns?fields=name,status,spend` → 200.
+### ads_read
+> We show campaigns with spend, results and status for the ad account the business connected, in Campaigns, Performance and the dashboard.
 
-## ads_management
-> Full campaign lifecycle from the /ads dashboard: create draft campaign → preview → publish → pause. Scoped to the operator's own ad account. pages_read_engagement included as required. Advanced Access / Business Verification will be completed if prompted.
+### ads_management
+> The business builds a campaign (audience, budget, creative), previews it with Meta's own preview and publishes it. Campaigns are always created paused; resuming asks for confirmation. They can be paused and resumed. Only the connected ad account is used, and Meta bills it directly.
 
-## whatsapp_business_messaging
-> Send + receive WhatsApp for the client's business number. Inbound: webhook `/api/webhooks/whatsapp` (signature-verified) — ALREADY LIVE in production since 25 Oct 2026, a real template broadcast was delivered to a test number. Outbound: `POST /{phone-number-id}/messages` with approved templates and free-form replies inside the 24h customer-service window. Screencast shows prod: send template → recipient receives → reply → appears in inbox.
+### pages_show_list
+> To let the business choose which of their Facebook Pages an ad runs from.
 
-## whatsapp_business_manage_events
-> Receive message-status webhook events (sent / delivered / read receipts) so the dashboard can show delivery status per campaign. Event payloads only; no extra message content is stored beyond status.
+### pages_read_engagement
+> To read the chosen Page's details needed for the ad: its name and whether WhatsApp is linked.
 
-## whatsapp_business_management
-> Read WABA + phone-number config (display name, quality rating, status, template list) to show number health in Settings and to manage message templates used by campaigns.
+### pages_manage_ads
+> To create the ad for the chosen Page when the business publishes a campaign.
 
-## business_management
-> Enumerate the business assets (ad accounts, Pages, WABA, IG accounts) the operator owns, to populate the Connections UI and to scope all API calls strictly to their own assets. No cross-business access.
-
-## manage_app_solution
-> Manage webhook subscriptions / app-solution config for the assets the operator connected (e.g. subscribing our webhook URL to their IG account so DM events flow). Only their connected assets.
-
-## public_profile
-> Basic Facebook profile (name, id) of the person logging in, used to create and label their workspace account. No posting, no friend-list access.
-
-## Human Agent
-> Human Agent tag is used when a business operator replies to a customer conversation from the NextBiz One inbox (WhatsApp and Instagram DMs). The tag is applied only to messages an operator actually writes and sends from the app, so Meta knows a human — not a bot — is handling the thread. It is never applied to automated or template messages.
-
-## Reviewer instructions (Meta reviewers / testers)
-- App domain: one.nextbizstudio.com (prod). Beta mirror: one-beta.nextbizstudio.com.
-- Privacy policy: https://one.nextbizstudio.com/privacy
-- IG connect (reviewer reproduction): log in as the reviewer/test account → Settings → Connections → "Login with Instagram" → Meta Business Login dialog → select the business portfolio + Instagram account → Confirm → "Instagram connected ✓". The connected @nextbizstudio account shows in Settings and in the Social sidebar tree.
-- DM test: send a test message to the connected IG account from another account → webhook event lands in the app.
-- Test login credentials are provided in the review submission notes (never in the repo).
+### instagram_basic
+> To list the Instagram account linked to the Page, so the business can choose it for the ad.
 
 ---
 
-## Dependency notes (form requirements)
-- instagram_manage_comments requires **instagram_basic** → also request instagram_basic in the same submission.
-- pages_manage_ads requires **pages_show_list** → included.
-- pages_read_engagement requires **pages_show_list** → included.
-- ads_management requires **pages_read_engagement** → included.
+## Reviewer instructions
 
-## "Required API test calls" — checklist (do in Graph API Explorer, app selected, system-user token)
-- [x] `GET /v21.0/me` (token debug: scopes list)
-- [x] `GET /v21.0/2308850409942395` (WABA read) → 200
-- [x] `GET /v21.0/act_1724784822411857` + `/campaigns` (ads_read) → 200
-- [ ] `POST /{phone-id}/messages` — template test send to own test number (whatsapp_business_messaging)
-- [ ] Webhook "Test" button on instagram + whatsapp fields → event received (webhook live, verified)
-- [ ] `GET /me/accounts` (pages_show_list)
-- [ ] `GET /{ig-user-id}` after connect (instagram_business_basic)
-- [ ] `POST /act_{id}/campaigns` dry-run / draft campaign then delete (ads_management)
+1. Open https://one.nextbizstudio.com/login and sign in with the login in the submission notes (never in this repo).
+2. **Connections** → Instagram → "Log in with Instagram" → approve. The card shows the account as Connected.
+3. Send a DM to that account from another Instagram account → **Social → Instagram DMs** → reply.
+4. Comment on one of its posts → **Social → Comments** → reply publicly, then hide and unhide the comment.
+5. **Connections** → Instagram → Disconnect → its chats leave the inbox. Under "Previously connected" → Delete data.
 
-## Screencast plan (end-to-end UX)
-1. Login to one-beta.nextbizstudio.com → /onboarding 3 steps.
-2. Settings → Connections: WhatsApp number shows LIVE connected (prod WABA); click Connect Instagram → OAuth dialog → approve (dev mode: you are admin).
-3. Meta Dashboard → Webhooks → Test → instagram message event → refresh app, event visible.
-4. /ads: create campaign → preview → (beta shows mock badge until live; note this in the video).
-5. Prod WhatsApp: send template to test number → delivered receipt webhook → status ticks in UI.
-Record 2–3 min, 1080p, no real customer data — use test numbers/accounts only.
+Privacy: https://one.nextbizstudio.com/privacy · Deletion: https://one.nextbizstudio.com/data-deletion
+
+## Before recording
+
+- [ ] Use test accounts only, no real customer data
+- [ ] The workspace is clean: no test contacts, drafts or rejected templates
+- [ ] 1080p, English; show Meta's login screen granting each permission, then the feature using it
+- [ ] Make at least one successful API call per permission in the 30 days before submitting (Meta's dashboard shows a check mark)

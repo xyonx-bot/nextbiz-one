@@ -1,6 +1,8 @@
 import { getPool } from "./db";
 import { verifySignature } from "./webhook";
 import { demoMedia, demoMsgId, isDemoId } from "./demo";
+import { encrypt, encryptionReady } from "./crypto";
+import { HAS_IG_TOKEN, igTokenOf } from "./ig-token";
 
 /**
  * Instagram — "Instagram API with Instagram Login" (no Facebook Page needed).
@@ -122,23 +124,23 @@ export type IgAccountRow = {
 };
 const ACCT_COLS = "id, workspace_id, ig_user_id, username, display_name, profile_picture_url, scopes, expires_at, live, webhook_subscribed, last_error, updated_at";
 
-/** The connected account a webhook belongs to — and through it, the workspace. Unknown accounts are ignored. */
+/** The connected account a webhook belongs to — and through it, the workspace. Unknown and disconnected accounts are ignored. */
 async function accountForIgUser(igUserId: string): Promise<{ id: string; workspaceId: string } | null> {
   const { rows } = await getPool().query(
-    `SELECT id, workspace_id FROM ig_accounts WHERE ig_user_id = $1 ORDER BY live DESC, updated_at DESC LIMIT 1`, [igUserId]);
+    `SELECT id, workspace_id FROM ig_accounts WHERE ig_user_id = $1 AND live ORDER BY updated_at DESC LIMIT 1`, [igUserId]);
   return rows[0] ? { id: rows[0].id as string, workspaceId: rows[0].workspace_id as string } : null;
 }
 
 /** The workspace's current account (the live one when there is one). */
 export async function getIgAccount(wsId: string): Promise<IgAccountRow | null> {
   const { rows } = await getPool().query(
-    `SELECT ${ACCT_COLS} FROM ig_accounts WHERE workspace_id = $1 AND (live OR ig_user_id = 'mock-ig-user')
-      ORDER BY live DESC, updated_at DESC LIMIT 1`, [wsId]);
+    `SELECT ${ACCT_COLS} FROM ig_accounts WHERE workspace_id = $1 AND (live OR (ig_user_id = 'mock-ig-user' AND NOT $2))
+      ORDER BY live DESC, updated_at DESC LIMIT 1`, [wsId, igLive()]);
   return (rows[0] as IgAccountRow) ?? null;
 }
 async function tokenFor(accountId: string): Promise<{ token: string | null; igUserId: string; live: boolean }> {
-  const { rows } = await getPool().query(`SELECT access_token, ig_user_id, live FROM ig_accounts WHERE id = $1`, [accountId]);
-  return { token: rows[0]?.access_token ?? null, igUserId: rows[0]?.ig_user_id ?? "", live: !!rows[0]?.live };
+  const { rows } = await getPool().query(`SELECT access_token, access_token_enc, ig_user_id, live FROM ig_accounts WHERE id = $1`, [accountId]);
+  return { token: igTokenOf(rows[0]), igUserId: rows[0]?.ig_user_id ?? "", live: !!rows[0]?.live };
 }
 
 /** Mock connect (IG_LIVE != "true"): stores a mock-badged account, no Graph call. */
@@ -175,11 +177,64 @@ export async function subscribeIgWebhooks(token: string): Promise<{ ok: boolean;
   return { ok: true };
 }
 
+/** Stop Meta sending this account's events to us. Best effort: the login may already be revoked. */
+async function unsubscribeIgWebhooks(token: string): Promise<boolean> {
+  const r = await gfetch(`${IG_GRAPH}/me/subscribed_apps?access_token=${encodeURIComponent(token)}`, { method: "DELETE" }).catch(() => null);
+  return !!r?.ok;
+}
+
+/**
+ * Disconnect a workspace's Instagram (all of it, or everything except `keepIgUserId` when switching accounts):
+ * unsubscribe its events at Meta, forget the token. History stays, hidden, until the account reconnects or its data is deleted.
+ */
+export async function disconnectIg(wsId: string, keepIgUserId: string | null = null): Promise<number> {
+  const p = getPool();
+  const { rows } = await p.query(
+    `SELECT id, ig_user_id, access_token, access_token_enc FROM ig_accounts WHERE workspace_id = $1 AND ($2::text IS NULL OR ig_user_id <> $2) AND (live OR ${HAS_IG_TOKEN})`, [wsId, keepIgUserId]);
+  for (const r of rows) {
+    const token = igTokenOf(r);
+    if (igLive() && token && !isDemoId(r.ig_user_id)) await unsubscribeIgWebhooks(token);
+    await p.query(`UPDATE ig_accounts SET live = false, access_token = NULL, access_token_enc = NULL, webhook_subscribed = false, last_error = NULL, updated_at = now() WHERE id = $1`, [r.id]);
+  }
+  return rows.length;
+}
+
+export type PastIgAccount = { id: string; username: string | null; disconnected_at: string; chats: number; messages: number; comments: number };
+
+/** Accounts this workspace used before and still holds history for. */
+export async function pastIgAccounts(wsId: string): Promise<PastIgAccount[]> {
+  const { rows } = await getPool().query(
+    `SELECT * FROM (SELECT a.id, a.username, a.updated_at AS disconnected_at,
+            (SELECT count(*)::int FROM ig_threads t WHERE t.ig_account_id = a.id) AS chats,
+            (SELECT count(*)::int FROM ig_messages m WHERE m.ig_account_id = a.id) AS messages,
+            (SELECT count(*)::int FROM ig_comments c WHERE c.ig_account_id = a.id) AS comments
+       FROM ig_accounts a WHERE a.workspace_id = $1 AND NOT a.live) x
+      WHERE chats + messages + comments > 0 ORDER BY disconnected_at DESC`, [wsId]);
+  return rows as PastIgAccount[];
+}
+
+/** Permanently delete a disconnected account with its chats, messages, comments and stored raw events. */
+export async function deletePastIgAccount(wsId: string, accountId: string): Promise<boolean> {
+  const p = getPool();
+  const a = (await p.query(`DELETE FROM ig_accounts WHERE id = $1 AND workspace_id = $2 AND NOT live RETURNING ig_user_id`, [accountId, wsId])).rows[0];
+  if (!a) return false;
+  await deleteIgEvents(a.ig_user_id);
+  await p.query(`INSERT INTO ig_audit (workspace_id, action, detail) VALUES ($1, 'delete-data', $2::jsonb)`, [wsId, JSON.stringify({ ig_user_id: a.ig_user_id })]);
+  return true;
+}
+
+/** Raw webhook envelopes of an account nobody holds any more (they contain message text). */
+export async function deleteIgEvents(igUserId: string): Promise<void> {
+  await getPool().query(
+    `DELETE FROM ig_webhook_events WHERE split_part(ig_event_id, ':', 1) = $1 AND NOT EXISTS (SELECT 1 FROM ig_accounts WHERE ig_user_id = $1)`, [igUserId]);
+}
+
 /** code → short token → long-lived token → /me → store live account → subscribe webhooks. */
 export async function exchangeIgCode(wsId: string, code: string, redirectUri: string): Promise<{ account: IgAccountRow; mock: boolean }> {
   if (!igLive()) throw new Error("IG_LIVE is not true — mock mode, no Graph call");
   const { appId, appSecret } = igAppCreds();
   if (!/^\d{6,}$/.test(appId) || appSecret.length < 16) throw new Error("Instagram app ID / secret are not configured on this server");
+  if (!encryptionReady()) throw new Error("APP_ENCRYPTION_KEY is not configured on this server");
 
   const form = new URLSearchParams({ client_id: appId, client_secret: appSecret, grant_type: "authorization_code", redirect_uri: redirectUri, code: code.replace(/#_$/, "") });
   const tRes = await gfetch("https://api.instagram.com/oauth/access_token", { method: "POST", body: form, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
@@ -209,16 +264,16 @@ export async function exchangeIgCode(wsId: string, code: string, redirectUri: st
   if (other.rows.length) throw new Error(`@${me.username ?? igUserId} is already connected to another NextBiz One workspace`);
   const expiresAt = long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString()
     : exchangeNote ? new Date(Date.now() + 3600 * 1000).toISOString() : null; // short-lived: ~1 hour
-  // one live Instagram account per workspace: retire any other live row
-  await p.query(`UPDATE ig_accounts SET live = false, access_token = NULL, updated_at = now() WHERE workspace_id = $1 AND ig_user_id <> $2 AND live`, [wsId, igUserId]);
+  // one live Instagram account per workspace: disconnect any other one
+  await disconnectIg(wsId, igUserId);
   const { rows } = await p.query(
-    `INSERT INTO ig_accounts (workspace_id, ig_user_id, app_scoped_id, username, display_name, profile_picture_url, access_token, scopes, expires_at, live, token_refreshed_at, last_error)
+    `INSERT INTO ig_accounts (workspace_id, ig_user_id, app_scoped_id, username, display_name, profile_picture_url, access_token_enc, scopes, expires_at, live, token_refreshed_at, last_error)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, now(), NULL)
      ON CONFLICT (workspace_id, ig_user_id) DO UPDATE SET app_scoped_id = EXCLUDED.app_scoped_id, username = EXCLUDED.username,
-       display_name = EXCLUDED.display_name, profile_picture_url = EXCLUDED.profile_picture_url, access_token = EXCLUDED.access_token,
+       display_name = EXCLUDED.display_name, profile_picture_url = EXCLUDED.profile_picture_url, access_token = NULL, access_token_enc = EXCLUDED.access_token_enc,
        scopes = EXCLUDED.scopes, expires_at = EXCLUDED.expires_at, live = true, token_refreshed_at = now(), last_error = NULL, updated_at = now()
      RETURNING ${ACCT_COLS}`,
-    [wsId, igUserId, short.user_id != null ? String(short.user_id) : null, me.username ?? null, me.name ?? null, me.profile_picture_url ?? null, token, granted, expiresAt],
+    [wsId, igUserId, short.user_id != null ? String(short.user_id) : null, me.username ?? null, me.name ?? null, me.profile_picture_url ?? null, encrypt(token), granted, expiresAt],
   );
   const sub = await subscribeIgWebhooks(token);
   const lastError = [sub.ok ? null : `Webhook subscription failed: ${sub.error}`, exchangeNote].filter(Boolean).join(" · ") || null;
@@ -233,16 +288,18 @@ export async function refreshIgTokens(withinDays = 15): Promise<{ refreshed: num
   if (!igLive()) return { refreshed: 0, failed: 0 };
   const p = getPool();
   const { rows } = await p.query(
-    `SELECT id, access_token FROM ig_accounts WHERE live AND access_token IS NOT NULL
+    `SELECT id, access_token, access_token_enc FROM ig_accounts WHERE live AND ${HAS_IG_TOKEN}
        AND (expires_at IS NULL OR expires_at < now() + ($1 || ' days')::interval)
        AND (token_refreshed_at IS NULL OR token_refreshed_at < now() - interval '1 day')`, [String(withinDays)]);
   let refreshed = 0, failed = 0;
   for (const r of rows) {
-    const res = await gfetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(r.access_token)}`).catch(() => null);
+    const cur = igTokenOf(r);
+    if (!cur) { await p.query(`UPDATE ig_accounts SET last_error = 'The stored login can no longer be read — reconnect Instagram' WHERE id = $1`, [r.id]); failed++; continue; }
+    const res = await gfetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(cur)}`).catch(() => null);
     if (res?.ok) {
       const j = (await res.json()) as { access_token?: string; expires_in?: number };
-      await p.query(`UPDATE ig_accounts SET access_token = COALESCE($2, access_token), expires_at = $3, token_refreshed_at = now(), last_error = NULL WHERE id = $1`,
-        [r.id, j.access_token ?? null, j.expires_in ? new Date(Date.now() + j.expires_in * 1000).toISOString() : null]);
+      await p.query(`UPDATE ig_accounts SET access_token = NULL, access_token_enc = $2, expires_at = $3, token_refreshed_at = now(), last_error = NULL WHERE id = $1 AND live`,
+        [r.id, encrypt(j.access_token ?? cur), j.expires_in ? new Date(Date.now() + j.expires_in * 1000).toISOString() : null]);
       refreshed++;
     } else {
       await p.query(`UPDATE ig_accounts SET last_error = $2 WHERE id = $1`, [r.id, `Token refresh failed: ${res ? await metaErr(res) : "network"}`]);
@@ -265,12 +322,33 @@ async function sendErr(r: Response): Promise<IgSendResult> {
   return { ok: false, error: await metaErr(r), code };
 }
 
+const DISCONNECTED: IgSendResult = { ok: false, error: "This Instagram account is disconnected — nothing was sent. Reconnect it in Connections to reply." };
+
+/**
+ * Texts we just asked Instagram to send. Meta's echo can arrive before our own row is written; without this it
+ * looks like a person replied in the Instagram app, which would pause automation for the chat.
+ */
+export const ownSends = {
+  at: new Map<string, number>(),
+  add(accountId: string, text: string) {
+    const now = Date.now();
+    for (const [k, t] of this.at) if (now - t > 120_000) this.at.delete(k);
+    this.at.set(`${accountId}\n${text}`, now);
+  },
+  has(accountId: string, text: string | null): boolean {
+    const t = this.at.get(`${accountId}\n${text ?? ""}`);
+    return t != null && Date.now() - t < 120_000;
+  },
+};
+
 /** DM to a customer (inside Instagram's 24-hour window). */
 export async function igSendDm(accountId: string, igsid: string, text: string): Promise<IgSendResult> {
   const a = await tokenFor(accountId);
   if (isDemoId(a.igUserId)) return { ok: true, mid: demoMsgId("dm") };
-  if (!igLive() || !a.live) return { ok: true, mid: `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
-  if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Settings." };
+  if (!a.live) return DISCONNECTED;
+  if (!igLive()) return { ok: true, mid: `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
+  if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Connections." };
+  ownSends.add(accountId, text);
   const r = await graphPost("/me/messages", a.token, { recipient: { id: igsid }, message: { text } });
   if (!r.ok) return sendErr(r);
   const j = (await r.json()) as { message_id?: string };
@@ -281,8 +359,10 @@ export async function igSendDm(accountId: string, igsid: string, text: string): 
 export async function igPrivateReply(accountId: string, commentId: string, text: string): Promise<IgSendResult> {
   const a = await tokenFor(accountId);
   if (isDemoId(a.igUserId)) return { ok: true, mid: demoMsgId("pr") };
-  if (!igLive() || !a.live) return { ok: true, mid: `mock-pr-${Date.now()}` };
-  if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Settings." };
+  if (!a.live) return DISCONNECTED;
+  if (!igLive()) return { ok: true, mid: `mock-pr-${Date.now()}` };
+  if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Connections." };
+  ownSends.add(accountId, text);
   const r = await graphPost("/me/messages", a.token, { recipient: { comment_id: commentId }, message: { text } });
   if (!r.ok) return sendErr(r);
   const j = (await r.json()) as { message_id?: string };
@@ -293,12 +373,26 @@ export async function igPrivateReply(accountId: string, commentId: string, text:
 export async function igPublicReply(accountId: string, commentId: string, text: string): Promise<IgSendResult> {
   const a = await tokenFor(accountId);
   if (isDemoId(a.igUserId)) return { ok: true, mid: demoMsgId("cr") };
-  if (!igLive() || !a.live) return { ok: true, mid: `mock-cr-${Date.now()}` };
-  if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Settings." };
+  if (!a.live) return DISCONNECTED;
+  if (!igLive()) return { ok: true, mid: `mock-cr-${Date.now()}` };
+  if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Connections." };
   const r = await gfetch(`${IG_GRAPH}/${encodeURIComponent(commentId)}/replies?message=${encodeURIComponent(text)}`, { method: "POST", headers: { Authorization: `Bearer ${a.token}` } });
   if (!r.ok) return sendErr(r);
   const j = (await r.json()) as { id?: string };
   return { ok: true, mid: j.id ?? `cr-${Date.now()}` };
+}
+
+/** Hide, unhide or delete a comment on Instagram itself. */
+export async function igModerateComment(accountId: string, commentId: string, action: "hide" | "unhide" | "delete"): Promise<{ ok: true } | { ok: false; error: string }> {
+  const a = await tokenFor(accountId);
+  if (isDemoId(a.igUserId)) return { ok: true };
+  if (!a.live) return { ok: false, error: "This Instagram account is disconnected. Reconnect it in Connections first." };
+  if (!igLive()) return { ok: true };
+  if (!a.token) return { ok: false, error: "Instagram isn't connected — reconnect in Connections." };
+  const url = `${IG_GRAPH}/${encodeURIComponent(commentId)}${action === "delete" ? "" : `?hide=${action === "hide"}`}`;
+  const r = await gfetch(url, { method: action === "delete" ? "DELETE" : "POST", headers: { Authorization: `Bearer ${a.token}` } }).catch(() => null);
+  if (!r) return { ok: false, error: "Couldn't reach Instagram — try again." };
+  return r.ok ? { ok: true } : { ok: false, error: await metaErr(r) };
 }
 
 /** Best-effort customer profile (User Profile API) — only for people who messaged the account. */
@@ -352,11 +446,11 @@ export async function ensureThread(wsId: string, accountId: string, igsid: strin
   return { id: rows[0].id as string, created: true };
 }
 
-/** Record an outbound message the app sent (so the echo webhook dedupes on mid). */
+/** Record an outbound message the app sent. The echo webhook or the DM sync may have stored it first — then just mark it as ours. */
 export async function recordOutbound(wsId: string, accountId: string, threadId: string, mid: string, body: string, origin: "app" | "automation", status: "sent" | "failed", error?: string) {
   await getPool().query(
     `INSERT INTO ig_messages (workspace_id, ig_account_id, thread_id, mid, sender_id, body, raw, direction, status, origin, error)
-     VALUES ($1, $2, $3, $4, 'self', $5, '{}'::jsonb, 'out', $6, $7, $8) ON CONFLICT (mid) DO NOTHING`,
+     VALUES ($1, $2, $3, $4, 'self', $5, '{}'::jsonb, 'out', $6, $7, $8) ON CONFLICT (mid_key) DO UPDATE SET origin = EXCLUDED.origin`,
     [wsId, accountId, threadId, mid, body, status, origin, error ?? null],
   );
 }
@@ -374,13 +468,19 @@ export async function processIgInbound(body: unknown, signatureValid: boolean): 
       `INSERT INTO ig_webhook_events (ig_event_id, body, signature_valid) VALUES ($1, $2::jsonb, $3)
        ON CONFLICT (ig_event_id) DO NOTHING RETURNING id`, [e.eventId, JSON.stringify(body), signatureValid]);
     if (!(r.rowCount && r.rowCount > 0)) {
-      const ex = await p.query(`SELECT signature_valid FROM ig_webhook_events WHERE ig_event_id = $1`, [e.eventId]);
-      if (!signatureValid || ex.rows[0]?.signature_valid === true) { duplicate = true; continue; }
+      const ex = await p.query(`SELECT signature_valid, processed FROM ig_webhook_events WHERE ig_event_id = $1`, [e.eventId]);
+      // a retry of an event we failed to finish is processed again (rows are idempotent)
+      if (!signatureValid || (ex.rows[0]?.signature_valid === true && ex.rows[0]?.processed === true)) { duplicate = true; continue; }
       await p.query(`UPDATE ig_webhook_events SET body = $2::jsonb, signature_valid = true, processed = false WHERE ig_event_id = $1`, [e.eventId, JSON.stringify(body)]);
     }
     if (!signatureValid) continue;
     const acct = await accountForIgUser(e.igUserId);
-    if (!acct) { console.warn(`[ig] webhook for unknown account ${e.igUserId} — skipped`); await p.query(`UPDATE ig_webhook_events SET processed = true WHERE ig_event_id = $1`, [e.eventId]); continue; }
+    if (!acct) {
+      // not connected (any more): don't keep the customer's message either
+      console.warn(`[ig] webhook for an account that isn't connected (${e.igUserId}) — skipped`);
+      await p.query(`UPDATE ig_webhook_events SET processed = true, body = '{}'::jsonb WHERE ig_event_id = $1`, [e.eventId]);
+      continue;
+    }
     const wsId = acct.workspaceId, acctId = acct.id;
     const fresh: { threadId: string; text: string; created: boolean }[] = [];
 
@@ -391,11 +491,13 @@ export async function processIgInbound(body: unknown, signatureValid: boolean): 
       const text = m.body ?? (m.attachment ? `[${m.attachment}]` : null);
       const q = await p.query(
         `INSERT INTO ig_messages (workspace_id, ig_account_id, thread_id, mid, sender_id, sender_name, body, raw, direction, status, origin)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11) ON CONFLICT (mid) DO NOTHING RETURNING id`,
-        [wsId, acctId, th.id, m.mid, m.senderId, m.senderName, text, JSON.stringify(m.raw), m.isEcho ? "out" : "in", m.isEcho ? "sent" : "received", m.isEcho ? "ig_app" : "customer"]);
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11) ON CONFLICT DO NOTHING RETURNING id`,
+        [wsId, acctId, th.id, m.mid, m.senderId, m.senderName, text, JSON.stringify(m.raw), m.isEcho ? "out" : "in", m.isEcho ? "sent" : "received",
+          m.isEcho ? (ownSends.has(acctId, text) ? "app" : "ig_app") : "customer"]);
       if (!(q.rowCount && q.rowCount > 0)) continue; // already known (incl. echoes of our own API sends)
       stored++;
       if (m.isEcho) {
+        if (ownSends.has(acctId, text)) continue; // our own send; recordOutbound sets its real origin
         // a person replied from the Instagram app → automation steps aside for this chat
         await p.query(`UPDATE ig_threads SET automation_paused = true, automation_paused_at = now() WHERE id = $1`, [th.id]);
       } else {
