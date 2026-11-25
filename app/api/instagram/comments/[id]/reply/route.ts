@@ -21,7 +21,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const p = getPool();
   const c = (await p.query(
     `SELECT c.id, c.comment_id, c.from_id, c.from_name, c.dm_status, c.reply_kind, c.created_at, a.id AS account_id
-       FROM ig_comments c JOIN ig_accounts a ON a.id = c.ig_account_id WHERE c.id = $1 AND a.workspace_id = $2`, [id, t.wsId])).rows[0];
+       FROM ig_comments c JOIN ig_accounts a ON a.id = c.ig_account_id WHERE c.id = $1 AND a.workspace_id = $2 AND a.live`, [id, t.wsId])).rows[0];
   if (!c) return notFound();
 
   if (b.data.kind === "private") {

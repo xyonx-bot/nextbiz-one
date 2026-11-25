@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
-import { connectIgAccount, getIgAccount, igLive } from "@/lib/instagram";
+import { getTenant, unauthorized } from "@/lib/tenant";
+import { connectIgAccount, disconnectIg, getIgAccount, igLive } from "@/lib/instagram";
 
 /** IG connection status for the Settings > Connections surface. */
 export async function GET() {
@@ -36,18 +34,12 @@ export async function POST(req: Request) {
   }
 }
 
-/** Disconnect: keep audit trail, drop the token, mark mock. */
+/** Disconnect: stop Instagram's events, drop the token, keep the audit trail. History stays hidden until reconnected or deleted. */
 export async function DELETE() {
   const tn = await getTenant();
   if (!tn) return unauthorized();
-  const wsId = tn.wsId;
-  await getPool().query(
-    `UPDATE ig_accounts SET access_token = NULL, live = false, updated_at = now() WHERE workspace_id = $1`,
-    [wsId],
-  );
-  await getPool().query(
-    `INSERT INTO ig_audit (workspace_id, action, detail) VALUES ($1, 'disconnect', '{}'::jsonb)`,
-    [wsId],
-  );
+  await disconnectIg(tn.wsId);
+  await getPool().query(`DELETE FROM ig_accounts WHERE workspace_id = $1 AND ig_user_id = 'mock-ig-user'`, [tn.wsId]);
+  await getPool().query(`INSERT INTO ig_audit (workspace_id, action, detail) VALUES ($1, 'disconnect', '{}'::jsonb)`, [tn.wsId]);
   return NextResponse.json({ ok: true });
 }

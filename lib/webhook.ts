@@ -27,16 +27,16 @@ type WaMessage = {
  */
 export async function processInbound(body: unknown, signatureValid: boolean): Promise<{ stored: number }> {
   const p = getPool();
-  await p.query(
-    `INSERT INTO webhook_events (body, signature_valid) VALUES ($1::jsonb, $2)`,
+  const eventId = (await p.query(
+    `INSERT INTO webhook_events (body, signature_valid) VALUES ($1::jsonb, $2) RETURNING id`,
     [JSON.stringify(body), signatureValid],
-  );
+  )).rows[0].id as string;
   if (!signatureValid) return { stored: 0 };
   if (typeof body !== "object" || body === null) return { stored: 0 };
   const entries = (body as { entry?: unknown[] }).entry;
   if (!Array.isArray(entries)) return { stored: 0 };
 
-  let stored = 0;
+  let stored = 0, unrouted = 0, routed = 0;
 
   for (const entry of entries) {
     const changes = (entry as { changes?: unknown[] }).changes;
@@ -45,10 +45,11 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
       const value = (change as { value?: Record<string, unknown> }).value;
       if (!value) continue;
       // route to the workspace that owns this phone number; the platform owner's own number (server env) maps to
-      // its default workspace. Unknown numbers are stored raw above but never land in anyone's inbox.
+      // its default workspace until someone disconnects it. Messages for a number nobody has connected are dropped.
       const pnid = (value.metadata as { phone_number_id?: string } | undefined)?.phone_number_id;
       let wsId = await workspaceForPhoneNumber(pnid);
-      if (!wsId && pnid && process.env.PHONE_NUMBER_ID && pnid === process.env.PHONE_NUMBER_ID) wsId = await ensureWs();
+      if (!wsId && pnid && process.env.PHONE_NUMBER_ID && pnid === process.env.PHONE_NUMBER_ID
+        && !(await p.query(`SELECT 1 FROM waba_connections WHERE phone_number_id = $1`, [pnid])).rows.length) wsId = await ensureWs();
           const statuses = value.statuses as { id?: string; status?: string }[] | undefined;
           // Meta delivery/read receipts — update the sent message rows
           if (Array.isArray(statuses)) {
@@ -70,19 +71,18 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
       const msgs = value.messages as WaMessage[] | undefined;
       const contacts = value.contacts as { wa_id?: string; name?: string }[] | undefined;
       if (!Array.isArray(msgs)) continue;
-      if (!wsId) { console.warn(`[wa] inbound for unknown phone_number_id ${pnid ?? "?"} — stored raw, not routed`); continue; }
+      if (!wsId) { console.warn(`[wa] inbound for a number that isn't connected (${pnid ?? "?"}) — skipped`); unrouted++; continue; }
+      routed++;
       for (const m of msgs) {
         if (!m.from || !m.id) continue;
+        // Meta resends a message when our 200 was slow: handle it once (no second auto-reply, no stale opt-in/out)
+        if ((await p.query(`SELECT 1 FROM messages WHERE wa_message_id = $1`, [m.id])).rows.length) continue;
         // Meta nests the profile name: contacts[].profile.name
         const meta = contacts?.find((c) => c.wa_id === m.from);
         const name = (meta as { profile?: { name?: string } } | undefined)?.profile?.name
           ?? (meta as { name?: string } | undefined)?.name ?? null;
         const contactId = await upsertContact(wsId, m.from, name);
         const convId = await upsertConversation(wsId, contactId, m.timestamp);
-        // S4 automation (contains-match engine) — best-effort, never blocks inbound
-        if (m.text?.body) {
-          void maybeAutoReply(wsId, contactId, convId, m.from, String(m.text.body)).catch(() => {});
-        }
         // Marketing opt-in capture: explicit keyword = auditable permission.
         // (Inbound "Hi" only opens the 24h window — it is NOT an opt-in.)
         const text = String(m.text?.body ?? "").trim();
@@ -109,13 +109,18 @@ export async function processInbound(body: unknown, signatureValid: boolean): Pr
            RETURNING id`,
           [wsId, convId, m.id, m.type ?? "text", bodyText, JSON.stringify(m)],
         );
-        if (r.rowCount && r.rowCount > 0) stored++;
+        if (!(r.rowCount && r.rowCount > 0)) continue; // a parallel delivery got there first
+        stored++;
+        // S4 automation (contains-match engine) — best-effort, never blocks inbound
+        if (m.text?.body) {
+          void maybeAutoReply(wsId, contactId, convId, m.from, String(m.text.body)).catch(() => {});
+        }
       }
     }
   }
   await p.query(
-    `UPDATE webhook_events SET processed = true
-      WHERE id = (SELECT id FROM webhook_events ORDER BY created_at DESC LIMIT 1)`,
+    // nothing in it belongs to a connected number → don't keep the customer's message either
+    `UPDATE webhook_events SET processed = true${unrouted && !routed ? ", body = '{}'::jsonb" : ""} WHERE id = $1`, [eventId],
   );
   return { stored };
 }
@@ -144,7 +149,7 @@ async function upsertConversation(wsId: string, contactId: string, ts?: string):
     `INSERT INTO conversations (workspace_id, contact_id, last_inbound_at)
      VALUES ($1, $2, $3)
      ON CONFLICT (workspace_id, contact_id)
-       DO UPDATE SET last_inbound_at = EXCLUDED.last_inbound_at
+       DO UPDATE SET last_inbound_at = GREATEST(conversations.last_inbound_at, EXCLUDED.last_inbound_at)
      RETURNING id`,
     [wsId, contactId, at],
   );

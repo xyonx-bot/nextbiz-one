@@ -20,7 +20,7 @@ export async function waitingChats(wsId: string): Promise<{ n: number; oldestHou
     `SELECT COALESCE('@' || t.username, t.name, 'Instagram user') AS who, lm.created_at
        FROM ig_threads t
        JOIN LATERAL (SELECT direction, created_at FROM ig_messages m WHERE m.thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) lm ON true
-      WHERE t.workspace_id = $1 AND lm.direction = 'in' AND lm.created_at < now() - interval '30 minutes' AND lm.created_at > now() - interval '14 days'`, [wsId]).catch(() => ({ rows: [] }))).rows;
+      WHERE t.ig_account_id IN (SELECT id FROM ig_accounts WHERE workspace_id = $1 AND live) AND lm.direction = 'in' AND lm.created_at < now() - interval '30 minutes' AND lm.created_at > now() - interval '14 days'`, [wsId]).catch(() => ({ rows: [] }))).rows;
   const all = [...wa, ...ig].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
   return { n: all.length, oldestHours: all.length ? Math.max(1, Math.round((Date.now() - +new Date(all[0].created_at)) / 3600_000)) : 0, names: all.slice(-3).reverse().map((r) => String(r.who)) };
 }

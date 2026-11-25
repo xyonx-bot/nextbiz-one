@@ -60,9 +60,11 @@ export async function igAutoReplyDm(wsId: string, acctId: string, threadId: stri
       }
       return;
     }
-    if (cfg?.ig_welcome_enabled && !th.welcome_sent_at) {
+    // claim it first, so two messages arriving together don't both send it
+    if (cfg?.ig_welcome_enabled && !th.welcome_sent_at
+      && (await p.query(`UPDATE ig_threads SET welcome_sent_at = now() WHERE id = $1 AND welcome_sent_at IS NULL`, [threadId])).rowCount) {
       const s = await dm(wsId, acctId, threadId, th.igsid, cfg.ig_welcome_text || cfg.welcome_text);
-      if (s.ok) await p.query(`UPDATE ig_threads SET welcome_sent_at = now() WHERE id = $1`, [threadId]);
+      if (!s.ok) await p.query(`UPDATE ig_threads SET welcome_sent_at = NULL WHERE id = $1`, [threadId]);
       await log(wsId, "welcome", null, `welcome ${s.ok ? "sent" : s.error}`, s.ok ? "sent" : "failed");
     }
     const rules = (await p.query(

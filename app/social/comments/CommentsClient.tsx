@@ -16,7 +16,7 @@ import { avatarClass } from "@/lib/ui";
 type State = "needs" | "auto" | "replied" | "dismissed" | "old";
 type C = {
   id: string; comment_id: string; from_id: string | null; from_name: string | null; media_id: string | null; text: string | null; created_at: string;
-  dm_status: string | null; public_status: string | null; reply_text: string | null; reply_kind: string | null; replied_at: string | null; hidden_at: string | null;
+  dm_status: string | null; public_status: string | null; reply_text: string | null; reply_kind: string | null; replied_at: string | null; hidden_at: string | null; ig_hidden_at: string | null;
   rule_name: string | null; rule_reply: string | null; rule_public: string | null; owner_reply_text: string | null; owner_replied_at: string | null; source: string; state: State;
 };
 type Media = { id: string; permalink: string | null; thumb: string | null; caption: string | null; type: string | null };
@@ -43,7 +43,8 @@ function Badges({ c }: { c: C }) {
       {c.replied_at && <span className="cb you"><Icon name="check" size="xs" />{c.reply_kind === "private" ? "You DM'd" : "You replied"}</span>}
       {c.dm_status === "failed" && <span className="cb bad"><Icon name="warning" size="xs" />DM failed</span>}
       {c.owner_replied_at && !c.replied_at && <span className="cb you"><Icon name="instagram-logo" size="xs" />Answered in Instagram</span>}
-      {c.state === "dismissed" && <span className="cb muted">Dismissed</span>}
+      {c.ig_hidden_at && <span className="cb muted"><Icon name="eye-slash" size="xs" />Hidden on Instagram</span>}
+      {c.state === "dismissed" && !c.ig_hidden_at && <span className="cb muted">Dismissed</span>}
       {c.state === "old" && <span className="cb muted">Older than 7 days</span>}
     </span>
   );
@@ -156,6 +157,22 @@ export function CommentsClient({ username }: { username: string | null }) {
     await Promise.all([load(filter, mediaF), open(d.comment.id, false, true)]);
   }
 
+  const [askDel, setAskDel] = useState<string | null>(null);
+  async function moderate(action: "hide" | "unhide" | "delete") {
+    if (!d) return;
+    setBusy(true); setNote(null);
+    const r = await fetch(`/api/instagram/comments/${d.comment.id}/moderate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }).then((x) => x.json()).catch(() => null);
+    setBusy(false); setAskDel(null);
+    if (!r?.ok) { setNote({ kind: "bad", text: r?.error ?? "Instagram didn't accept that — try again." }); return; }
+    if (action === "delete") {
+      setD(null); setSel(null); setView("list");
+      const u = new URL(window.location.href); u.searchParams.delete("c"); history.replaceState(null, "", u);
+      await load(filter, mediaF); return;
+    }
+    await Promise.all([load(filter, mediaF), open(d.comment.id, false, true)]);
+    setNote({ kind: "ok", text: action === "hide" ? "Hidden on Instagram — only the commenter still sees it" : "Visible on Instagram again" });
+  }
+
   const c = d?.comment ?? null;
   const sug = useAiSuggest("comment", c?.id ?? null, text, setText);
   useEffect(() => {
@@ -239,9 +256,16 @@ export function CommentsClient({ username }: { username: string | null }) {
                 <span className={`av ${avatarClass(c.from_id ?? c.id)}`}>{ini(c.from_name)}</span>
                 <div className="who"><b>{handle(c.from_name)}</b><small>Commented {when(c.created_at)}</small></div>
                 {c.state === "needs"
-                  ? <button className="btn btn-ghost btn-sm" onClick={() => void dismiss()} data-testid="dismiss"><Icon name="check" />Dismiss</button>
-                  : c.state === "dismissed" ? <button className="btn btn-ghost btn-sm" onClick={() => void dismiss(true)}>Undo dismiss</button> : null}
+                  ? <button className="btn btn-ghost btn-sm" onClick={() => void dismiss()} aria-label="Dismiss" title="Dismiss" data-testid="dismiss"><Icon name="check" /><span className="lb">Dismiss</span></button>
+                  : c.hidden_at && c.state === "dismissed" ? <button className="btn btn-ghost btn-sm" onClick={() => void dismiss(true)}>Undo dismiss</button> : null}
+                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void moderate(c.ig_hidden_at ? "unhide" : "hide")} aria-label={c.ig_hidden_at ? "Unhide on Instagram" : "Hide on Instagram"} title={c.ig_hidden_at ? "Unhide on Instagram" : "Hide on Instagram"} data-testid="c-hide"><Icon name={c.ig_hidden_at ? "eye" : "eye-slash"} /><span className="lb">{c.ig_hidden_at ? "Unhide" : "Hide"}</span></button>
+                <button className="btn btn-ghost btn-icon btn-sm" disabled={busy} onClick={() => setAskDel(c.id)} aria-label="Delete comment" title="Delete on Instagram" data-testid="c-delete"><Icon name="trash" /></button>
               </div>
+              {askDel === c.id && (
+                <div className="cdel" data-testid="c-delete-ask"><span className="grow"><b>Delete this comment on Instagram?</b> It can&apos;t be brought back.</span>
+                  <button className="btn btn-danger solid btn-sm" disabled={busy} onClick={() => void moderate("delete")} data-testid="c-delete-confirm">{busy ? "Deleting…" : "Delete"}</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setAskDel(null)}>Cancel</button></div>
+              )}
               <div className="cstream">
                 <article className="postcard">
                   <div className="pimg">{pm?.thumb ? <img src={pm.thumb} alt="" /> : <span className="ph"><Icon name={pm?.type === "VIDEO" ? "play" : "image"} /></span>}</div>

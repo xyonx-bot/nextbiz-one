@@ -1,7 +1,6 @@
 import { queueMail } from "@/lib/mail";
 import { approvedEmail, rejectedEmail } from "@/lib/mail-templates";
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { getPool } from "@/lib/db";
 import { requireOperator } from "@/lib/operator";
 

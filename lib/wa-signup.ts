@@ -11,7 +11,7 @@
  */
 import { randomInt } from "node:crypto";
 import { getPool } from "./db";
-import { encrypt, encryptionReady } from "./crypto";
+import { decrypt, encrypt, encryptionReady } from "./crypto";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -103,7 +103,33 @@ export async function completeEmbeddedSignup(
   return { ok: true, displayName: display, phoneNumberId: pnid, wabaId, registered: reg.ok, note };
 }
 
-/** Disconnect: stop using the number in this workspace and forget its token. */
+/** The platform owner's own number: its token lives in the server env, so it can be switched back on without a Facebook login. */
+async function ownNumberRow(wsId: string) {
+  if (!process.env.PHONE_NUMBER_ID) return null;
+  return (await getPool().query(`SELECT id, status FROM waba_connections WHERE workspace_id = $1 AND phone_number_id = $2`, [wsId, process.env.PHONE_NUMBER_ID])).rows[0] as { id: string; status: string } | undefined ?? null;
+}
+export async function canReconnectOwnNumber(wsId: string): Promise<boolean> {
+  return (await ownNumberRow(wsId))?.status === "disconnected";
+}
+export async function reconnectOwnNumber(wsId: string): Promise<boolean> {
+  const row = await ownNumberRow(wsId);
+  if (!row || row.status !== "disconnected") return false;
+  const p = getPool();
+  await p.query(`UPDATE waba_connections SET status = 'disconnected', access_token_enc = NULL WHERE workspace_id = $1 AND id <> $2`, [wsId, row.id]);
+  await p.query(`UPDATE waba_connections SET status = 'connected' WHERE id = $1`, [row.id]);
+  return true;
+}
+
+/** Disconnect: stop Meta sending us the number's events, stop using it in this workspace and forget its token. */
 export async function disconnectWhatsApp(wsId: string): Promise<void> {
-  await getPool().query(`UPDATE waba_connections SET status = 'disconnected', access_token_enc = NULL WHERE workspace_id = $1`, [wsId]);
+  const p = getPool();
+  const { rows } = await p.query(`SELECT business_account_id, access_token_enc FROM waba_connections WHERE workspace_id = $1 AND status = 'connected'`, [wsId]);
+  await p.query(`UPDATE waba_connections SET status = 'disconnected', access_token_enc = NULL WHERE workspace_id = $1`, [wsId]);
+  for (const r of rows) {
+    const token = decrypt(r.access_token_enc); // no stored token = the platform's own number, whose subscription stays
+    if (!token || !r.business_account_id) continue;
+    // the subscription covers the whole WhatsApp account — keep it while another workspace uses a number on it
+    if ((await p.query(`SELECT 1 FROM waba_connections WHERE business_account_id = $1 AND status = 'connected'`, [r.business_account_id])).rows.length) continue;
+    await gjson(`${GRAPH}/${r.business_account_id}/subscribed_apps`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+  }
 }

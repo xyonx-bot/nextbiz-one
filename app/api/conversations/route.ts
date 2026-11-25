@@ -1,9 +1,7 @@
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getTenant, unauthorized } from "@/lib/tenant";
 
 /**
  * GET /api/conversations?q=<search>&unread=1 — P1.6 inbox list:

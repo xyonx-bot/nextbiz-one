@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getShellData } from "@/lib/shell";
-import { waSignupConfig } from "@/lib/wa-signup";
+import { canReconnectOwnNumber, waSignupConfig } from "@/lib/wa-signup";
 import { igAppCreds } from "@/lib/instagram";
 import { ShellClient } from "@/components/ShellClient";
 import { ConnectionsClient } from "./ConnectionsClient";
@@ -21,6 +21,7 @@ export default async function ConnectionsPage() {
         channels={shell.channels}
         wa={shell.wa}
         es={{ ready: es.ready, appId: es.ready ? es.appId : null, configId: es.ready ? es.configId : null }}
+        waOwn={!!shell.user?.isOperator && await canReconnectOwnNumber(shell.wsId)}
         igReady={igReady}
         adsDemo={adsDemo}
       />

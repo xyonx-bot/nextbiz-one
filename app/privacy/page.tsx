@@ -4,7 +4,7 @@ import { PublicPage, type Section } from "@/components/PublicPage";
 export const metadata: Metadata = { title: "Privacy Policy — NextBiz One", description: "How NextBiz One collects, uses, shares and deletes data, including data from Meta platforms." };
 
 /** Public privacy policy (Meta App Review requires a live Privacy Policy URL). Outside the auth gate. */
-const UPDATED = "15 November 2026";
+const UPDATED = "25 November 2026";
 
 const sections: Section[] = [
   { id: "who", title: "Who we are", body: <>
@@ -39,7 +39,7 @@ const sections: Section[] = [
     <p>We may also disclose data if the law requires it.</p></> },
   { id: "keep", title: "How long we keep it", body: <>
     <p>We keep workspace data while your account is active. When you delete your workspace (Settings → Your data), its contacts, conversations, templates, broadcasts, automations and connected-account tokens are deleted. Backups roll over within 30 days.</p>
-    <p>If you disconnect a single channel, we delete its access token straight away. Its message history stays in your workspace until you delete it.</p></> },
+    <p>If you disconnect a single channel, we delete its access token and stop receiving its messages straight away. Its history stays in your workspace, hidden for Instagram, until you reconnect it or delete it. Delete a disconnected Instagram account&rsquo;s chats, messages and comments any time in <b>Connections</b>.</p></> },
   { id: "rights", title: "Your choices and rights", body: <>
     <ul>
       <li><b>Export:</b> download your contacts, conversations and broadcast reports as CSV from Settings → Your data.</li>

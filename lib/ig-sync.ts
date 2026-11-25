@@ -9,6 +9,7 @@
  */
 import { getPool } from "./db";
 import { ensureThread, igLive } from "./instagram";
+import { HAS_IG_TOKEN, igTokenOf } from "./ig-token";
 
 const G = "https://graph.instagram.com/v21.0";
 type GComment = { id: string; text?: string; timestamp?: string; username?: string; from?: { id?: string; username?: string };
@@ -29,19 +30,20 @@ export async function syncIgComments(accountId: string, opts: { posts?: number }
   running.add(accountId);
   try {
     const p = getPool();
-    const a = (await p.query(`SELECT id, ig_user_id, username, access_token, live FROM ig_accounts WHERE id = $1`, [accountId])).rows[0];
-    if (!a?.live || !a.access_token) return { ok: false, posts: 0, imported: 0, answered: 0, error: "Instagram isn't connected" };
+    const a = (await p.query(`SELECT id, ig_user_id, username, access_token, access_token_enc, live FROM ig_accounts WHERE id = $1`, [accountId])).rows[0];
+    const token = igTokenOf(a);
+    if (!a?.live || !token) return { ok: false, posts: 0, imported: 0, answered: 0, error: "Instagram isn't connected" };
     const me = String(a.username ?? "").replace(/^@/, "").toLowerCase();
     const isOwner = (c: GComment) => c.from?.id === a.ig_user_id || (c.username ?? c.from?.username ?? "").toLowerCase() === me;
 
-    const media = await gget<{ data?: { id: string; comments_count?: number }[] }>(`/me/media?fields=id,comments_count&limit=${opts.posts ?? 15}`, a.access_token);
+    const media = await gget<{ data?: { id: string; comments_count?: number }[] }>(`/me/media?fields=id,comments_count&limit=${opts.posts ?? 15}`, token);
     if (!media) return { ok: false, posts: 0, imported: 0, answered: 0, error: "Couldn't read posts from Instagram" };
     const withComments = (media.data ?? []).filter((m) => (m.comments_count ?? 0) > 0);
 
     let imported = 0, answered = 0;
     const lists = await Promise.all(withComments.map(async (m) => ({
       mediaId: m.id,
-      comments: (await gget<{ data?: GComment[] }>(`/${m.id}/comments?fields=id,text,timestamp,username,from,replies{id,text,timestamp,username,from}&limit=50`, a.access_token))?.data ?? [],
+      comments: (await gget<{ data?: GComment[] }>(`/${m.id}/comments?fields=id,text,timestamp,username,from,replies{id,text,timestamp,username,from}&limit=50`, token))?.data ?? [],
     })));
     for (const { mediaId, comments } of lists) {
       // Instagram leaves the author off nested replies, but lists those replies again at the top level WITH it —
@@ -99,12 +101,13 @@ export async function syncIgDms(accountId: string, opts: { conversations?: numbe
   runningDm.add(accountId);
   try {
     const p = getPool();
-    const a = (await p.query(`SELECT id, workspace_id, ig_user_id, username, access_token, live, dms_synced_at FROM ig_accounts WHERE id = $1`, [accountId])).rows[0];
-    if (!a?.live || !a.access_token) return { ok: false, threads: 0, imported: 0, error: "Instagram isn't connected" };
+    const a = (await p.query(`SELECT id, workspace_id, ig_user_id, username, access_token, access_token_enc, live, dms_synced_at FROM ig_accounts WHERE id = $1`, [accountId])).rows[0];
+    const token = igTokenOf(a);
+    if (!a?.live || !token) return { ok: false, threads: 0, imported: 0, error: "Instagram isn't connected" };
     const me = String(a.username ?? "").replace(/^@/, "").toLowerCase();
     const isMe = (x?: { id?: string; username?: string }) => !!x && (x.id === a.ig_user_id || (x.username ?? "").toLowerCase() === me);
 
-    const convs = await gget<{ data?: GConv[] }>(`/me/conversations?platform=instagram&fields=id,updated_time,participants&limit=${opts.conversations ?? 25}`, a.access_token);
+    const convs = await gget<{ data?: GConv[] }>(`/me/conversations?platform=instagram&fields=id,updated_time,participants&limit=${opts.conversations ?? 25}`, token);
     if (!convs) return { ok: false, threads: 0, imported: 0, error: "Couldn't read Instagram conversations" };
     const since = a.dms_synced_at ? new Date(a.dms_synced_at).getTime() - 10 * 60_000 : 0; // small overlap
     const changed = (convs.data ?? []).filter((c) => !c.updated_time || new Date(c.updated_time).getTime() >= since);
@@ -112,7 +115,7 @@ export async function syncIgDms(accountId: string, opts: { conversations?: numbe
     for (const c of changed) {
       const other = (c.participants?.data ?? []).find((x) => !isMe(x));
       if (!other?.id) continue;
-      const full = await gget<{ messages?: { data?: GMsg[] } }>(`/${c.id}?fields=messages.limit(${opts.messages ?? 25}){id,created_time,from,to,message,attachments,story,shares,is_unsupported}`, a.access_token);
+      const full = await gget<{ messages?: { data?: GMsg[] } }>(`/${c.id}?fields=messages.limit(${opts.messages ?? 25}){id,created_time,from,to,message,attachments,story,shares,is_unsupported}`, token);
       const msgs = (full?.messages?.data ?? []).slice().reverse(); // oldest first
       if (!msgs.length) continue;
       const th = await ensureThread(a.workspace_id, a.id, other.id, other.username ?? null);
@@ -122,7 +125,7 @@ export async function syncIgDms(accountId: string, opts: { conversations?: numbe
         const mine = isMe(m.from);
         const r = await p.query(
           `INSERT INTO ig_messages (workspace_id, ig_account_id, thread_id, mid, sender_id, sender_name, body, raw, direction, status, origin, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, COALESCE($12::timestamptz, now())) ON CONFLICT (mid) DO NOTHING`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, COALESCE($12::timestamptz, now())) ON CONFLICT DO NOTHING`,
           [a.workspace_id, a.id, th.id, m.id, m.from?.id ?? "", m.from?.username ?? null, msgBody(m), JSON.stringify(m),
            mine ? "out" : "in", mine ? "sent" : "received", mine ? "ig_app" : "customer", m.created_time ?? null]);
         if (r.rowCount) imported++;
@@ -152,6 +155,6 @@ export async function syncIfStale(wsId: string, staleMs = 3 * 60_000, what: "com
 /** Background job: every live account, every few minutes — comments and DMs. */
 export async function syncAllIgComments() {
   if (!igLive()) return;
-  const { rows } = await getPool().query(`SELECT id FROM ig_accounts WHERE live AND access_token IS NOT NULL`);
+  const { rows } = await getPool().query(`SELECT id FROM ig_accounts WHERE live AND ${HAS_IG_TOKEN}`);
   for (const r of rows) { await syncIgComments(r.id).catch(() => null); await syncIgDms(r.id).catch(() => null); }
 }

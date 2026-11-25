@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getTenant, unauthorized } from "@/lib/tenant";
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const tn = await getTenant();

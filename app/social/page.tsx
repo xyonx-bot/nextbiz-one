@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { AvatarPic } from "@/components/AvatarPic";
 import { igPic } from "@/lib/ui";
 import { PairBars } from "@/components/Charts";
@@ -50,7 +51,7 @@ export default async function SocialPage() {
 
   return (
     <AppShell active="social" requires="social" title="Overview">
-      <div className="pg-social" data-testid="social-overview">
+      <div className="pg-social" data-testid="social-overview"><AutoRefresh everyMs={60_000} />
         {/* profile hero */}
         <section className="card sx-hero">
           <span className="blob b1" /><span className="blob b2" /><span className="blob b3" />

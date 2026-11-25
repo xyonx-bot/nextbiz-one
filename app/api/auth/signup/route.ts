@@ -3,7 +3,7 @@ import { allow, clientIp, tooMany } from "@/lib/ratelimit";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPool } from "@/lib/db";
-import { compare, hash } from "bcryptjs";
+import { hash } from "bcryptjs";
 import { createSession } from "@/lib/auth";
 
 /**

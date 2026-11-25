@@ -102,6 +102,8 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .btn-tint:hover { background: color-mix(in srgb, var(--acc-tint) 70%, var(--acc) 12%); }
 .btn-danger { background: var(--surface); color: var(--danger-deep); border-color: var(--danger-line); }
 .btn-danger:hover { background: var(--danger-tint); }
+.btn-danger.solid { background: var(--danger-deep); color: #fff; border-color: var(--danger-deep); }
+.btn-danger.solid:hover { filter: brightness(1.08); }
 .btn-sm { --h: 26px; padding: 0 10px; font-size: var(--fs-xs); border-radius: var(--r-sm); gap: 5px; }
 .btn-sm .i { width: 13px; height: 13px; }
 .btn-lg { --h: 38px; padding: 0 16px; font-size: var(--fs-base); border-radius: 12px; }

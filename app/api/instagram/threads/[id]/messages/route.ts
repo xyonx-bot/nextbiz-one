@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
-import { getTenant, unauthorized, notFound, isUuid } from "@/lib/tenant";
+import { getTenant, unauthorized } from "@/lib/tenant";
 import { igSendDm, recordOutbound } from "@/lib/instagram";
 
 /**
@@ -20,8 +18,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const b = Body.safeParse(await req.json().catch(() => null));
   if (!b.success) return NextResponse.json({ error: "Message text is required (max 1000 characters)." }, { status: 400 });
   const p = getPool();
-  const t = (await p.query(`SELECT t.id, t.workspace_id, t.ig_account_id, t.igsid, t.last_inbound_at FROM ig_threads t WHERE t.id = $1 AND t.workspace_id = $2`, [id, tn.wsId])).rows[0];
+  const t = (await p.query(`SELECT t.id, t.workspace_id, t.ig_account_id, t.igsid, t.last_inbound_at, a.live FROM ig_threads t JOIN ig_accounts a ON a.id = t.ig_account_id WHERE t.id = $1 AND t.workspace_id = $2`, [id, tn.wsId])).rows[0];
   if (!t) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (!t.live) return NextResponse.json({ error: "This Instagram account is disconnected — nothing was sent. Reconnect it in Connections to reply." }, { status: 409 });
   const hours = t.last_inbound_at ? (Date.now() - new Date(t.last_inbound_at).getTime()) / 3600000 : Infinity;
   if (hours >= 24) return NextResponse.json({ error: "Instagram only allows replies within 24 hours of the customer's last message.", window: "closed" }, { status: 403 });
   const s = await igSendDm(t.ig_account_id, t.igsid, b.data.body);
